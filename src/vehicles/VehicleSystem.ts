@@ -41,6 +41,10 @@ export interface Vehicle {
   lightbarRed?: THREE.Mesh;
   lightbarBlue?: THREE.Mesh;
   scannerLeds?: THREE.Mesh[];
+  // Vice Customs Tuning state
+  tuned?: boolean;
+  underglowMesh?: THREE.Mesh;
+  underglowColorIdx?: number;
   // AI traffic state
   isAiControlled: boolean;
   aiSpeed: number;
@@ -243,6 +247,57 @@ export class VehicleSystem {
 
   public getActiveVehicle(): Vehicle | null {
     return this.activeVehicle;
+  }
+
+  /**
+   * Applies Vice Customs Turbo + Armor + Neon Underglow upgrade to a vehicle.
+   * Returns true if this was the first full Turbo upgrade, or false if cycling custom neon finish.
+   */
+  public tuneVehicle(v: Vehicle): { firstUpgrade: boolean; neonLabel: string } {
+    const NEON_PRESETS = [
+      { hex: '#36f1e6', label: 'VICE CYAN' },
+      { hex: '#ff4fa3', label: 'HOT PINK' },
+      { hex: '#52f29c', label: 'MIAMI MINT' },
+      { hex: '#ff9f43', label: 'SUNSET AMBER' },
+      { hex: '#b388ff', label: 'ULTRAVIOLET' },
+    ];
+    const firstUpgrade = !v.tuned;
+    if (firstUpgrade) {
+      v.tuned = true;
+      v.maxHp = Math.round(v.maxHp * 1.5);
+    }
+    v.hp = v.maxHp;
+    v.destroyed = false;
+
+    const nextIdx = ((v.underglowColorIdx ?? -1) + 1) % NEON_PRESETS.length;
+    v.underglowColorIdx = nextIdx;
+    const preset = NEON_PRESETS[nextIdx];
+
+    // Metallic gloss boost on body paint
+    v.bodyMat.roughness = 0.14;
+    v.bodyMat.metalness = Math.max(v.bodyMat.metalness, 0.55);
+
+    if (!v.underglowMesh) {
+      const gw = v.isBike ? 0.55 : v.isRv ? 2.0 : 1.85;
+      const gd = v.isBike ? 1.75 : v.isRv ? 5.2 : 3.9;
+      const glowMat = new THREE.MeshBasicMaterial({
+        color: preset.hex,
+        transparent: true,
+        opacity: 0.72,
+        blending: THREE.AdditiveBlending,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+      const glowMesh = new THREE.Mesh(new THREE.PlaneGeometry(gw, gd), glowMat);
+      glowMesh.rotation.x = -Math.PI / 2;
+      glowMesh.position.y = 0.08;
+      v.mesh.add(glowMesh);
+      v.underglowMesh = glowMesh;
+    } else {
+      (v.underglowMesh.material as THREE.MeshBasicMaterial).color.set(preset.hex);
+    }
+
+    return { firstUpgrade, neonLabel: preset.label };
   }
 
   public findNearestVehicle(pos: THREE.Vector3, maxDist = 4.4): Vehicle | null {
@@ -868,11 +923,12 @@ export class VehicleSystem {
     const steerInput = isActive ? THREE.MathUtils.clamp(kbSteer + padSteer + drunkSteerDrift, -1.15, 1.15) : 0;
     const handbrake = isActive && (this.keys.has('Space') || Boolean(pad?.connected && pad.handbrake));
 
-    const maxForward = v.isBike ? 29.5 : v.isRv ? 18.0 : 25.0;
+    const turboMult = v.tuned ? 1.28 : 1.0;
+    const maxForward = (v.isBike ? 29.5 : v.isRv ? 18.0 : 25.0) * turboMult;
     const maxReverse = v.isBike ? -6.5 : v.isRv ? -6.5 : -9.0;
 
     if (accelInput > 0.05) {
-      v.speed += (v.isBike ? 23.0 : v.isRv ? 11.5 : 18.5) * accelInput * dt;
+      v.speed += (v.isBike ? 23.0 : v.isRv ? 11.5 : 18.5) * (v.tuned ? 1.32 : 1.0) * accelInput * dt;
     } else if (accelInput < -0.05) {
       v.speed += (v.speed > 0.5 ? 28.0 : 12.0) * accelInput * dt;
     } else {

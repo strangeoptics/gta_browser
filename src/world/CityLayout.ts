@@ -215,7 +215,7 @@ export function generateCityLayout(): CityLayout {
     blockSize: BLOCK_SIZE,
     sidewalkWidth: SIDEWALK_WIDTH,
     playableBounds: {
-      minX: -67,
+      minX: -122, // extends west through Little Havana, Starlight Diner, Banco de Vice & Vice Customs (x=-66..-124)
       maxX: 204, // extends across the Causeway Bridge (x=66..148) & Starfish Island (x=148..198)
       minZ: -88,
       maxZ: 141, // extends south through Vice Port Docks (z=66..126) & Cargo Freighter (z=127..141)

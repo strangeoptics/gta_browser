@@ -783,6 +783,21 @@ window.addEventListener('keydown', (e) => {
         car.destroyed = false;
         audio.playPurchase();
         showQuickToast(`PRIVATE GARAGE · ${car.name} REPARIERT (100%)`);
+      } else if (world.isCarInTuningBay(car.position)) {
+        const tuneCost = car.tuned ? 400 : 600;
+        if (objectives.cash >= tuneCost) {
+          objectives.cash -= tuneCost;
+          const { firstUpgrade, neonLabel } = vehicles.tuneVehicle(car);
+          audio.playPurchase();
+          persistProgress();
+          showQuickToast(
+            firstUpgrade
+              ? `VICE CUSTOMS · TURBO + PANZERUNG + ${neonLabel} NEON (-$${tuneCost})`
+              : `VICE CUSTOMS · ${neonLabel} NEON-FINISH & 100% REPARATUR (-$${tuneCost})`,
+          );
+        } else {
+          showQuickToast(`VICE CUSTOMS · ZU WENIG CASH (BENÖTIGT $${tuneCost})`);
+        }
       } else if (world.isCarInExportBay(car.position)) {
         const exportSpec = world.canDeliverExportVehicle(car.name);
         if (exportSpec) {
@@ -904,6 +919,25 @@ window.addEventListener('keydown', (e) => {
       persistProgress();
       showQuickToast('SUPERYACHT „LADY VICE“ · +$1.800 KAPITÄNS-GOLD!');
       sendPoliceDispatch('Alarm auf der Superyacht Lady Vice! Küstenwache & Einheiten ausrücken!', true);
+    } else if (world.isNearDinerCounter(player.position)) {
+      const mealCost = 40;
+      if (objectives.cash >= mealCost) {
+        objectives.cash -= mealCost;
+        playerHp = 100;
+        audio.playEatCrunch();
+        persistProgress();
+        showQuickToast('STARLIGHT DINER · CUBAN BURGER & SHAKE (100% HP · -$40)');
+      } else {
+        showQuickToast(`STARLIGHT DINER · ZU WENIG CASH (BENÖTIGT $${mealCost})`);
+      }
+    } else if (world.isNearBankVault(player.position)) {
+      world.takeBankVault();
+      objectives.cash += 3000;
+      wanted.addHeat(165);
+      audio.playMissionPassed();
+      persistProgress();
+      showQuickToast('BANCO DE VICE TRESOR GEKNACKT · +$3.000 — 4★ GROẞFAHNDUNG!');
+      sendPoliceDispatch('CODE 3! Bewaffneter Banküberfall in der Banco de Vice (Little Havana)!', true);
     } else if (world.isNearClubBar(player.position)) {
       if (objectives.cash >= 50) {
         objectives.cash -= 50;
@@ -1231,7 +1265,16 @@ function animate(now: number): void {
   }
   if (wanted.stars > lastWantedStars) {
     const activeCar = vehicles.getActiveVehicle();
-    const area = player.position.x > 48 ? 'Ocean Drive' : 'Downtown Vice';
+    const area =
+      player.position.x < -66
+        ? 'Little Havana'
+        : player.position.z > 66
+          ? 'Vice Port'
+          : player.position.x > 130
+            ? 'Starfish Island'
+            : player.position.x > 48
+              ? 'Ocean Drive'
+              : 'Downtown Vice';
     if (wanted.stars === 1) {
       sendPoliceDispatch(`10-31 am ${area} — Verdächtiger gesichtet!`);
     } else if (wanted.stars === 2) {
@@ -1245,7 +1288,8 @@ function animate(now: number): void {
   const indoors =
     world.isInsideClub(player.position) ||
     world.isInsideSafehouse(player.position) ||
-    world.isInsidePoliceStation(player.position);
+    world.isInsidePoliceStation(player.position) ||
+    world.isInsideWestInterior(player.position);
   npcs.update(dt, player.position, wanted.stars, [
     ...world.solidNpcColliders,
     ...vehicles.getVehicleColliders(),
@@ -1498,6 +1542,10 @@ function animate(now: number): void {
     setText(vehicleCamHintEl, `[LMB] DRIVE-BY · [Q] ${audio.getRadioStation()}${vigHint} · [V] CAM · [E] AUS`);
     if (car && world.isInSafehouseGarage(car.position)) {
       nextPrompt = '[F] PRIVATE GARAGE · GRATIS REPARATUR (100%)';
+    } else if (car && world.isCarInTuningBay(car.position)) {
+      nextPrompt = car.tuned
+        ? '[F] VICE CUSTOMS · NEON-UNDERGLOW WECHSELN & REPARATUR ($400)'
+        : '[F] VICE CUSTOMS · TURBO (+30%), PANZERUNG & NEON-UNDERGLOW ($600)';
     } else if (car && world.isCarInExportBay(car.position)) {
       const exportSpec = world.canDeliverExportVehicle(car.name);
       nextPrompt = exportSpec
@@ -1556,6 +1604,10 @@ function animate(now: number): void {
       nextPrompt = '[F] STARFISH ESTATE · GOLD-TRESOR STEHLEN (+$2.500 · ⚠ 3★)';
     } else if (world.isNearYachtLoot(player.position)) {
       nextPrompt = '[F] SUPERYACHT „LADY VICE“ · KAPITÄNS-GOLD (+$1.800 · ⚠)';
+    } else if (world.isNearDinerCounter(player.position)) {
+      nextPrompt = '[F] STARLIGHT DINER · CUBAN BURGER & MILKSHAKE ($40 · 100% HP)';
+    } else if (world.isNearBankVault(player.position)) {
+      nextPrompt = '[F] BANCO DE VICE · BANK-TRESOR AUSRAUBEN (+$3.000 · ⚠ 4★ ALARM)';
     } else if (heistHud.nearStartMarker && !heistHud.active) {
       nextPrompt = '[H] OCEAN CLUB HEIST STARTEN (+$3.500)';
     } else if (heliPlayerHud.nearbyHeli) {

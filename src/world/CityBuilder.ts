@@ -24,6 +24,7 @@ import { buildStarfishIsland } from './StarfishIsland';
 import { buildStuntRamps, type StuntRamp } from './StuntRamps';
 import { buildTrafficLights } from './TrafficLights';
 import { buildVicePort, type ImportExportSpec } from './VicePort';
+import { buildWestDistrict } from './WestDistrict';
 
 export interface MiamiWorld {
   colliders: AABB[];
@@ -41,6 +42,11 @@ export interface MiamiWorld {
   isCarInExportBay: (pos: THREE.Vector3) => boolean;
   canDeliverExportVehicle: (vehicleName: string) => ImportExportSpec | null;
   deliverExportVehicle: (vehicleName: string) => { reward: number; allDoneBonus: number };
+  isCarInTuningBay: (pos: THREE.Vector3) => boolean;
+  isNearDinerCounter: (pos: THREE.Vector3) => boolean;
+  isNearBankVault: (pos: THREE.Vector3) => boolean;
+  takeBankVault: () => void;
+  isInsideWestInterior: (pos: THREE.Vector3) => boolean;
   cycleTimeOfDay: () => string;
   toggleRain: () => boolean;
   isInsideClub: (pos: THREE.Vector3) => boolean;
@@ -623,9 +629,12 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
   // 6b) Starfish Island, Arched Causeway Bridge & 42m Superyacht (adds island palms before InstancedMesh build!)
   const starfish = buildStarfishIsland(scene, colliders, worldMeshes, palmPositions);
 
+  // 6c) West District: Little Havana, Starlight 80s Diner, Banco de Vice & Vice Customs Tuning Garage (x = -66..-124)
+  const westDistrict = buildWestDistrict(scene, colliders, worldMeshes, roadMat, sidewalkMat, palmPositions);
+
   const palms = buildPalmTrees(scene, palmPositions);
 
-  // 6c) Vice Port Industrial Container Docks, 26m Gantry Cranes, Cargo Freighter & Import/Export (z = 66..140)
+  // 6d) Vice Port Industrial Container Docks, 26m Gantry Cranes, Cargo Freighter & Import/Export (z = 66..140)
   const vicePort = buildVicePort(scene, colliders, worldMeshes, oceanMat);
 
   // ---------------------------------------------------------------------------
@@ -775,6 +784,11 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
     isCarInExportBay: (pos: THREE.Vector3) => vicePort.isCarInExportBay(pos),
     canDeliverExportVehicle: (name: string) => vicePort.canDeliverVehicle(name),
     deliverExportVehicle: (name: string) => vicePort.markDelivered(name),
+    isCarInTuningBay: (pos: THREE.Vector3) => westDistrict.isCarInTuningBay(pos),
+    isNearDinerCounter: (pos: THREE.Vector3) => westDistrict.isNearDinerCounter(pos),
+    isNearBankVault: (pos: THREE.Vector3) => westDistrict.isNearBankVault(pos),
+    takeBankVault: () => westDistrict.takeBankVault(),
+    isInsideWestInterior: (pos: THREE.Vector3) => westDistrict.isInsideInterior(pos),
     cycleTimeOfDay: () => {
       timeIndex = (timeIndex + 1) % timePresets.length;
       return applyTimePreset(timeIndex);
@@ -818,6 +832,7 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
       oceanUniforms.uTime.value = elapsed;
       beachHighlights.update(elapsed);
       starfish.update(elapsed, dt);
+      westDistrict.update(elapsed);
       vicePort.update(elapsed);
       neonClub.update(elapsed, playerPos);
       safehouse.update(elapsed, dt, playerPos, cash, wantedStars);

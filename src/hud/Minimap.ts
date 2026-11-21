@@ -84,19 +84,31 @@ export class Minimap {
     ctx.fillStyle = 'rgba(184, 58, 48, 0.65)';
     ctx.fillRect((-21 - playerX) * scale, (128 - playerZ) * scale, 58 * scale, 14 * scale);
 
-    // Road grid highlights
+    // West District (Little Havana, Starlight Diner, Banco de Vice & Vice Customs: x = -124..-66)
+    ctx.fillStyle = 'rgba(232, 168, 132, 0.22)';
+    ctx.strokeStyle = 'rgba(255, 160, 110, 0.35)';
+    ctx.lineWidth = 1;
+    for (const wz of [-40, 0, 40]) {
+      const bx = (-104 - playerX) * scale;
+      const bz = (wz - 14 - playerZ) * scale;
+      ctx.fillRect(bx, bz, 34 * scale, 28 * scale);
+      ctx.strokeRect(bx, bz, 34 * scale, 28 * scale);
+    }
+
+    // Road grid highlights (including West Havana Blvd at x = -112)
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
     ctx.lineWidth = layout.roadWidth * scale;
-    for (const r of layout.roadCoords) {
+    for (const r of [...layout.roadCoords, -112]) {
       const rx = (r - playerX) * scale;
-      const rz = (r - playerZ) * scale;
       ctx.beginPath();
       ctx.moveTo(rx, (-68 - playerZ) * scale);
       ctx.lineTo(rx, (68 - playerZ) * scale);
       ctx.stroke();
-
+    }
+    for (const r of layout.roadCoords) {
+      const rz = (r - playerZ) * scale;
       ctx.beginPath();
-      ctx.moveTo((-68 - playerX) * scale, rz);
+      ctx.moveTo((-120 - playerX) * scale, rz);
       ctx.lineTo((68 - playerX) * scale, rz);
       ctx.stroke();
     }
@@ -161,6 +173,14 @@ export class Minimap {
     const ieZ = (92 - playerZ) * scale;
     ctx.fillStyle = '#ff9f43';
     ctx.fillText('IE', ieX, ieZ);
+
+    // West District markers: Vice Customs Tuning (T), Starlight 80s Diner (D), Banco de Vice (B)
+    ctx.fillStyle = '#36f1e6';
+    ctx.fillText('T', (-85 - playerX) * scale, (-37.5 - playerZ) * scale);
+    ctx.fillStyle = '#ff4fa3';
+    ctx.fillText('D', (-88 - playerX) * scale, (-7 - playerZ) * scale);
+    ctx.fillStyle = '#ffd15c';
+    ctx.fillText('B', (-88 - playerX) * scale, (40 - playerZ) * scale);
 
     // Flyable Vice Maverick Helicopter marker (M)
     if (maverickPos) {

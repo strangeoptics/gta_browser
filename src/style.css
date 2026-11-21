@@ -238,6 +238,280 @@ body,
   background: linear-gradient(90deg, #36f1e6, #ff4fa3);
 }
 
+#weapon-panel.hidden {
+  display: none;
+}
+
+/* Top Left: Objective Box */
+#objective-box {
+  position: absolute;
+  top: 18px;
+  left: 18px;
+  max-width: 280px;
+  padding: 12px 15px;
+  border-radius: 10px;
+  background: rgba(16, 10, 26, 0.72);
+  border: 1px solid rgba(54, 241, 230, 0.4);
+  backdrop-filter: blur(8px);
+}
+
+.obj-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+
+.obj-tag {
+  color: #36f1e6;
+}
+
+#obj-dist {
+  color: #ff9f43;
+}
+
+#obj-title {
+  font-size: 15px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  color: #fff5ec;
+  margin-bottom: 3px;
+}
+
+#obj-desc {
+  font-size: 12px;
+  line-height: 1.35;
+  color: #d9c5d8;
+}
+
+/* Top Right: Wanted, Cash, HP */
+#status-box {
+  position: absolute;
+  top: 18px;
+  right: 22px;
+  min-width: 195px;
+  padding: 11px 15px;
+  border-radius: 10px;
+  background: rgba(16, 10, 26, 0.72);
+  border: 1px solid rgba(255, 79, 163, 0.35);
+  backdrop-filter: blur(8px);
+  text-align: right;
+}
+
+#wanted-stars {
+  font-size: 20px;
+  letter-spacing: 4px;
+  color: rgba(255, 255, 255, 0.25);
+  margin-bottom: 2px;
+}
+
+#wanted-stars.active {
+  color: #ffbe3b;
+  text-shadow: 0 0 10px rgba(255, 190, 59, 0.75);
+}
+
+#wanted-stars.cooling {
+  animation: pulseStars 0.7s infinite alternate;
+}
+
+@keyframes pulseStars {
+  from {
+    opacity: 0.35;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+#cash-display {
+  font-size: 22px;
+  font-weight: 900;
+  color: #52f29c;
+  letter-spacing: 0.04em;
+  margin-bottom: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.hp-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.hp-label {
+  color: #ff7ea8;
+}
+
+.hp-bar {
+  flex: 1;
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.14);
+  overflow: hidden;
+}
+
+#hp-fill {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(90deg, #ff4fa3, #ff9966);
+  transition: width 0.12s ease;
+}
+
+#hp-text {
+  min-width: 26px;
+  color: #fff6f0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Mission Toast */
+#toast-banner {
+  position: absolute;
+  top: 78px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-10px);
+  padding: 10px 24px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(54, 241, 230, 0.92), rgba(255, 79, 163, 0.92));
+  color: #160a22;
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  opacity: 0;
+  transition: opacity 0.22s ease, transform 0.22s ease;
+}
+
+#toast-banner.visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* Interact Prompt */
+#interact-prompt {
+  position: absolute;
+  bottom: 92px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 18px;
+  border-radius: 8px;
+  background: rgba(16, 10, 26, 0.82);
+  border: 1px solid rgba(54, 241, 230, 0.6);
+  color: #36f1e6;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+#interact-prompt.visible {
+  opacity: 1;
+}
+
+/* Vehicle Panel */
+#vehicle-panel {
+  position: absolute;
+  right: 22px;
+  bottom: 20px;
+  min-width: 220px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: rgba(16, 10, 26, 0.76);
+  border: 1px solid rgba(255, 159, 67, 0.45);
+  backdrop-filter: blur(8px);
+  text-align: right;
+  display: none;
+}
+
+#vehicle-panel.visible {
+  display: block;
+}
+
+#vehicle-name {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: #36f1e6;
+}
+
+.speed-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+#vehicle-speed {
+  font-size: 34px;
+  font-weight: 900;
+  line-height: 1;
+  color: #fff6f0;
+  font-variant-numeric: tabular-nums;
+}
+
+.speed-unit {
+  font-size: 13px;
+  font-weight: 800;
+  color: #ff9f43;
+}
+
+#vehicle-cam-hint {
+  margin-top: 6px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: #d9c5d8;
+}
+
+/* Damage Vignette & Wasted Overlay */
+#damage-vignette {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 12;
+  opacity: 0;
+  background: radial-gradient(circle at center, transparent 48%, rgba(255, 24, 72, 0.62) 100%);
+}
+
+#wasted-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 18;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(18, 6, 22, 0.72);
+  backdrop-filter: blur(4px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+
+#wasted-overlay.visible {
+  opacity: 1;
+}
+
+.wasted-text {
+  font-size: 64px;
+  font-weight: 900;
+  letter-spacing: 0.22em;
+  color: #ff3366;
+  text-shadow: 0 0 28px rgba(255, 51, 102, 0.85);
+}
+
+.wasted-sub {
+  margin-top: 8px;
+  font-size: 14px;
+  letter-spacing: 0.14em;
+  color: #f5d8e6;
+}
+
 /* Pointer-Lock Overlay */
 #overlay {
   position: fixed;

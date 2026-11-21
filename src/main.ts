@@ -7,17 +7,19 @@ import './style.css';
 import { PlayerController } from './player/PlayerController';
 import { buildMiamiCity } from './world/CityBuilder';
 import { WeaponSystem } from './combat/WeaponSystem';
-import { createRangeProps } from './combat/RangeProps';
+import { VehicleSystem } from './vehicles/VehicleSystem';
+import { NpcSystem } from './entities/NpcSystem';
+import { WantedSystem } from './gameplay/WantedSystem';
+import { ObjectiveSystem } from './gameplay/ObjectiveSystem';
 
 const canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
 const overlay = document.getElementById('overlay') as HTMLDivElement;
 const playBtn = document.getElementById('play-btn') as HTMLButtonElement;
-const coordsEl = document.getElementById('coords') as HTMLDivElement;
-const stateLineEl = document.getElementById('state-line') as HTMLDivElement;
 
-// Weapon HUD elements
+// HUD elements
 const crosshairEl = document.getElementById('crosshair') as HTMLDivElement;
 const hitmarkerEl = document.getElementById('hitmarker') as HTMLDivElement;
+const weaponPanelEl = document.getElementById('weapon-panel') as HTMLDivElement;
 const weaponNameEl = document.getElementById('weapon-name') as HTMLDivElement;
 const ammoCurrentEl = document.getElementById('ammo-current') as HTMLSpanElement;
 const ammoMaxEl = document.getElementById('ammo-max') as HTMLSpanElement;
@@ -28,6 +30,22 @@ const slotEls = [
   document.getElementById('slot-2') as HTMLSpanElement,
   document.getElementById('slot-3') as HTMLSpanElement,
 ];
+
+const starsEl = document.getElementById('wanted-stars') as HTMLDivElement;
+const cashEl = document.getElementById('cash-display') as HTMLDivElement;
+const hpFillEl = document.getElementById('hp-fill') as HTMLDivElement;
+const hpTextEl = document.getElementById('hp-text') as HTMLSpanElement;
+const objTitleEl = document.getElementById('obj-title') as HTMLDivElement;
+const objDescEl = document.getElementById('obj-desc') as HTMLDivElement;
+const objDistEl = document.getElementById('obj-dist') as HTMLSpanElement;
+const interactPromptEl = document.getElementById('interact-prompt') as HTMLDivElement;
+const vehiclePanelEl = document.getElementById('vehicle-panel') as HTMLDivElement;
+const vehicleNameEl = document.getElementById('vehicle-name') as HTMLDivElement;
+const vehicleSpeedEl = document.getElementById('vehicle-speed') as HTMLSpanElement;
+const vehicleCamHintEl = document.getElementById('vehicle-cam-hint') as HTMLDivElement;
+const toastBannerEl = document.getElementById('toast-banner') as HTMLDivElement;
+const damageVignetteEl = document.getElementById('damage-vignette') as HTMLDivElement;
+const wastedOverlayEl = document.getElementById('wasted-overlay') as HTMLDivElement;
 
 // Renderer
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
@@ -54,19 +72,91 @@ const bloomPass = new UnrealBloomPass(
 composer.addPass(bloomPass);
 composer.addPass(new OutputPass());
 
-// World (Phase 2: 3x3 Miami Coastal District + Ocean Drive)
+// World + Gameplay Systems
 const world = buildMiamiCity(scene, renderer);
-
-// Combat (Phase 3: Weapons & Shootable Range Targets)
 const weapons = new WeaponSystem(scene, camera);
-const rangeProps = createRangeProps(scene);
+const vehicles = new VehicleSystem(scene);
+const npcs = new NpcSystem(scene);
+const wanted = new WantedSystem();
+const objectives = new ObjectiveSystem(scene);
+objectives.startNextObjective(npcs);
 
-// Player Controller — spawn on Ocean Drive
+// Player Controller — spawn on Ocean Drive near parked sports cars
 const player = new PlayerController(camera, canvas);
 const b = world.layout.playableBounds;
 player.setWorldBounds(b.minX, b.maxX, b.minZ, b.maxZ);
-player.setSpawn(60, 0.2, 26, 0.15);
+player.setSpawn(60, 0.2, 24, 0.12);
 
+// Player Health & Wasted State
+let playerHp = 100;
+let damageFlash = 0;
+let wastedTimer = 0;
+
+function applyPlayerDamage(amount: number): void {
+  if (wastedTimer > 0) return;
+  const mitigated = vehicles.isInVehicle() ? amount * 0.55 : amount;
+  playerHp = Math.max(0, playerHp - mitigated);
+  damageFlash = 0.85;
+
+  if (playerHp <= 0) {
+    wastedTimer = 2.6;
+    wastedOverlayEl.classList.add('visible');
+    if (vehicles.isInVehicle()) {
+      vehicles.exitVehicle();
+      weapons.setEnabled(true);
+    }
+  }
+}
+
+// Wire system callbacks
+weapons.onShotFired = (_weaponId, origin) => {
+  npcs.alertNearbyCivilians(origin, 28);
+};
+
+npcs.onPlayerDamaged = (dmg) => {
+  applyPlayerDamage(dmg);
+};
+
+npcs.onNpcKilled = (npc) => {
+  if (npc.role === 'civilian') {
+    wanted.addHeat(30);
+  } else if (npc.role === 'police') {
+    wanted.addHeat(65);
+    objectives.cash += 100;
+  } else if (npc.role === 'bounty') {
+    wanted.addHeat(45);
+  }
+};
+
+vehicles.onVehicleHitNpc = (vPos, speed) => {
+  npcs.handleVehicleImpact(vPos, speed);
+};
+
+// Enter / Exit Vehicle on [E]
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'KeyE' && player.getIsActive() && wastedTimer <= 0) {
+    if (vehicles.isInVehicle()) {
+      const exitPos = vehicles.exitVehicle();
+      if (exitPos) {
+        player.setSpawn(exitPos.x, exitPos.y, exitPos.z, exitPos.yaw);
+        camera.fov = 75;
+        camera.updateProjectionMatrix();
+        weapons.setEnabled(true);
+      }
+    } else {
+      const nearest = vehicles.findNearestVehicle(player.position, 4.4);
+      if (nearest) {
+        if (nearest.isPolice || nearest.isAiControlled) {
+          wanted.addHeat(28);
+        }
+        vehicles.enterVehicle(nearest);
+        weapons.setEnabled(false);
+      }
+    }
+  }
+});
+
+// Pointer Lock flow
 let pointerLockFallback = false;
 
 function requestLockSafely(): void {
@@ -140,52 +230,117 @@ const startTime = lastTime;
 
 function animate(now: number): void {
   requestAnimationFrame(animate);
-  const dt = (now - lastTime) / 1000;
+  const dt = Math.min((now - lastTime) / 1000, 0.05);
   const elapsed = (now - startTime) / 1000;
   lastTime = now;
 
-  const status = player.update(dt, world.colliders);
-  world.update(elapsed, dt);
-  rangeProps.update(dt, elapsed);
+  // Handle Wasted respawn countdown
+  if (wastedTimer > 0) {
+    wastedTimer -= dt;
+    if (wastedTimer <= 0) {
+      wastedOverlayEl.classList.remove('visible');
+      playerHp = 100;
+      wanted.reset();
+      npcs.clearPolice();
+      player.setSpawn(60, 0.2, 24, 0.12);
+    }
+  }
 
-  const wHud = weapons.update(
+  const isPlaying = player.getIsActive() && wastedTimer <= 0;
+  const inVehicle = vehicles.isInVehicle();
+
+  // Update player or vehicle
+  let playerSpeed = 0;
+  if (!inVehicle) {
+    const status = player.update(dt, world.colliders);
+    playerSpeed = status.speed;
+  } else {
+    const car = vehicles.getActiveVehicle();
+    if (car) {
+      player.position.copy(car.position);
+    }
+  }
+
+  const driveHud = vehicles.update(
     dt,
-    player.getIsActive(),
-    status.speed,
-    world.worldMeshes,
-    rangeProps.getActiveTargets(),
+    elapsed,
+    isPlaying,
+    player.position,
+    camera,
+    world.colliders,
+    world.layout.playableBounds,
   );
 
-  // Update Weapon HUD
-  weaponNameEl.textContent = wHud.name;
-  ammoCurrentEl.textContent = wHud.reloading ? 'RLD' : String(wHud.ammo);
-  ammoMaxEl.textContent = `/ ${wHud.magSize}`;
-  reloadBarEl.classList.toggle('visible', wHud.reloading);
-  reloadFillEl.style.width = `${Math.round(wHud.reloadProgress * 100)}%`;
+  // Update world, wanted, NPCs & objectives
+  world.update(elapsed, dt);
+  wanted.update(dt);
+  npcs.update(dt, player.position, wanted.stars);
+  const objHud = objectives.update(dt, elapsed, player.position, vehicles, npcs, wanted);
 
-  slotEls.forEach((el, idx) => {
-    el.classList.toggle('active', idx === wHud.slotIndex);
-  });
+  // Update weapons when on foot
+  const shootables = [...npcs.getShootableTargets(), ...vehicles.getShootableTargets()];
+  const wHud = weapons.update(dt, isPlaying && !inVehicle, playerSpeed, world.worldMeshes, shootables);
 
-  crosshairEl.style.width = `${wHud.spreadPx}px`;
-  crosshairEl.style.height = `${wHud.spreadPx}px`;
-  crosshairEl.style.opacity = wHud.ads ? '0.45' : '0.88';
+  // --- HUD Updates ---
+  // Health & Damage Flash
+  damageFlash = Math.max(0, damageFlash - dt * 2.2);
+  damageVignetteEl.style.opacity = String(damageFlash);
+  const hpPct = Math.round(playerHp);
+  hpFillEl.style.width = `${hpPct}%`;
+  hpTextEl.textContent = `${hpPct}`;
 
-  hitmarkerEl.style.opacity = String(wHud.hitmarkerAlpha);
-  hitmarkerEl.classList.toggle('kill', wHud.hitmarkerKill && wHud.hitmarkerAlpha > 0.05);
+  // Wanted Stars & Cash
+  const starStr = '★'.repeat(wanted.stars) + '☆'.repeat(5 - wanted.stars);
+  starsEl.textContent = starStr;
+  starsEl.classList.toggle('cooling', wanted.isCoolingDown());
+  starsEl.classList.toggle('active', wanted.stars > 0);
+  cashEl.textContent = `$${objHud.cash.toLocaleString('en-US')}`;
 
-  // Update debug HUD
-  coordsEl.textContent = `POS: ${status.x.toFixed(1)}, ${status.y.toFixed(1)}, ${status.z.toFixed(1)} | ${status.speed.toFixed(1)} m/s`;
-  const flags: string[] = [];
-  if (status.grounded) flags.push('GROUND');
-  else flags.push('AIR');
-  if (status.sprinting) flags.push('SPRINT');
-  if (status.crouching) flags.push('CROUCH');
-  if (wHud.ads) flags.push('ADS');
-  if (player.getIsActive() && !player.getIsLocked()) {
-    flags.push('DRAG/ARROWS LOOK');
+  // Objective Tracker
+  objTitleEl.textContent = objHud.title;
+  objDescEl.textContent = objHud.description;
+  objDistEl.textContent = objHud.distanceM > 0 ? `${objHud.distanceM} m` : '';
+
+  // Toast Banner
+  if (objHud.toastText) {
+    toastBannerEl.textContent = objHud.toastText;
+    toastBannerEl.classList.add('visible');
+  } else {
+    toastBannerEl.classList.remove('visible');
   }
-  stateLineEl.textContent = flags.join(' · ');
+
+  // Vehicle vs On-Foot HUD
+  weaponPanelEl.classList.toggle('hidden', driveHud.inVehicle);
+  crosshairEl.style.display = driveHud.inVehicle ? 'none' : 'block';
+  vehiclePanelEl.classList.toggle('visible', driveHud.inVehicle);
+
+  if (driveHud.inVehicle) {
+    vehicleNameEl.textContent = driveHud.vehicleName;
+    vehicleSpeedEl.textContent = `${driveHud.speedKmh}`;
+    vehicleCamHintEl.textContent = `[V] ${driveHud.firstPersonCam ? 'COCKPIT' : 'CHASE'} · [E] AUSSTEIGEN`;
+    interactPromptEl.classList.remove('visible');
+  } else {
+    weaponNameEl.textContent = wHud.name;
+    ammoCurrentEl.textContent = wHud.reloading ? 'RLD' : String(wHud.ammo);
+    ammoMaxEl.textContent = `/ ${wHud.magSize}`;
+    reloadBarEl.classList.toggle('visible', wHud.reloading);
+    reloadFillEl.style.width = `${Math.round(wHud.reloadProgress * 100)}%`;
+    slotEls.forEach((el, idx) => el.classList.toggle('active', idx === wHud.slotIndex));
+
+    crosshairEl.style.width = `${wHud.spreadPx}px`;
+    crosshairEl.style.height = `${wHud.spreadPx}px`;
+    crosshairEl.style.opacity = wHud.ads ? '0.45' : '0.88';
+
+    hitmarkerEl.style.opacity = String(wHud.hitmarkerAlpha);
+    hitmarkerEl.classList.toggle('kill', wHud.hitmarkerKill && wHud.hitmarkerAlpha > 0.05);
+
+    if (driveHud.nearbyVehicleName) {
+      interactPromptEl.textContent = `[E] EINSTEIGEN · ${driveHud.nearbyVehicleName}`;
+      interactPromptEl.classList.add('visible');
+    } else {
+      interactPromptEl.classList.remove('visible');
+    }
+  }
 
   composer.render();
 }

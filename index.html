@@ -9,6 +9,13 @@
     <div id="app">
       <canvas id="game-canvas"></canvas>
 
+      <!-- Damage Vignette & Wasted Banner -->
+      <div id="damage-vignette"></div>
+      <div id="wasted-overlay">
+        <div class="wasted-text">WASTED</div>
+        <div class="wasted-sub">Respawn am Ocean Drive…</div>
+      </div>
+
       <!-- HUD -->
       <div id="hud">
         <div id="crosshair">
@@ -22,11 +29,35 @@
           <span class="hm hm-1"></span>
           <span class="hm hm-2"></span>
         </div>
-        <div id="debug-info">
-          <div class="phase-badge">PHASE 3 · GUNPLAY &amp; WEAPONS</div>
-          <div id="coords">POS: 0.0, 0.0, 0.0</div>
-          <div id="state-line">READY</div>
+
+        <!-- Top Left: Current Objective -->
+        <div id="objective-box">
+          <div class="obj-header">
+            <span class="obj-tag">ZIEL</span>
+            <span id="obj-dist">0 m</span>
+          </div>
+          <div id="obj-title">NEON STASH</div>
+          <div id="obj-desc">Lade Ziel…</div>
         </div>
+
+        <!-- Top Right: Wanted Stars, Cash, HP -->
+        <div id="status-box">
+          <div id="wanted-stars">☆☆☆☆☆</div>
+          <div id="cash-display">$0</div>
+          <div class="hp-row">
+            <span class="hp-label">HP</span>
+            <div class="hp-bar"><div id="hp-fill"></div></div>
+            <span id="hp-text">100</span>
+          </div>
+        </div>
+
+        <!-- Center Top: Mission Passed Toast -->
+        <div id="toast-banner">ZIEL ERFÜLLT · +$500</div>
+
+        <!-- Center Bottom: Interact Prompt -->
+        <div id="interact-prompt">[E] EINSTEIGEN</div>
+
+        <!-- Bottom Right: Weapon Panel (On Foot) -->
         <div id="weapon-panel">
           <div class="weapon-slots">
             <span id="slot-1" class="slot active">1 · 9MM</span>
@@ -40,6 +71,16 @@
           </div>
           <div id="reload-bar"><div id="reload-fill"></div></div>
         </div>
+
+        <!-- Bottom Right: Vehicle Panel (Driving) -->
+        <div id="vehicle-panel">
+          <div id="vehicle-name">CHEETAH GT</div>
+          <div class="speed-row">
+            <span id="vehicle-speed">0</span>
+            <span class="speed-unit">KM/H</span>
+          </div>
+          <div id="vehicle-cam-hint">[V] CHASE · [E] AUSSTEIGEN</div>
+        </div>
       </div>
 
       <!-- Pointer Lock / Pause Overlay -->
@@ -47,15 +88,15 @@
         <div class="overlay-card">
           <div class="title-eyebrow">MIAMI COASTAL DISTRICT · GOLDEN HOUR</div>
           <h1 class="game-title">VICE DUSK</h1>
-          <p class="subtitle">Phase 3: 3D-Waffen (9mm, SMG, Shotgun), ADS, Tracer &amp; Treffer-Feedback</p>
+          <p class="subtitle">Phase 4: Fahrbare Autos, Polizei &amp; Wanted-System, NPCs &amp; Kleine Ziele</p>
           <button id="play-btn" type="button">KLICKEN ZUM STARTEN</button>
           <div class="controls-grid">
-            <div><kbd>W A S D</kbd> Bewegen</div>
-            <div><kbd>Maus</kbd> Zielen</div>
+            <div><kbd>W A S D</kbd> Laufen / Fahren</div>
             <div><kbd>LMB</kbd> / <kbd>RMB</kbd> Schießen / ADS</div>
-            <div><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> Waffe wechseln</div>
-            <div><kbd>R</kbd> Nachladen</div>
-            <div><kbd>Shift</kbd> / <kbd>Space</kbd> Sprint / Sprung</div>
+            <div><kbd>E</kbd> Auto ein-/aussteigen</div>
+            <div><kbd>V</kbd> Auto-Kamera wechseln</div>
+            <div><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> / <kbd>R</kbd> Waffen / Laden</div>
+            <div><kbd>Space</kbd> Sprung / Handbremse</div>
           </div>
         </div>
       </div>

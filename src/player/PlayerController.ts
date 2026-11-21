@@ -79,6 +79,15 @@ export class PlayerController {
     return this.isActive || this.isLocked;
   }
 
+  public getYaw(): number {
+    return this.yaw;
+  }
+
+  public setYaw(yaw: number): void {
+    this.yaw = yaw;
+    this.pitch = 0;
+  }
+
   public setWorldBounds(minX: number, maxX: number, minZ: number, maxZ: number): void {
     this.worldBounds = { minX, maxX, minZ, maxZ };
   }

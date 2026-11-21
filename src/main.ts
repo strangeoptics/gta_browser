@@ -11,6 +11,8 @@ import { VehicleSystem } from './vehicles/VehicleSystem';
 import { NpcSystem } from './entities/NpcSystem';
 import { WantedSystem } from './gameplay/WantedSystem';
 import { ObjectiveSystem } from './gameplay/ObjectiveSystem';
+import { Minimap } from './hud/Minimap';
+import { AudioEngine } from './audio/AudioEngine';
 
 const canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
 const overlay = document.getElementById('overlay') as HTMLDivElement;
@@ -46,6 +48,8 @@ const vehicleCamHintEl = document.getElementById('vehicle-cam-hint') as HTMLDivE
 const toastBannerEl = document.getElementById('toast-banner') as HTMLDivElement;
 const damageVignetteEl = document.getElementById('damage-vignette') as HTMLDivElement;
 const wastedOverlayEl = document.getElementById('wasted-overlay') as HTMLDivElement;
+const audioStatusEl = document.getElementById('audio-status') as HTMLDivElement;
+const minimapCanvas = document.getElementById('minimap-canvas') as HTMLCanvasElement;
 
 // Renderer
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
@@ -79,6 +83,8 @@ const vehicles = new VehicleSystem(scene);
 const npcs = new NpcSystem(scene);
 const wanted = new WantedSystem();
 const objectives = new ObjectiveSystem(scene);
+const minimap = new Minimap(minimapCanvas);
+const audio = new AudioEngine();
 objectives.startNextObjective(npcs);
 
 // Player Controller — spawn on Ocean Drive near parked sports cars
@@ -91,16 +97,19 @@ player.setSpawn(60, 0.2, 24, 0.12);
 let playerHp = 100;
 let damageFlash = 0;
 let wastedTimer = 0;
+let lastCompletedCount = 0;
 
 function applyPlayerDamage(amount: number): void {
   if (wastedTimer > 0) return;
   const mitigated = vehicles.isInVehicle() ? amount * 0.55 : amount;
   playerHp = Math.max(0, playerHp - mitigated);
   damageFlash = 0.85;
+  audio.playDamage();
 
   if (playerHp <= 0) {
     wastedTimer = 2.6;
     wastedOverlayEl.classList.add('visible');
+    audio.playWasted();
     if (vehicles.isInVehicle()) {
       vehicles.exitVehicle();
       weapons.setEnabled(true);
@@ -109,7 +118,8 @@ function applyPlayerDamage(amount: number): void {
 }
 
 // Wire system callbacks
-weapons.onShotFired = (_weaponId, origin) => {
+weapons.onShotFired = (weaponId, origin) => {
+  audio.playShot(weaponId);
   npcs.alertNearbyCivilians(origin, 28);
 };
 
@@ -132,8 +142,15 @@ vehicles.onVehicleHitNpc = (vPos, speed) => {
   npcs.handleVehicleImpact(vPos, speed);
 };
 
-// Enter / Exit Vehicle on [E]
+// Enter / Exit Vehicle on [E], Mute Audio on [M]
 window.addEventListener('keydown', (e) => {
+  if (e.code === 'KeyM') {
+    const muted = audio.toggleMute();
+    audioStatusEl.textContent = muted ? 'AUDIO: STUMM [M]' : 'AUDIO: AN [M]';
+    audioStatusEl.classList.toggle('muted', muted);
+    return;
+  }
+
   if (e.code === 'KeyE' && player.getIsActive() && wastedTimer <= 0) {
     if (vehicles.isInVehicle()) {
       const exitPos = vehicles.exitVehicle();
@@ -173,6 +190,7 @@ function requestLockSafely(): void {
 }
 
 function startGame(): void {
+  audio.unlock();
   overlay.classList.add('hidden');
   player.setActive(true);
   requestLockSafely();
@@ -189,6 +207,7 @@ playBtn.addEventListener('click', (e) => {
 });
 
 canvas.addEventListener('click', () => {
+  audio.unlock();
   if (player.getIsActive() && !player.getIsLocked()) {
     requestLockSafely();
   }
@@ -251,13 +270,18 @@ function animate(now: number): void {
 
   // Update player or vehicle
   let playerSpeed = 0;
+  let playerGrounded = true;
+  let headingYaw = player.getYaw();
+
   if (!inVehicle) {
     const status = player.update(dt, world.colliders);
     playerSpeed = status.speed;
+    playerGrounded = status.grounded;
   } else {
     const car = vehicles.getActiveVehicle();
     if (car) {
       player.position.copy(car.position);
+      headingYaw = car.yaw + Math.PI;
     }
   }
 
@@ -277,31 +301,56 @@ function animate(now: number): void {
   npcs.update(dt, player.position, wanted.stars);
   const objHud = objectives.update(dt, elapsed, player.position, vehicles, npcs, wanted);
 
+  if (objHud.completedCount > lastCompletedCount) {
+    lastCompletedCount = objHud.completedCount;
+    audio.playMissionPassed();
+  }
+
+  // Update procedural audio (engine, siren, footsteps, synthwave pulse)
+  audio.update(
+    dt,
+    elapsed,
+    isPlaying,
+    driveHud.inVehicle,
+    driveHud.speedKmh,
+    playerSpeed,
+    playerGrounded,
+    wanted.stars,
+  );
+
   // Update weapons when on foot
   const shootables = [...npcs.getShootableTargets(), ...vehicles.getShootableTargets()];
   const wHud = weapons.update(dt, isPlaying && !inVehicle, playerSpeed, world.worldMeshes, shootables);
 
+  // Render Miami Radar / Minimap
+  minimap.render(
+    player.position.x,
+    player.position.z,
+    headingYaw,
+    world.layout,
+    vehicles.vehicles,
+    npcs.npcs,
+    objectives.current,
+    elapsed,
+  );
+
   // --- HUD Updates ---
-  // Health & Damage Flash
   damageFlash = Math.max(0, damageFlash - dt * 2.2);
   damageVignetteEl.style.opacity = String(damageFlash);
   const hpPct = Math.round(playerHp);
   hpFillEl.style.width = `${hpPct}%`;
   hpTextEl.textContent = `${hpPct}`;
 
-  // Wanted Stars & Cash
   const starStr = '★'.repeat(wanted.stars) + '☆'.repeat(5 - wanted.stars);
   starsEl.textContent = starStr;
   starsEl.classList.toggle('cooling', wanted.isCoolingDown());
   starsEl.classList.toggle('active', wanted.stars > 0);
   cashEl.textContent = `$${objHud.cash.toLocaleString('en-US')}`;
 
-  // Objective Tracker
   objTitleEl.textContent = objHud.title;
   objDescEl.textContent = objHud.description;
   objDistEl.textContent = objHud.distanceM > 0 ? `${objHud.distanceM} m` : '';
 
-  // Toast Banner
   if (objHud.toastText) {
     toastBannerEl.textContent = objHud.toastText;
     toastBannerEl.classList.add('visible');
@@ -309,7 +358,6 @@ function animate(now: number): void {
     toastBannerEl.classList.remove('visible');
   }
 
-  // Vehicle vs On-Foot HUD
   weaponPanelEl.classList.toggle('hidden', driveHud.inVehicle);
   crosshairEl.style.display = driveHud.inVehicle ? 'none' : 'block';
   vehiclePanelEl.classList.toggle('visible', driveHud.inVehicle);

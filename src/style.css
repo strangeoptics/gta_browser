@@ -512,6 +512,40 @@ body,
   color: #f5d8e6;
 }
 
+/* Bottom Left: Minimap Radar & Audio Indicator */
+#radar-wrap {
+  position: absolute;
+  left: 18px;
+  bottom: 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+#minimap-canvas {
+  width: 168px;
+  height: 168px;
+  border-radius: 50%;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.55), 0 0 18px rgba(54, 241, 230, 0.2);
+}
+
+#audio-status {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(16, 10, 26, 0.72);
+  border: 1px solid rgba(54, 241, 230, 0.35);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: #36f1e6;
+}
+
+#audio-status.muted {
+  border-color: rgba(255, 79, 163, 0.45);
+  color: #ff7ea8;
+}
+
 /* Pointer-Lock Overlay */
 #overlay {
   position: fixed;

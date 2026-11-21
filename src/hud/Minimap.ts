@@ -1,0 +1,187 @@
+import type { CityLayout } from '../world/CityLayout';
+import type { Vehicle } from '../vehicles/VehicleSystem';
+import type { NpcEntity } from '../entities/NpcSystem';
+import type { ActiveObjective } from '../gameplay/ObjectiveSystem';
+
+export class Minimap {
+  private readonly ctx: CanvasRenderingContext2D;
+  private readonly size: number;
+  private readonly half: number;
+  private readonly scale = 1.05; // pixels per world meter
+
+  constructor(canvas: HTMLCanvasElement) {
+    this.ctx = canvas.getContext('2d')!;
+    this.size = canvas.width;
+    this.half = this.size / 2;
+  }
+
+  public render(
+    playerX: number,
+    playerZ: number,
+    headingYaw: number,
+    layout: CityLayout,
+    vehicles: Vehicle[],
+    npcs: NpcEntity[],
+    objective: ActiveObjective | null,
+    elapsed: number,
+  ): void {
+    const ctx = this.ctx;
+    const half = this.half;
+    const scale = this.scale;
+
+    ctx.clearRect(0, 0, this.size, this.size);
+
+    ctx.save();
+    // Circular radar clip
+    ctx.beginPath();
+    ctx.arc(half, half, half - 2, 0, Math.PI * 2);
+    ctx.clip();
+
+    // Base road/asphalt radar background
+    ctx.fillStyle = '#181026';
+    ctx.fillRect(0, 0, this.size, this.size);
+
+    // Rotate map so "up" on radar is player's forward direction
+    // In Three.js: forward for yaw is (-sin(yaw), -cos(yaw))
+    ctx.save();
+    ctx.translate(half, half);
+    ctx.rotate(headingYaw);
+
+    // Ocean & beach on East (+X)
+    const beachX = (74 - playerX) * scale;
+    const oceanX = (108 - playerX) * scale;
+    ctx.fillStyle = 'rgba(201, 166, 132, 0.25)';
+    ctx.fillRect(beachX, -240, 36 * scale, 480);
+    ctx.fillStyle = 'rgba(34, 110, 145, 0.45)';
+    ctx.fillRect(oceanX, -240, 180, 480);
+
+    // Road grid highlights
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+    ctx.lineWidth = layout.roadWidth * scale;
+    for (const r of layout.roadCoords) {
+      const rx = (r - playerX) * scale;
+      const rz = (r - playerZ) * scale;
+      ctx.beginPath();
+      ctx.moveTo(rx, (-68 - playerZ) * scale);
+      ctx.lineTo(rx, (68 - playerZ) * scale);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo((-68 - playerX) * scale, rz);
+      ctx.lineTo((68 - playerX) * scale, rz);
+      ctx.stroke();
+    }
+
+    // Art-Deco building footprints
+    ctx.fillStyle = 'rgba(242, 198, 180, 0.28)';
+    ctx.strokeStyle = 'rgba(255, 130, 190, 0.35)';
+    ctx.lineWidth = 1;
+    for (const b of layout.buildings) {
+      const bx = (b.x - b.w / 2 - playerX) * scale;
+      const bz = (b.z - b.d / 2 - playerZ) * scale;
+      const bw = b.w * scale;
+      const bd = b.d * scale;
+      ctx.fillRect(bx, bz, bw, bd);
+      ctx.strokeRect(bx, bz, bw, bd);
+    }
+
+    // Vehicles
+    for (const v of vehicles) {
+      const vx = (v.position.x - playerX) * scale;
+      const vz = (v.position.z - playerZ) * scale;
+      ctx.fillStyle = v.isPolice ? (Math.sin(elapsed * 12) > 0 ? '#ff3355' : '#33aaff') : '#ff9f43';
+      ctx.fillRect(vx - 2.5, vz - 2.5, 5, 5);
+    }
+
+    // Police & Bounty NPCs
+    for (const n of npcs) {
+      if (!n.alive || n.role === 'civilian') continue;
+      const nx = (n.position.x - playerX) * scale;
+      const nz = (n.position.z - playerZ) * scale;
+      ctx.beginPath();
+      if (n.role === 'police') {
+        ctx.fillStyle = Math.sin(elapsed * 14 + nx) > 0 ? '#ff3355' : '#33b5ff';
+        ctx.arc(nx, nz, 3.2, 0, Math.PI * 2);
+      } else {
+        ctx.fillStyle = '#ff4fa3';
+        ctx.arc(nx, nz, 4.2, 0, Math.PI * 2);
+      }
+      ctx.fill();
+    }
+
+    ctx.restore(); // end rotated map layer
+
+    // Objective marker (clamped to radar edge if outside radius)
+    if (objective) {
+      const dx = objective.targetPos.x - playerX;
+      const dz = objective.targetPos.z - playerZ;
+      const cos = Math.cos(headingYaw);
+      const sin = Math.sin(headingYaw);
+      let rx = (dx * cos - dz * sin) * scale;
+      let rz = (dx * sin + dz * cos) * scale;
+
+      const maxR = half - 12;
+      const dist = Math.hypot(rx, rz);
+      if (dist > maxR) {
+        rx = (rx / dist) * maxR;
+        rz = (rz / dist) * maxR;
+      }
+
+      const color =
+        objective.kind === 'stash'
+          ? '#36f1e6'
+          : objective.kind === 'dropoff'
+            ? '#ff9f43'
+            : '#ff4fa3';
+
+      const pulse = 4.5 + Math.sin(elapsed * 6) * 1.4;
+      ctx.save();
+      ctx.translate(half + rx, half + rz);
+      ctx.fillStyle = color;
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 10;
+      ctx.beginPath();
+      ctx.moveTo(0, -pulse);
+      ctx.lineTo(pulse, 0);
+      ctx.lineTo(0, pulse);
+      ctx.lineTo(-pulse, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // North compass indicator on radar rim
+    const nAngle = headingYaw - Math.PI / 2;
+    const nx = half + Math.cos(nAngle) * (half - 11);
+    const ny = half + Math.sin(nAngle) * (half - 11);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '900 10px "Segoe UI", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('N', nx, ny);
+
+    // Player center chevron
+    ctx.save();
+    ctx.translate(half, half);
+    ctx.fillStyle = '#ffffff';
+    ctx.shadowColor = '#36f1e6';
+    ctx.shadowBlur = 6;
+    ctx.beginPath();
+    ctx.moveTo(0, -7);
+    ctx.lineTo(5, 5);
+    ctx.lineTo(0, 2.5);
+    ctx.lineTo(-5, 5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+
+    ctx.restore(); // end clip
+
+    // Outer neon bezel ring
+    ctx.strokeStyle = 'rgba(54, 241, 230, 0.65)';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(half, half, half - 2, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+}

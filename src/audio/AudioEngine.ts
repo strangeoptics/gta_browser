@@ -29,12 +29,15 @@ export class AudioEngine {
   private musicScale = 0.7;
   private beatTimer = 0;
   private beatStep = 0;
+  private clubBeatTimer = 0;
+  private clubStep = 0;
   private stepTimer = 0;
 
   private readonly viceBass = [55, 55, 65.41, 73.42, 55, 55, 82.41, 73.42];
   private readonly viceLead = [440, 523.25, 659.25, 587.33, 440, 659.25, 783.99, 659.25];
   private readonly chillChords = [130.81, 164.81, 196.0, 246.94, 110.0, 130.81, 164.81, 196.0];
   private readonly outrunBass = [73.42, 146.83, 73.42, 146.83, 87.31, 174.61, 82.41, 164.81];
+  private readonly clubSubBass = [49.0, 49.0, 58.27, 49.0, 65.41, 65.41, 73.42, 58.27]; // Heavy G1-Bb1-C2-D2 club groove
 
   public unlock(): void {
     if (!this.ctx) {
@@ -515,6 +518,40 @@ export class AudioEngine {
     osc.stop(now + duration + 0.02);
   }
 
+  private playClubKick(volume: number): void {
+    if (!this.ctx || !this.masterGain || this.muted) return;
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(135, now);
+    osc.frequency.exponentialRampToValueAtTime(36, now + 0.14);
+    gain.gain.setValueAtTime(volume, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+    osc.connect(gain);
+    gain.connect(this.masterGain);
+    osc.start(now);
+    osc.stop(now + 0.22);
+  }
+
+  private playClubHiHat(volume: number): void {
+    if (!this.ctx || !this.masterGain || !this.noiseBuffer || this.muted) return;
+    const now = this.ctx.currentTime;
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.noiseBuffer;
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'highpass';
+    filter.frequency.value = 6500;
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(volume, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.055);
+    src.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.masterGain);
+    src.start(now);
+    src.stop(now + 0.06);
+  }
+
   public update(
     dt: number,
     elapsed: number,
@@ -526,6 +563,7 @@ export class AudioEngine {
     grounded: boolean,
     wantedStars: number,
     playerX = 0,
+    clubProximity = 0,
   ): void {
     if (
       !this.ctx ||
@@ -577,10 +615,38 @@ export class AudioEngine {
       this.stepTimer = 0.12;
     }
 
-    // 5) Car Radio / Ambient Synthwave
+    // 5) Spatial Bass-Heavy NEON CLUB Sound System (126 BPM Four-on-the-Floor Kick + Sub-Bass + Hi-Hat)
+    if (isActive && !this.muted && clubProximity > 0.05 && this.musicScale > 0.01) {
+      const clubVol = clubProximity * (this.musicScale / Math.max(0.15, this.sfxScale));
+      const isInside = clubProximity > 0.8;
+      this.clubBeatTimer -= dt;
+      if (this.clubBeatTimer <= 0) {
+        this.clubBeatTimer = 0.238; // 126 BPM eighth-note pulse
+        const step = this.clubStep % 8;
+        // Punchy four-on-the-floor kick drum on every quarter beat (even steps)
+        if (step % 2 === 0) {
+          this.playClubKick(0.36 * clubVol);
+        } else if (isInside) {
+          // Crisp off-beat hi-hat when inside the club
+          this.playClubHiHat(0.08 * clubVol);
+        }
+        // Heavy pumping sub-bass (muffled cutoff outside, bright & punchy inside)
+        const subNote = this.clubSubBass[step];
+        this.playSynthNote(subNote, 'sawtooth', 0.14 * clubVol, 0.21, isInside ? 520 : 180);
+        // Retro club synth chord stab inside on steps 0 & 5
+        if (isInside && (step === 0 || step === 5)) {
+          this.playSynthNote(subNote * 4, 'triangle', 0.06 * clubVol, 0.28, 1900);
+          this.playSynthNote(subNote * 6, 'triangle', 0.045 * clubVol, 0.28, 2200);
+        }
+        this.clubStep++;
+      }
+    }
+
+    // 6) Car Radio / Street Ambient Synthwave (ducks automatically when inside NEON CLUB)
     const station = this.stations[this.stationIndex];
-    if (isActive && !this.muted && station !== 'RADIO AUS' && this.musicScale > 0.01) {
-      const volScale = (inVehicle ? 1.15 : 0.6) * (this.musicScale / Math.max(0.15, this.sfxScale));
+    if (isActive && !this.muted && station !== 'RADIO AUS' && this.musicScale > 0.01 && clubProximity < 0.7) {
+      const duck = 1 - clubProximity * 0.85;
+      const volScale = (inVehicle ? 1.15 : 0.6) * duck * (this.musicScale / Math.max(0.15, this.sfxScale));
       this.beatTimer -= dt;
       if (this.beatTimer <= 0) {
         if (station === 'VICE FM') {

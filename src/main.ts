@@ -836,6 +836,7 @@ function animate(now: number): void {
     playerGrounded,
     wanted.stars,
     player.position.x,
+    world.getClubProximity(player.position),
   );
 
   const shootables = [

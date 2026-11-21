@@ -8,6 +8,8 @@ import { PlayerController } from './player/PlayerController';
 import { buildMiamiCity } from './world/CityBuilder';
 import { WeaponSystem } from './combat/WeaponSystem';
 import { VehicleSystem } from './vehicles/VehicleSystem';
+import { BoatSystem } from './vehicles/BoatSystem';
+import { DestructibleProps } from './world/DestructibleProps';
 import { NpcSystem } from './entities/NpcSystem';
 import { WantedSystem } from './gameplay/WantedSystem';
 import { ObjectiveSystem } from './gameplay/ObjectiveSystem';
@@ -111,8 +113,10 @@ composer.addPass(new OutputPass());
 
 // World + Gameplay Systems
 const world = buildMiamiCity(scene, renderer);
+const destructibles = new DestructibleProps(scene);
 const weapons = new WeaponSystem(scene, camera);
 const vehicles = new VehicleSystem(scene);
+const boat = new BoatSystem(scene);
 const npcs = new NpcSystem(scene);
 const wanted = new WantedSystem();
 const objectives = new ObjectiveSystem(scene);
@@ -298,6 +302,19 @@ npcs.onNpcKilled = (npc) => {
 
 vehicles.onVehicleHitNpc = (vPos, speed) => {
   npcs.handleVehicleImpact(vPos, speed);
+  const car = vehicles.getActiveVehicle();
+  if (car) {
+    destructibles.handleVehicleImpact(vPos, car.yaw, speed);
+  }
+};
+
+destructibles.onPropSmashed = (kind) => {
+  if (kind === 'hydrant') audio.playWaterSplash();
+  else audio.playCrash(0.32);
+};
+
+world.onThunder = () => {
+  audio.playThunder();
 };
 
 objectives.onCheckpointReached = () => {
@@ -388,13 +405,19 @@ window.addEventListener('keydown', (e) => {
 
   if (e.code === 'KeyQ' && player.getIsActive() && !shopOpen) {
     const station = audio.nextRadioStation();
-    toastBannerEl.textContent = `RADIO · ${station}`;
-    toastBannerEl.classList.add('visible');
-    window.setTimeout(() => {
-      if (toastBannerEl.textContent === `RADIO · ${station}`) {
-        toastBannerEl.classList.remove('visible');
-      }
-    }, 1800);
+    showQuickToast(`RADIO · ${station}`);
+    return;
+  }
+
+  if (e.code === 'KeyT' && player.getIsActive() && !shopOpen) {
+    const label = world.cycleTimeOfDay();
+    showQuickToast(`LICHT · ${label}`);
+    return;
+  }
+
+  if (e.code === 'KeyY' && player.getIsActive() && !shopOpen) {
+    const raining = world.toggleRain();
+    showQuickToast(raining ? 'WETTER · TROPENSCHAUER' : 'WETTER · NACH DEM REGEN');
     return;
   }
 
@@ -413,7 +436,13 @@ window.addEventListener('keydown', (e) => {
   }
 
   if (e.code === 'KeyE' && player.getIsActive() && !shopOpen && wastedTimer <= 0) {
-    if (vehicles.isInVehicle()) {
+    if (boat.isInBoat()) {
+      const land = boat.disembark();
+      player.setSpawn(land.x, land.y, land.z, land.yaw);
+      camera.fov = 75;
+      camera.updateProjectionMatrix();
+      weapons.setEnabled(true);
+    } else if (vehicles.isInVehicle()) {
       const exitPos = vehicles.exitVehicle();
       if (exitPos) {
         player.setSpawn(exitPos.x, exitPos.y, exitPos.z, exitPos.yaw);
@@ -421,6 +450,9 @@ window.addEventListener('keydown', (e) => {
         camera.updateProjectionMatrix();
         weapons.setEnabled(true);
       }
+    } else if (boat.isPlayerNear(player.position)) {
+      boat.board();
+      weapons.setEnabled(false);
     } else {
       const nearest = vehicles.findNearestVehicle(player.position, 4.4);
       if (nearest) {
@@ -433,6 +465,16 @@ window.addEventListener('keydown', (e) => {
     }
   }
 });
+
+function showQuickToast(text: string): void {
+  toastBannerEl.textContent = text;
+  toastBannerEl.classList.add('visible');
+  window.setTimeout(() => {
+    if (toastBannerEl.textContent === text) {
+      toastBannerEl.classList.remove('visible');
+    }
+  }, 1900);
+}
 
 // Pointer Lock flow
 let pointerLockFallback = false;
@@ -530,22 +572,27 @@ function animate(now: number): void {
 
   const isPlaying = player.getIsActive() && !shopOpen && wastedTimer <= 0;
   const inVehicle = vehicles.isInVehicle();
+  const inBoat = boat.isInBoat();
+  const inAnyCraft = inVehicle || inBoat;
 
   let playerSpeed = 0;
   let playerGrounded = true;
   let headingYaw = player.getYaw();
 
-  if (!inVehicle) {
+  if (!inAnyCraft) {
     const allColliders = [...world.colliders, ...vehicles.getVehicleColliders()];
     const status = player.update(dt, allColliders);
     playerSpeed = status.speed;
     playerGrounded = status.grounded;
-  } else {
+  } else if (inVehicle) {
     const car = vehicles.getActiveVehicle();
     if (car) {
       player.position.copy(car.position);
       headingYaw = car.yaw + Math.PI;
     }
+  } else if (inBoat) {
+    player.position.copy(boat.position);
+    headingYaw = boat.yaw + Math.PI;
   }
 
   const driveHud = vehicles.update(
@@ -558,8 +605,10 @@ function animate(now: number): void {
     world.colliders,
     world.layout.playableBounds,
   );
+  const boatHud = boat.update(dt, elapsed, isPlaying, player.position, camera);
 
-  world.update(elapsed, dt);
+  world.update(elapsed, dt, player.position);
+  destructibles.update(dt);
   shop.update(elapsed);
   wanted.update(dt);
   npcs.update(dt, player.position, wanted.stars);
@@ -575,16 +624,20 @@ function animate(now: number): void {
     dt,
     elapsed,
     isPlaying,
-    driveHud.inVehicle,
-    driveHud.speedKmh,
+    inAnyCraft,
+    inBoat ? boatHud.speedKmh : driveHud.speedKmh,
     driveHud.drifting,
     playerSpeed,
     playerGrounded,
     wanted.stars,
   );
 
-  const shootables = [...npcs.getShootableTargets(), ...vehicles.getShootableTargets()];
-  const wHud = weapons.update(dt, isPlaying && !inVehicle, playerSpeed, world.worldMeshes, shootables);
+  const shootables = [
+    ...npcs.getShootableTargets(),
+    ...vehicles.getShootableTargets(),
+    ...destructibles.getShootableTargets(),
+  ];
+  const wHud = weapons.update(dt, isPlaying && !inAnyCraft, playerSpeed, world.worldMeshes, shootables);
 
   minimap.render(
     player.position.x,
@@ -631,11 +684,18 @@ function animate(now: number): void {
     toastBannerEl.classList.remove('visible');
   }
 
-  weaponPanelEl.classList.toggle('hidden', driveHud.inVehicle);
-  crosshairEl.style.display = driveHud.inVehicle ? 'none' : 'block';
-  vehiclePanelEl.classList.toggle('visible', driveHud.inVehicle);
+  weaponPanelEl.classList.toggle('hidden', inAnyCraft);
+  crosshairEl.style.display = inAnyCraft ? 'none' : 'block';
+  vehiclePanelEl.classList.toggle('visible', inAnyCraft);
 
-  if (driveHud.inVehicle) {
+  if (boatHud.inBoat) {
+    vehicleNameEl.textContent = boatHud.boatName;
+    vehicleSpeedEl.textContent = `${boatHud.speedKmh}`;
+    vehicleHpFillEl.style.width = '100%';
+    vehicleHpFillEl.classList.remove('low');
+    vehicleCamHintEl.textContent = `[Q] ${audio.getRadioStation()} · [E] AN LAND`;
+    interactPromptEl.classList.remove('visible');
+  } else if (driveHud.inVehicle) {
     vehicleNameEl.textContent = driveHud.vehicleName;
     vehicleSpeedEl.textContent = `${driveHud.speedKmh}`;
     vehicleHpFillEl.style.width = `${driveHud.hpPct}%`;
@@ -659,6 +719,9 @@ function animate(now: number): void {
 
     if (shop.isPlayerNear(player.position) && !shopOpen) {
       interactPromptEl.textContent = '[B] AMMU-NEON SHOP ÖFFNEN ($)';
+      interactPromptEl.classList.add('visible');
+    } else if (boatHud.nearbyBoat) {
+      interactPromptEl.textContent = '[E] EINSTEIGEN · STINGER SPEEDBOAT';
       interactPromptEl.classList.add('visible');
     } else if (driveHud.nearbyVehicleName) {
       interactPromptEl.textContent = `[E] EINSTEIGEN · ${driveHud.nearbyVehicleName}`;

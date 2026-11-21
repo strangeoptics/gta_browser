@@ -19,7 +19,10 @@ export interface MiamiWorld {
   colliders: AABB[];
   worldMeshes: THREE.Object3D[];
   layout: CityLayout;
-  update: (elapsed: number, dt: number) => void;
+  cycleTimeOfDay: () => string;
+  toggleRain: () => boolean;
+  onThunder?: () => void;
+  update: (elapsed: number, dt: number, playerPos?: THREE.Vector3) => void;
 }
 
 /**
@@ -80,7 +83,8 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
       `,
     });
 
-  const skyMesh = new THREE.Mesh(new THREE.SphereGeometry(320, 32, 20), createSkyMat());
+  const skyMat = createSkyMat();
+  const skyMesh = new THREE.Mesh(new THREE.SphereGeometry(320, 32, 20), skyMat);
   scene.add(skyMesh);
 
   // Build PMREM reflections from the dusk sky + subtle neon accents so wet puddles gleam
@@ -533,21 +537,112 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
   const mistPoints = new THREE.Points(mistGeo, mistMat);
   scene.add(mistPoints);
 
-  return {
+  // ---------------------------------------------------------------------------
+  // 9) Optional Tropical Rain Shower (3D rain streaks + distant lightning flash)
+  // ---------------------------------------------------------------------------
+  const rainCount = 420;
+  const rainPositions = new Float32Array(rainCount * 6); // 2 vertices per streak
+  for (let i = 0; i < rainCount; i++) {
+    const rx = (Math.random() - 0.5) * 90;
+    const ry = Math.random() * 24;
+    const rz = (Math.random() - 0.5) * 90;
+    rainPositions[i * 6] = rx;
+    rainPositions[i * 6 + 1] = ry;
+    rainPositions[i * 6 + 2] = rz;
+    rainPositions[i * 6 + 3] = rx - 0.18;
+    rainPositions[i * 6 + 4] = ry - 0.95;
+    rainPositions[i * 6 + 5] = rz;
+  }
+  const rainGeo = new THREE.BufferGeometry();
+  rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPositions, 3));
+  const rainMat = new THREE.LineBasicMaterial({
+    color: '#bde9ff',
+    transparent: true,
+    opacity: 0.42,
+  });
+  const rainLines = new THREE.LineSegments(rainGeo, rainMat);
+  rainLines.visible = false;
+  scene.add(rainLines);
+
+  // Time-of-Day Presets (cycle with [T])
+  const timePresets = [
+    {
+      name: 'GOLDEN HOUR',
+      top: '#1a1036',
+      mid: '#8e3a73',
+      horizon: '#ff8c52',
+      fog: '#4d254d',
+      sunColor: '#ff9854',
+      sunIntensity: 2.4,
+      hemiIntensity: 0.9,
+      oceanGlow: '#ff8e5c',
+    },
+    {
+      name: 'MIAMI SUNSET',
+      top: '#240b38',
+      mid: '#b82e6f',
+      horizon: '#ff5252',
+      fog: '#5e1d44',
+      sunColor: '#ff6454',
+      sunIntensity: 2.1,
+      hemiIntensity: 0.78,
+      oceanGlow: '#ff5a7a',
+    },
+    {
+      name: 'NEON NIGHT',
+      top: '#070614',
+      mid: '#19133a',
+      horizon: '#3c2159',
+      fog: '#140d26',
+      sunColor: '#8ba4ff',
+      sunIntensity: 0.65,
+      hemiIntensity: 0.45,
+      oceanGlow: '#36f1e6',
+    },
+  ];
+  let timeIndex = 0;
+  let rainActive = false;
+  let lightningTimer = 8.0;
+  let lightningFlash = 0;
+
+  const applyTimePreset = (idx: number): string => {
+    const p = timePresets[idx];
+    skyMat.uniforms.topColor.value.set(p.top);
+    skyMat.uniforms.midColor.value.set(p.mid);
+    skyMat.uniforms.horizonColor.value.set(p.horizon);
+    (scene.fog as THREE.FogExp2).color.set(p.fog);
+    sunLight.color.set(p.sunColor);
+    sunLight.intensity = p.sunIntensity;
+    hemiLight.intensity = p.hemiIntensity;
+    oceanUniforms.uHorizonGlow.value.set(p.oceanGlow);
+    return p.name;
+  };
+
+  const worldHandle: MiamiWorld = {
     colliders,
     worldMeshes,
     layout,
-    update: (elapsed: number, dt: number) => {
+    cycleTimeOfDay: () => {
+      timeIndex = (timeIndex + 1) % timePresets.length;
+      return applyTimePreset(timeIndex);
+    },
+    toggleRain: () => {
+      rainActive = !rainActive;
+      rainLines.visible = rainActive;
+      (scene.fog as THREE.FogExp2).density = rainActive ? 0.0095 : 0.0068;
+      return rainActive;
+    },
+    update: (elapsed: number, dt: number, playerPos?: THREE.Vector3) => {
       oceanUniforms.uTime.value = elapsed;
-      // Gentle coastal breeze on palm canopies
       palmGroup.children.forEach((palm, idx) => {
         const crown = palm.userData.crown as THREE.Object3D | undefined;
         if (crown) {
-          crown.rotation.z = Math.sin(elapsed * 1.4 + idx * 0.9) * 0.045;
-          crown.rotation.x = Math.cos(elapsed * 1.1 + idx * 0.7) * 0.03;
+          const breeze = rainActive ? 2.1 : 1.0;
+          crown.rotation.z = Math.sin(elapsed * 1.4 * breeze + idx * 0.9) * 0.045 * breeze;
+          crown.rotation.x = Math.cos(elapsed * 1.1 * breeze + idx * 0.7) * 0.03 * breeze;
         }
       });
-      // Slow drift of lingering post-rain mist motes
+
       const posAttr = mistGeo.getAttribute('position') as THREE.BufferAttribute;
       for (let i = 0; i < mistCount; i++) {
         let y = posAttr.getY(i) - dt * 0.35;
@@ -555,8 +650,37 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
         posAttr.setY(i, y);
       }
       posAttr.needsUpdate = true;
+
+      // Tropical rain shower streaks + occasional distant lightning
+      if (rainActive) {
+        if (playerPos) {
+          rainLines.position.set(playerPos.x, 0, playerPos.z);
+        }
+        const rAttr = rainGeo.getAttribute('position') as THREE.BufferAttribute;
+        for (let i = 0; i < rainCount; i++) {
+          let y0 = rAttr.getY(i * 2) - dt * 26;
+          if (y0 < 0.2) y0 = 24;
+          rAttr.setY(i * 2, y0);
+          rAttr.setY(i * 2 + 1, y0 - 0.95);
+        }
+        rAttr.needsUpdate = true;
+
+        lightningTimer -= dt;
+        if (lightningTimer <= 0) {
+          lightningTimer = 7 + Math.random() * 10;
+          lightningFlash = 1.0;
+          worldHandle.onThunder?.();
+        }
+      }
+
+      if (lightningFlash > 0) {
+        lightningFlash = Math.max(0, lightningFlash - dt * 4.5);
+        hemiLight.intensity = timePresets[timeIndex].hemiIntensity + lightningFlash * 2.2;
+      }
     },
   };
+
+  return worldHandle;
 }
 
 function buildPalmTrees(

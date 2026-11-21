@@ -361,6 +361,45 @@ export class AudioEngine {
     osc.stop(now + 0.3);
   }
 
+  public playThunder(): void {
+    if (!this.ctx || !this.masterGain || !this.noiseBuffer || this.muted) return;
+    const now = this.ctx.currentTime;
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = this.noiseBuffer;
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(160, now);
+    filter.frequency.exponentialRampToValueAtTime(55, now + 1.4);
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0.01, now);
+    gain.gain.linearRampToValueAtTime(0.45, now + 0.18);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 1.45);
+    noise.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.masterGain);
+    noise.start(now);
+    noise.stop(now + 1.48);
+  }
+
+  public playWaterSplash(): void {
+    if (!this.ctx || !this.masterGain || !this.noiseBuffer || this.muted) return;
+    const now = this.ctx.currentTime;
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = this.noiseBuffer;
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(1400, now);
+    filter.Q.value = 0.8;
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0.28, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+    noise.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.masterGain);
+    noise.start(now);
+    noise.stop(now + 0.38);
+  }
+
   private playWetFootstep(): void {
     if (!this.ctx || !this.masterGain || !this.noiseBuffer || this.muted) return;
     const now = this.ctx.currentTime;

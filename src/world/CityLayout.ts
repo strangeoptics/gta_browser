@@ -208,7 +208,7 @@ export function generateCityLayout(): CityLayout {
     sidewalkWidth: SIDEWALK_WIDTH,
     playableBounds: {
       minX: -67,
-      maxX: 82, // allows walking onto the Ocean Drive boardwalk & sand edge
+      maxX: 109, // allows walking across the golden sand beach right up to the speedboat
       minZ: -67,
       maxZ: 67,
     },

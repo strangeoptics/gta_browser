@@ -11,6 +11,7 @@ import type { CabinetWeapon, FoodItem } from './world/Safehouse';
 import { WeaponSystem } from './combat/WeaponSystem';
 import { VehicleSystem } from './vehicles/VehicleSystem';
 import { BoatSystem } from './vehicles/BoatSystem';
+import { PlayerHelicopterSystem } from './vehicles/PlayerHelicopterSystem';
 import { DestructibleProps } from './world/DestructibleProps';
 import { DecalSystem } from './world/DecalSystem';
 import { RoadblockSystem } from './world/RoadblockSystem';
@@ -136,6 +137,7 @@ const roadblocks = new RoadblockSystem(scene);
 const weapons = new WeaponSystem(scene, camera);
 const vehicles = new VehicleSystem(scene);
 const boat = new BoatSystem(scene);
+const maverick = new PlayerHelicopterSystem(scene, world.maverickSpawn);
 const npcs = new NpcSystem(scene);
 const heli = new HelicopterSystem(scene);
 const wanted = new WantedSystem();
@@ -350,6 +352,10 @@ function triggerBusted(): void {
   }
   if (boat.isInBoat()) {
     boat.disembark();
+    weapons.setEnabled(true);
+  }
+  if (maverick.isInHeli()) {
+    maverick.exit(world.colliders, world.getGroundHeight);
     weapons.setEnabled(true);
   }
 }
@@ -606,7 +612,17 @@ shopCloseBtn.addEventListener('click', () => {
 });
 
 function tryToggleVehicleOrBoat(): void {
-  if (boat.isInBoat()) {
+  if (maverick.isInHeli()) {
+    if (maverick.canExit(world.colliders, world.getGroundHeight)) {
+      const land = maverick.exit(world.colliders, world.getGroundHeight);
+      player.setSpawn(land.x, land.y, land.z, land.yaw);
+      camera.fov = 75;
+      camera.updateProjectionMatrix();
+      weapons.setEnabled(true);
+    } else {
+      showQuickToast('ZU HOCH ZUM AUSSTEIGEN · BITTE ERST TIEFER SINKEN [C / SHIFT]');
+    }
+  } else if (boat.isInBoat()) {
     const land = boat.disembark();
     player.setSpawn(land.x, land.y, land.z, land.yaw);
     camera.fov = 75;
@@ -620,6 +636,10 @@ function tryToggleVehicleOrBoat(): void {
       camera.updateProjectionMatrix();
       weapons.setEnabled(true);
     }
+  } else if (maverick.isPlayerNear(player.position)) {
+    maverick.board();
+    weapons.setEnabled(false);
+    showQuickToast('VICE MAVERICK · [SPACE] STEIGEN · [C] SINKEN · [WASD] FLIEGEN');
   } else if (boat.isPlayerNear(player.position)) {
     boat.board();
     weapons.setEnabled(false);
@@ -838,6 +858,24 @@ window.addEventListener('keydown', (e) => {
       audio.playPurchase();
       persistProgress();
       showQuickToast(`SPIND · ${outfitName} ANGEZOGEN`);
+    } else if (world.isNearIslandVault(player.position)) {
+      world.takeIslandVault();
+      npcs.alertEstateGuards();
+      objectives.cash += 2500;
+      wanted.addHeat(110);
+      audio.playMissionPassed();
+      persistProgress();
+      showQuickToast('STARFISH ESTATE TRESOR · +$2.500 GOLD — 3★ ALARM!');
+      sendPoliceDispatch('CODE 3 auf Starfish Island! Kartell-Anwesen ausgeraubt!', true);
+    } else if (world.isNearYachtLoot(player.position)) {
+      world.takeYachtLoot();
+      npcs.alertEstateGuards();
+      objectives.cash += 1800;
+      wanted.addHeat(85);
+      audio.playMissionPassed();
+      persistProgress();
+      showQuickToast('SUPERYACHT „LADY VICE“ · +$1.800 KAPITÄNS-GOLD!');
+      sendPoliceDispatch('Alarm auf der Superyacht Lady Vice! Küstenwache & Einheiten ausrücken!', true);
     } else if (world.isNearClubBar(player.position)) {
       if (objectives.cash >= 50) {
         objectives.cash -= 50;
@@ -884,7 +922,14 @@ window.addEventListener('keydown', (e) => {
     return;
   }
 
-  if (e.code === 'KeyV' && player.getIsActive() && !shopOpen && !vehicles.isInVehicle() && !boat.isInBoat()) {
+  if (
+    e.code === 'KeyV' &&
+    player.getIsActive() &&
+    !shopOpen &&
+    !vehicles.isInVehicle() &&
+    !boat.isInBoat() &&
+    !maverick.isInHeli()
+  ) {
     const is3p = player.toggleThirdPerson();
     weapons.setViewmodelVisible(!is3p);
     showQuickToast(is3p ? 'KAMERA · 3RD PERSON' : 'KAMERA · FIRST PERSON');
@@ -1073,7 +1118,8 @@ function animate(now: number): void {
 
   const inVehicle = vehicles.isInVehicle();
   const inBoat = boat.isInBoat();
-  const inAnyCraft = inVehicle || inBoat;
+  const inHeli = maverick.isInHeli();
+  const inAnyCraft = inVehicle || inBoat || inHeli;
 
   let playerSpeed = 0;
   let playerGrounded = true;
@@ -1107,6 +1153,9 @@ function animate(now: number): void {
   } else if (inBoat) {
     player.position.copy(boat.position);
     headingYaw = boat.yaw + Math.PI;
+  } else if (inHeli) {
+    player.position.copy(maverick.position);
+    headingYaw = maverick.yaw + Math.PI;
   }
 
   const rbColliders = roadblocks.getActiveColliders();
@@ -1125,8 +1174,18 @@ function animate(now: number): void {
     world.stuntRamps,
     world.shouldTrafficStop,
     drunkLevel,
+    world.getGroundHeight,
   );
   const boatHud = boat.update(dt, elapsed, isPlaying, player.position, camera, pad);
+  const heliPlayerHud = maverick.update(
+    dt,
+    isPlaying,
+    player.position,
+    camera,
+    world.colliders,
+    world.getGroundHeight,
+    pad,
+  );
 
   world.update(elapsed, dt, player.position, objectives.cash, wanted.stars);
   destructibles.update(dt);
@@ -1227,7 +1286,7 @@ function animate(now: number): void {
     elapsed,
     isPlaying,
     inAnyCraft,
-    inBoat ? boatHud.speedKmh : driveHud.speedKmh,
+    inBoat ? boatHud.speedKmh : inHeli ? heliPlayerHud.speedKmh : driveHud.speedKmh,
     driveHud.drifting,
     playerSpeed,
     playerGrounded,
@@ -1325,6 +1384,7 @@ function animate(now: number): void {
     elapsed,
     heli.active ? heli.position : null,
     vigilanteHud.targetPos ?? heistHud.targetPos,
+    maverick.position,
   );
 
   // --- HUD Updates (Dirty-checked DOM mutations) ---
@@ -1385,7 +1445,16 @@ function animate(now: number): void {
 
   let nextPrompt: string | null = null;
 
-  if (boatHud.inBoat) {
+  if (heliPlayerHud.inHeli) {
+    setText(vehicleNameEl, `${heliPlayerHud.heliName} · ${heliPlayerHud.altitudeM}m`);
+    setText(vehicleSpeedEl, `${heliPlayerHud.speedKmh}`);
+    setWidth(vehicleHpFillEl, '100%');
+    vehicleHpFillEl.classList.remove('low');
+    setText(
+      vehicleCamHintEl,
+      `[SPACE/C] HÖHE · [Q] ${audio.getRadioStation()} · [V] CAM · [E] LANDEN`,
+    );
+  } else if (boatHud.inBoat) {
     setText(vehicleNameEl, boatHud.boatName);
     setText(vehicleSpeedEl, `${boatHud.speedKmh}`);
     setWidth(vehicleHpFillEl, '100%');
@@ -1450,8 +1519,14 @@ function animate(now: number): void {
       nextPrompt = '[F] SPIND · VICE PD UNIFORM ANZIEHEN';
     } else if (world.isNearClubBar(player.position)) {
       nextPrompt = '[F] MIAMI VICE COCKTAIL TRINKEN · $50';
+    } else if (world.isNearIslandVault(player.position)) {
+      nextPrompt = '[F] STARFISH ESTATE · GOLD-TRESOR STEHLEN (+$2.500 · ⚠ 3★)';
+    } else if (world.isNearYachtLoot(player.position)) {
+      nextPrompt = '[F] SUPERYACHT „LADY VICE“ · KAPITÄNS-GOLD (+$1.800 · ⚠)';
     } else if (heistHud.nearStartMarker && !heistHud.active) {
       nextPrompt = '[H] OCEAN CLUB HEIST STARTEN (+$3.500)';
+    } else if (heliPlayerHud.nearbyHeli) {
+      nextPrompt = '[E] EINSTEIGEN · VICE MAVERICK HELIKOPTER';
     } else if (boatHud.nearbyBoat) {
       nextPrompt = '[E] EINSTEIGEN · STINGER SPEEDBOAT';
     } else if (driveHud.nearbyVehicleName) {

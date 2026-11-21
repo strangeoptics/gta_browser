@@ -62,7 +62,16 @@ export class BoatSystem {
   public disembark(): { x: number; y: number; z: number; yaw: number } {
     this.active = false;
     this.keys.clear();
-    // Place player safely on the dry golden sand beach facing the city
+    // If moored near Starfish Island or the Superyacht, step right onto the Marina / Yacht gangway!
+    if (this.position.x > 140) {
+      return {
+        x: 172,
+        y: 1.5,
+        z: -9.5,
+        yaw: 0,
+      };
+    }
+    // Otherwise place player safely on the dry golden sand beach facing the city
     return {
       x: Math.min(103, this.position.x - 4.5),
       y: 0.15,
@@ -108,11 +117,32 @@ export class BoatSystem {
       this.group.rotation.x += (Math.cos(elapsed * 1.2) * 0.03 - this.group.rotation.x) * (1 - Math.exp(-5 * clampedDt));
     }
 
-    // Move across the ocean (keep off the dry beach x < 107.5)
+    // Move across the ocean (keep off the dry beach x < 107.5, and push cleanly around Starfish Island & Superyacht!)
     const fwdX = Math.sin(this.yaw);
     const fwdZ = Math.cos(this.yaw);
-    this.position.x = THREE.MathUtils.clamp(this.position.x + fwdX * this.speed * clampedDt, 108.0, 215.0);
-    this.position.z = THREE.MathUtils.clamp(this.position.z + fwdZ * this.speed * clampedDt, -130.0, 130.0);
+    let nextX = THREE.MathUtils.clamp(this.position.x + fwdX * this.speed * clampedDt, 108.0, 232.0);
+    let nextZ = THREE.MathUtils.clamp(this.position.z + fwdZ * this.speed * clampedDt, -130.0, 130.0);
+
+    const boatObstacles = [
+      { minX: 145.5, maxX: 200.5, minZ: -86.5, maxZ: -18.0 }, // Starfish Island
+      { minX: 163.5, maxX: 180.5, minZ: -19.0, maxZ: 38.0 },  // Marina gangway & 42m Superyacht hull
+    ];
+    for (const ob of boatObstacles) {
+      if (nextX > ob.minX && nextX < ob.maxX && nextZ > ob.minZ && nextZ < ob.maxZ) {
+        const dL = Math.abs(nextX - ob.minX);
+        const dR = Math.abs(ob.maxX - nextX);
+        const dB = Math.abs(nextZ - ob.minZ);
+        const dF = Math.abs(ob.maxZ - nextZ);
+        const m = Math.min(dL, dR, dB, dF);
+        if (m === dL) nextX = ob.minX;
+        else if (m === dR) nextX = ob.maxX;
+        else if (m === dB) nextZ = ob.minZ;
+        else nextZ = ob.maxZ;
+        this.speed *= 0.4;
+      }
+    }
+    this.position.x = nextX;
+    this.position.z = nextZ;
     const waveY = Math.sin(this.position.x * 0.18 + elapsed * 1.5) * 0.14;
     this.position.y = 0.06 + waveY;
 

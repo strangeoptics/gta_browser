@@ -219,7 +219,7 @@ export function buildBeachHighlights(
     side: THREE.DoubleSide,
   });
   const bladeGeo = new THREE.ConeGeometry(0.28, 0.85, 5);
-  for (let gz = -58; gz <= 58; gz += 7.5) {
+  for (let gz = -50; gz <= 58; gz += 7.5) {
     if (Math.abs(gz - pierZ) < 5) continue;
     const gx = 75.3 + ((Math.abs(gz * 13) % 10) * 0.22);
     const gy = getBeachHeight(gx, gz);

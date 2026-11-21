@@ -278,9 +278,9 @@ export class VehicleSystem {
     const sideX = Math.cos(v.yaw) * -2.2;
     const sideZ = -Math.sin(v.yaw) * -2.2;
     const out = {
-      x: THREE.MathUtils.clamp(v.position.x + sideX, -65, 76),
-      y: 0.25,
-      z: THREE.MathUtils.clamp(v.position.z + sideZ, -65, 65),
+      x: THREE.MathUtils.clamp(v.position.x + sideX, -65, 200),
+      y: v.position.y + 0.25,
+      z: THREE.MathUtils.clamp(v.position.z + sideZ, -85, 65),
       yaw: v.yaw + Math.PI,
     };
     this.activeVehicle = null;
@@ -573,6 +573,7 @@ export class VehicleSystem {
     stuntRamps?: StuntRamp[],
     shouldTrafficStop?: (x: number, z: number, yaw: number) => boolean,
     drunkLevel = 0,
+    getGroundHeight?: (x: number, z: number) => number,
   ): DrivingHudState {
     const clampedDt = Math.min(dt, 0.05);
     this.ramCooldown = Math.max(0, this.ramCooldown - clampedDt);
@@ -640,7 +641,18 @@ export class VehicleSystem {
       }
 
       if (v === this.activeVehicle) {
-        this.updatePlayerDrivenCar(v, clampedDt, elapsed, isActive, solidColliders, bounds, pad, stuntRamps, drunkLevel);
+        this.updatePlayerDrivenCar(
+          v,
+          clampedDt,
+          elapsed,
+          isActive,
+          solidColliders,
+          bounds,
+          pad,
+          stuntRamps,
+          drunkLevel,
+          getGroundHeight,
+        );
       } else if (v.isPursuitUnit && wantedStars >= 2) {
         // Active Vice PD Cruiser chase!
         this.updatePolicePursuitCar(v, clampedDt, playerPos, solidColliders, bounds);
@@ -841,6 +853,7 @@ export class VehicleSystem {
     pad?: GamepadSnapshot,
     stuntRamps?: StuntRamp[],
     drunkLevel = 0,
+    getGroundHeight?: (x: number, z: number) => number,
   ): void {
     const kbAccel = (this.keys.has('KeyW') ? 1 : 0) - (this.keys.has('KeyS') ? 1 : 0);
     const kbSteer = (this.keys.has('KeyA') ? 1 : 0) - (this.keys.has('KeyD') ? 1 : 0);
@@ -945,8 +958,10 @@ export class VehicleSystem {
       }
     }
 
+    const baseGroundY = getGroundHeight ? Math.max(0, getGroundHeight(v.position.x, v.position.z)) : 0;
+
     if (onRampHeight > 0.05 && !v.airborne) {
-      v.position.y = onRampHeight;
+      v.position.y = baseGroundY + onRampHeight;
       v.mesh.rotation.x = -0.24;
       if (rampLaunchVy > 0) {
         v.vy = rampLaunchVy;
@@ -954,25 +969,34 @@ export class VehicleSystem {
         v.jumpStartX = v.position.x;
         v.jumpStartZ = v.position.z;
       }
-    } else if (v.airborne || v.position.y > 0.02) {
+    } else if (v.airborne) {
       v.vy -= 17.5 * dt;
       v.position.y += v.vy * dt;
       v.mesh.rotation.x = THREE.MathUtils.clamp(-v.vy * 0.035, -0.35, 0.28);
-      if (v.position.y <= 0) {
-        v.position.y = 0;
+      if (v.position.y <= baseGroundY) {
+        v.position.y = baseGroundY;
         v.vy = 0;
         v.mesh.rotation.x = 0;
-        if (v.airborne) {
-          v.airborne = false;
-          const jumpDist = Math.hypot(v.position.x - v.jumpStartX, v.position.z - v.jumpStartZ);
-          if (jumpDist >= 10) {
-            const reward = jumpDist >= 22 ? 600 : 400;
-            this.onStuntLanded?.(Math.round(jumpDist), reward);
-          }
+        v.airborne = false;
+        const jumpDist = Math.hypot(v.position.x - v.jumpStartX, v.position.z - v.jumpStartZ);
+        if (jumpDist >= 10) {
+          const reward = jumpDist >= 22 ? 600 : 400;
+          this.onStuntLanded?.(Math.round(jumpDist), reward);
         }
       }
     } else {
-      v.mesh.rotation.x *= 0.82;
+      v.position.y = baseGroundY;
+      // Subtle natural pitch on the arched Miami Causeway Bridge!
+      if (getGroundHeight) {
+        const aheadY = Math.max(
+          0,
+          getGroundHeight(v.position.x + Math.sin(v.yaw) * 1.6, v.position.z + Math.cos(v.yaw) * 1.6),
+        );
+        const slopePitch = -Math.atan2(aheadY - baseGroundY, 1.6);
+        v.mesh.rotation.x += (slopePitch - v.mesh.rotation.x) * (1 - Math.exp(-12 * dt));
+      } else {
+        v.mesh.rotation.x *= 0.82;
+      }
     }
     v.mesh.position.y = v.position.y;
 
@@ -992,6 +1016,14 @@ export class VehicleSystem {
 
     let nextX = THREE.MathUtils.clamp(v.position.x + dx, bounds.minX + 1.5, bounds.maxX - 4.0);
     let nextZ = THREE.MathUtils.clamp(v.position.z + dz, bounds.minZ + 1.5, bounds.maxZ - 1.5);
+
+    // Prevent driving into deep ocean off Miami Beach while allowing Causeway Bridge (z ~ -60) & Starfish Island (x >= 147)
+    if (nextX > 103 && nextX < 147 && Math.abs(nextZ - -60) > 6.2) {
+      nextX = 103;
+    }
+    if (nextX >= 147 && (nextZ < -83 || nextZ > -21)) {
+      nextZ = THREE.MathUtils.clamp(nextZ, -83, -21);
+    }
 
     const carRadius = v.isBike ? 0.72 : 1.45;
     const vehTop = v.position.y + (v.isRv ? 2.75 : 1.55);

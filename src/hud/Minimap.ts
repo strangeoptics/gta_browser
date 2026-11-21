@@ -27,6 +27,7 @@ export class Minimap {
     elapsed: number,
     heliPos?: { x: number; z: number } | null,
     heistTarget?: { x: number; z: number } | null,
+    maverickPos?: { x: number; z: number } | null,
   ): void {
     // Throttle 2D radar redraws to ~30 Hz (saves ~50% 2D canvas CPU work on 60-144Hz monitors!)
     if (elapsed - this.lastRenderElapsed < 0.032) return;
@@ -54,13 +55,28 @@ export class Minimap {
     ctx.translate(half, half);
     ctx.rotate(headingYaw);
 
-    // Ocean & beach on East (+X)
+    // Ocean & beach on East (+X) + Causeway Bridge, Starfish Island & Superyacht
     const beachX = (74 - playerX) * scale;
     const oceanX = (108 - playerX) * scale;
     ctx.fillStyle = 'rgba(201, 166, 132, 0.25)';
     ctx.fillRect(beachX, -240, 36 * scale, 480);
     ctx.fillStyle = 'rgba(34, 110, 145, 0.45)';
-    ctx.fillRect(oceanX, -240, 180, 480);
+    ctx.fillRect(oceanX, -240, 220, 480);
+
+    // Causeway Bridge (x = 66..148, z = -60)
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.22)';
+    ctx.fillRect((66 - playerX) * scale, (-65.7 - playerZ) * scale, 82 * scale, 11.4 * scale);
+
+    // Starfish Island (x = 148..198, z = -84..-20)
+    ctx.fillStyle = 'rgba(72, 168, 118, 0.45)';
+    ctx.strokeStyle = 'rgba(235, 208, 162, 0.55)';
+    ctx.lineWidth = 1.5;
+    ctx.fillRect((148 - playerX) * scale, (-84 - playerZ) * scale, 50 * scale, 64 * scale);
+    ctx.strokeRect((148 - playerX) * scale, (-84 - playerZ) * scale, 50 * scale, 64 * scale);
+
+    // 42m Superyacht "LADY VICE" (x = 166..178, z = -6..36)
+    ctx.fillStyle = 'rgba(245, 248, 255, 0.65)';
+    ctx.fillRect((166 - playerX) * scale, (-6 - playerZ) * scale, 12 * scale, 42 * scale);
 
     // Road grid highlights
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
@@ -134,6 +150,14 @@ export class Minimap {
     ctx.fillStyle = '#33aaff';
     ctx.fillText('PD', pdX, pdZ);
 
+    // Flyable Vice Maverick Helicopter marker (M)
+    if (maverickPos) {
+      const mx = (maverickPos.x - playerX) * scale;
+      const mz = (maverickPos.z - playerZ) * scale;
+      ctx.fillStyle = '#52f29c';
+      ctx.fillText('M', mx, mz);
+    }
+
     // Ocean Club Heist Start marker (★) at (60, -26) when idle
     if (!heistTarget) {
       const hstX = (60 - playerX) * scale;
@@ -159,6 +183,9 @@ export class Minimap {
       if (n.role === 'police') {
         ctx.fillStyle = Math.sin(elapsed * 14 + nx) > 0 ? '#ff3355' : '#33b5ff';
         ctx.arc(nx, nz, 3.2, 0, Math.PI * 2);
+      } else if (n.role === 'guard') {
+        ctx.fillStyle = '#ff9f43';
+        ctx.arc(nx, nz, 3.4, 0, Math.PI * 2);
       } else {
         ctx.fillStyle = '#ff4fa3';
         ctx.arc(nx, nz, 4.2, 0, Math.PI * 2);

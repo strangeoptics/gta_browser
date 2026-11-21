@@ -216,8 +216,8 @@ export function generateCityLayout(): CityLayout {
     sidewalkWidth: SIDEWALK_WIDTH,
     playableBounds: {
       minX: -67,
-      maxX: 109, // allows walking across the golden sand beach right up to the speedboat
-      minZ: -67,
+      maxX: 204, // extends across the Causeway Bridge (x=66..148) & Starfish Island (x=148..198)
+      minZ: -88,
       maxZ: 67,
     },
     buildings,

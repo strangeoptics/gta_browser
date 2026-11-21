@@ -20,6 +20,7 @@ import { buildBeachHighlights } from './BeachProps';
 import { buildNeonClub } from './NeonClub';
 import { buildPoliceStation } from './PoliceStation';
 import { buildSafehouse, type CabinetWeapon, type FoodItem } from './Safehouse';
+import { buildStarfishIsland } from './StarfishIsland';
 import { buildStuntRamps, type StuntRamp } from './StuntRamps';
 import { buildTrafficLights } from './TrafficLights';
 
@@ -31,6 +32,11 @@ export interface MiamiWorld {
   cameraMeshes: THREE.Object3D[];
   stuntRamps: StuntRamp[];
   layout: CityLayout;
+  maverickSpawn: THREE.Vector3;
+  isNearIslandVault: (pos: THREE.Vector3) => boolean;
+  isNearYachtLoot: (pos: THREE.Vector3) => boolean;
+  takeIslandVault: () => void;
+  takeYachtLoot: () => void;
   cycleTimeOfDay: () => string;
   toggleRain: () => boolean;
   isInsideClub: (pos: THREE.Vector3) => boolean;
@@ -482,9 +488,10 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
   // Boardwalk east of x = 66
   addStaticBox(8, 0.22, 144, 70, 0.11, 0, sidewalkMat, false, 'sidewalk');
 
-  // Low Art-Deco coastal seawall along the boardwalk with walkable openings
+  // Low Art-Deco coastal seawall along the boardwalk with walkable openings (leaves z = -66..-54 wide open for Causeway Bridge!)
   const seawallMat = new THREE.MeshStandardMaterial({ color: '#eedccf', roughness: 0.65 });
-  for (const segZ of [-48, -16, 16, 48]) {
+  addStaticBox(0.55, 0.85, 16, 73.7, 0.22 + 0.425, -45.0, seawallMat, true, 'prop');
+  for (const segZ of [-16, 16, 48]) {
     addStaticBox(0.55, 0.85, 22, 73.7, 0.22 + 0.425, segZ, seawallMat, true, 'prop');
   }
 
@@ -592,10 +599,14 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
   // ---------------------------------------------------------------------------
   const palmPositions: { x: number; z: number; rot: number; scale: number }[] = [];
 
-  // Ocean Drive beachfront palms
-  for (let z = -60; z <= 60; z += 12) {
+  // Ocean Drive beachfront palms (keep Causeway Bridge corridor z = -67.5..-52.5 clear & frame the bridge entrance!)
+  palmPositions.push({ x: 67.4, z: -68.2, rot: -1.1, scale: 1.0 });
+  palmPositions.push({ x: 67.4, z: -51.8, rot: 0.9, scale: 1.0 });
+  for (let z = -48; z <= 60; z += 12) {
     palmPositions.push({ x: 67.4, z, rot: z * 0.7, scale: 0.95 + ((Math.abs(z) % 5) * 0.05) });
-    palmPositions.push({ x: 76.5, z: z + 5, rot: z * 1.1, scale: 0.9 + ((Math.abs(z) % 4) * 0.06) });
+    if (z + 5 > -52) {
+      palmPositions.push({ x: 76.5, z: z + 5, rot: z * 1.1, scale: 0.9 + ((Math.abs(z) % 4) * 0.06) });
+    }
   }
   // Boulevard corner palms on city sidewalks
   for (const bx of BLOCK_CENTERS) {
@@ -604,6 +615,9 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
       palmPositions.push({ x: bx - 12.2, z: bz - 12.2, rot: bx - bz, scale: 0.88 });
     }
   }
+
+  // 6b) Starfish Island, Arched Causeway Bridge & 42m Superyacht (adds island palms before InstancedMesh build!)
+  const starfish = buildStarfishIsland(scene, colliders, worldMeshes, palmPositions);
 
   const palms = buildPalmTrees(scene, palmPositions);
 
@@ -746,6 +760,11 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
     cameraMeshes,
     stuntRamps,
     layout,
+    maverickSpawn: starfish.helipadSpawn,
+    isNearIslandVault: (pos: THREE.Vector3) => starfish.isNearIslandVault(pos),
+    isNearYachtLoot: (pos: THREE.Vector3) => starfish.isNearYachtLoot(pos),
+    takeIslandVault: () => starfish.takeIslandVault(),
+    takeYachtLoot: () => starfish.takeYachtLoot(),
     cycleTimeOfDay: () => {
       timeIndex = (timeIndex + 1) % timePresets.length;
       return applyTimePreset(timeIndex);
@@ -783,11 +802,12 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
     isTvOn: () => safehouse.isTvOn(),
     isNearClubBar: (pos: THREE.Vector3) => neonClub.isNearBar(pos),
     getClubProximity: (pos: THREE.Vector3) => neonClub.getProximity(pos),
-    getGroundHeight: (x: number, z: number) => getBeachHeight(x, z),
+    getGroundHeight: (x: number, z: number) => starfish.getGroundHeight(x, z) ?? getBeachHeight(x, z),
     shouldTrafficStop: (x: number, z: number, yaw: number) => trafficLights.shouldAiStop(x, z, yaw),
     update: (elapsed: number, dt: number, playerPos?: THREE.Vector3, cash = 0, wantedStars = 0) => {
       oceanUniforms.uTime.value = elapsed;
       beachHighlights.update(elapsed);
+      starfish.update(elapsed, dt);
       neonClub.update(elapsed, playerPos);
       safehouse.update(elapsed, dt, playerPos, cash, wantedStars);
       policeStation.update(elapsed, dt, playerPos, cash, wantedStars);

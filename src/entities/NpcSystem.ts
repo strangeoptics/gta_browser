@@ -4,7 +4,7 @@ import type { ShootableTarget } from '../combat/WeaponSystem';
 import { BLOCK_CENTERS } from '../world/CityLayout';
 import { getFaceTexture, getOutfitTexture } from './CharacterTextures';
 
-export type NpcRole = 'civilian' | 'police' | 'bounty';
+export type NpcRole = 'civilian' | 'police' | 'bounty' | 'guard';
 
 export interface NpcEntity {
   id: string;
@@ -25,6 +25,8 @@ export interface NpcEntity {
   fallProgress: number;
   fallDir: number;
   targetPos: THREE.Vector3;
+  patrolPoints?: THREE.Vector3[];
+  patrolIdx?: number;
   leftLegPivot: THREE.Group;
   rightLegPivot: THREE.Group;
   leftArmPivot: THREE.Group;
@@ -63,6 +65,8 @@ export class NpcSystem {
   private readonly hitboxGeo = new THREE.BoxGeometry(0.68, 1.88, 0.54);
   private readonly hitboxMat = new THREE.MeshBasicMaterial({ visible: false });
   private nextId = 1;
+  private guardAlertTimer = 0;
+  private guardRespawnTimer = 0;
 
   public onPlayerDamaged?: (amount: number) => void;
   public onNpcKilled?: (npc: NpcEntity) => void;
@@ -71,6 +75,33 @@ export class NpcSystem {
     this.scene = scene;
     for (let i = 0; i < 12; i++) {
       this.spawnCivilian();
+    }
+    this.spawnEstateGuards();
+  }
+
+  public alertEstateGuards(): void {
+    this.guardAlertTimer = 30.0;
+  }
+
+  public spawnEstateGuards(): void {
+    const guardRoutes: [THREE.Vector3, THREE.Vector3][] = [
+      // 2 Front Colonnade Guards outside STARFISH ESTATE
+      [new THREE.Vector3(174.6, 0.68, -61.5), new THREE.Vector3(174.6, 0.68, -56.2)],
+      [new THREE.Vector3(174.6, 0.68, -53.8), new THREE.Vector3(174.6, 0.68, -48.5)],
+      // 2 Foyer Bodyguards inside STARFISH ESTATE guarding the $2,500 Gold Vault
+      [new THREE.Vector3(182.8, 0.71, -60.5), new THREE.Vector3(182.8, 0.71, -56.5)],
+      [new THREE.Vector3(182.8, 0.71, -53.5), new THREE.Vector3(182.8, 0.71, -49.5)],
+      // 1 Helipad / Roundabout Perimeter Guard
+      [new THREE.Vector3(166.5, 0.68, -67.0), new THREE.Vector3(171.5, 0.68, -60.0)],
+      // 1 Superyacht "LADY VICE" Aft Deck Guard
+      [new THREE.Vector3(169.2, 1.42, -2.5), new THREE.Vector3(174.8, 1.42, -2.5)],
+    ];
+
+    for (const [pA, pB] of guardRoutes) {
+      const g = this.createNpc('guard', pA.x, pA.z, '#1c1828', 85, pA.y);
+      g.patrolPoints = [pA, pB];
+      g.patrolIdx = 1;
+      g.targetPos.copy(pB);
     }
   }
 
@@ -178,7 +209,10 @@ export class NpcSystem {
           npc.hp -= damage;
           npc.flinchTimer = 0.18;
           if (npc.role === 'civilian') npc.state = 'flee';
-          else npc.state = 'pursue';
+          else {
+            npc.state = 'pursue';
+            if (npc.role === 'guard') this.guardAlertTimer = 28.0;
+          }
 
           if (npc.hp <= 0) {
             this.killNpc(npc);
@@ -256,6 +290,20 @@ export class NpcSystem {
       this.spawnCivilian();
     }
 
+    if (this.guardAlertTimer > 0) {
+      this.guardAlertTimer = Math.max(0, this.guardAlertTimer - clampedDt);
+    }
+    const aliveGuards = this.npcs.filter((n) => n.alive && n.role === 'guard').length;
+    if (aliveGuards === 0) {
+      this.guardRespawnTimer += clampedDt;
+      if (this.guardRespawnTimer > 45.0 && playerPos.x < 135) {
+        this.guardRespawnTimer = 0;
+        this.spawnEstateGuards();
+      }
+    } else {
+      this.guardRespawnTimer = 0;
+    }
+
     for (let i = this.npcs.length - 1; i >= 0; i--) {
       const npc = this.npcs[i];
 
@@ -321,7 +369,13 @@ export class NpcSystem {
           }
         }
       } else {
-        const shouldEngage = npc.role === 'police' ? wantedStars > 0 : distToPlayer < 34 || npc.hp < npc.maxHp;
+        const playerTrespassing = playerPos.x > 147 && distToPlayer < 21;
+        const shouldEngage =
+          npc.role === 'police'
+            ? wantedStars > 0
+            : npc.role === 'guard'
+              ? playerTrespassing || this.guardAlertTimer > 0 || npc.hp < npc.maxHp
+              : distToPlayer < 34 || npc.hp < npc.maxHp;
 
         if (!shouldEngage) {
           if (npc.role === 'police' && wantedStars === 0 && distToPlayer > 35) {
@@ -332,16 +386,24 @@ export class NpcSystem {
           const dx = npc.targetPos.x - npc.position.x;
           const dz = npc.targetPos.z - npc.position.z;
           const d = Math.hypot(dx, dz);
-          if (d < 1.5) {
-            npc.targetPos.copy(this.randomSidewalkPoint());
+          if (d < 0.85) {
+            if (npc.patrolPoints && npc.patrolPoints.length > 0) {
+              npc.patrolIdx = ((npc.patrolIdx ?? 0) + 1) % npc.patrolPoints.length;
+              npc.targetPos.copy(npc.patrolPoints[npc.patrolIdx]);
+            } else {
+              npc.targetPos.copy(this.randomSidewalkPoint());
+            }
           } else {
             moveX = dx / d;
             moveZ = dz / d;
-            moveSpeed = 2.2;
+            moveSpeed = npc.role === 'guard' ? 1.65 : 2.2;
           }
         } else {
+          if (npc.role === 'guard' && playerTrespassing) {
+            this.guardAlertTimer = Math.max(this.guardAlertTimer, 12.0);
+          }
           aiming = distToPlayer < 28;
-          const preferredRange = npc.role === 'bounty' ? 14 : 17;
+          const preferredRange = npc.role === 'bounty' || npc.role === 'guard' ? 13 : 17;
           if (distToPlayer > preferredRange) {
             npc.state = 'pursue';
             moveX = toPlayerX / Math.max(distToPlayer, 0.1);
@@ -369,16 +431,21 @@ export class NpcSystem {
         const stepZ = moveZ * moveSpeed * clampedDt;
 
         // Axis-separated wall sliding so NPCs never clip through buildings, vehicles, or the Safehouse
-        const resolved = this.moveWithWallSlide(prevX, prevZ, stepX, stepZ, NPC_RADIUS, blockers);
+        const resolved = this.moveWithWallSlide(prevX, prevZ, stepX, stepZ, NPC_RADIUS, blockers, npc.position.y);
         npc.position.x = resolved.x;
         npc.position.z = resolved.z;
 
         const actualDist = Math.hypot(npc.position.x - prevX, npc.position.z - prevZ);
         const wantedDist = moveSpeed * clampedDt;
 
-        // If blocked head-on by a building wall while patrolling, pick a fresh sidewalk waypoint
+        // If blocked head-on by a building wall while patrolling, pick next patrol or sidewalk waypoint
         if (actualDist < wantedDist * 0.28 && npc.state === 'walk') {
-          npc.targetPos.copy(this.randomSidewalkPoint());
+          if (npc.patrolPoints && npc.patrolPoints.length > 0) {
+            npc.patrolIdx = ((npc.patrolIdx ?? 0) + 1) % npc.patrolPoints.length;
+            npc.targetPos.copy(npc.patrolPoints[npc.patrolIdx]);
+          } else {
+            npc.targetPos.copy(this.randomSidewalkPoint());
+          }
         }
 
         npc.yaw = Math.atan2(moveX, moveZ);
@@ -439,8 +506,8 @@ export class NpcSystem {
           const push = (minSep - d) * 0.5;
           const nx = dx / d;
           const nz = dz / d;
-          const resA = this.moveWithWallSlide(a.position.x, a.position.z, -nx * push, -nz * push, NPC_RADIUS, blockers);
-          const resB = this.moveWithWallSlide(b.position.x, b.position.z, nx * push, nz * push, NPC_RADIUS, blockers);
+          const resA = this.moveWithWallSlide(a.position.x, a.position.z, -nx * push, -nz * push, NPC_RADIUS, blockers, a.position.y);
+          const resB = this.moveWithWallSlide(b.position.x, b.position.z, nx * push, nz * push, NPC_RADIUS, blockers, b.position.y);
           a.position.x = resA.x;
           a.position.z = resA.z;
           b.position.x = resB.x;
@@ -505,23 +572,24 @@ export class NpcSystem {
    * - Procedural outfit texture (Miami Hawaiian / pastel blazer / Vice PD uniform / white suit)
    * - Hairstyles / caps, belt, shoes, pivoted arms & legs, and 3D weapons + muzzle flash
    */
-  private createNpc(role: NpcRole, x: number, z: number, shirtColor: string, maxHp: number): NpcEntity {
+  private createNpc(role: NpcRole, x: number, z: number, shirtColor: string, maxHp: number, baseY = 0.18): NpcEntity {
     const seed = this.nextId++;
     const group = new THREE.Group();
-    group.position.set(x, 0.18, z);
+    group.position.set(x, baseY, z);
 
     const bodyRoot = new THREE.Group();
     group.add(bodyRoot);
 
     const skinColor = SKIN_TONES[seed % SKIN_TONES.length];
     const hairColor = HAIR_COLORS[(seed * 3) % HAIR_COLORS.length];
-    const accentColor = CIV_ACCENTS[seed % CIV_ACCENTS.length];
-    const wearsSunglasses = role === 'bounty' || role === 'police' || seed % 2 === 0;
+    const accentColor = role === 'guard' ? '#ff3d7f' : CIV_ACCENTS[seed % CIV_ACCENTS.length];
+    const wearsSunglasses = role === 'bounty' || role === 'guard' || role === 'police' || seed % 2 === 0;
     const hasMustache = role === 'police' ? seed % 2 === 0 : seed % 4 === 1;
 
     const skinMat = new THREE.MeshStandardMaterial({ color: skinColor, roughness: 0.72 });
     const hairMat = new THREE.MeshStandardMaterial({ color: hairColor, roughness: 0.82 });
-    const outfitTex = getOutfitTexture(role, shirtColor, accentColor, seed);
+    const texRole = role === 'guard' ? 'bounty' : role;
+    const outfitTex = getOutfitTexture(texRole, shirtColor, accentColor, seed);
     const torsoMat = new THREE.MeshStandardMaterial({
       map: outfitTex,
       roughness: 0.65,
@@ -533,14 +601,16 @@ export class NpcSystem {
     const pantsColor =
       role === 'police'
         ? '#141d33'
-        : role === 'bounty'
-          ? '#efeae4'
-          : seed % 3 === 0
-            ? '#f0e2ce'
-            : '#2c3047';
+        : role === 'guard'
+          ? '#161420'
+          : role === 'bounty'
+            ? '#efeae4'
+            : seed % 3 === 0
+              ? '#f0e2ce'
+              : '#2c3047';
     const pantsMat = new THREE.MeshStandardMaterial({ color: pantsColor, roughness: 0.78 });
     const shoeMat = new THREE.MeshStandardMaterial({
-      color: role === 'police' ? '#141418' : '#f4eee8',
+      color: role === 'police' || role === 'guard' ? '#141418' : '#f4eee8',
       roughness: 0.55,
     });
 
@@ -600,6 +670,11 @@ export class NpcSystem {
       halo.rotation.x = Math.PI / 2;
       halo.position.y = 2.08;
       bodyRoot.add(halo);
+    } else if (role === 'guard') {
+      // Slicked-back dark cartel security hair
+      const hair = new THREE.Mesh(new THREE.BoxGeometry(0.31, 0.1, 0.31), hairMat);
+      hair.position.set(0, 1.81, -0.02);
+      bodyRoot.add(hair);
     } else {
       // Civilian hair variety: feathered 80s cut, ponytail, or coastal cap
       const style = seed % 3;
@@ -637,7 +712,7 @@ export class NpcSystem {
 
       const lower = new THREE.Mesh(
         new THREE.BoxGeometry(0.12, 0.26, 0.12),
-        role === 'bounty' ? sleeveMat : skinMat,
+        role === 'bounty' || role === 'guard' ? sleeveMat : skinMat,
       );
       lower.position.y = -0.36;
       pivot.add(lower);
@@ -669,7 +744,7 @@ export class NpcSystem {
     };
 
     const leftArm = buildArm(-1, false);
-    const rightArm = buildArm(1, role === 'police' || role === 'bounty');
+    const rightArm = buildArm(1, role === 'police' || role === 'bounty' || role === 'guard');
 
     // Articulated Legs + Shoes (pivoted at hips)
     const buildLeg = (side: -1 | 1): THREE.Group => {
@@ -710,7 +785,7 @@ export class NpcSystem {
       group,
       hitbox,
       bodyRoot,
-      position: new THREE.Vector3(x, 0.18, z),
+      position: new THREE.Vector3(x, baseY, z),
       yaw: Math.random() * Math.PI * 2,
       hp: maxHp,
       maxHp,
@@ -750,11 +825,19 @@ export class NpcSystem {
     dz: number,
     radius: number,
     blockers: AABB[],
+    npcY = 0.18,
   ): { x: number; z: number } {
-    // Resolve X axis first
-    let x = THREE.MathUtils.clamp(startX + dx, -65, 72);
+    const onIslandZone = startX > 135;
+    const minX = onIslandZone ? 149 : -65;
+    const maxX = onIslandZone ? 196 : 72;
+    const minZ = onIslandZone ? -83 : -65;
+    const maxZ = onIslandZone ? 35 : 65;
+
+    // Resolve X axis first (only against obstacles taller than current floor + 0.35m!)
+    let x = THREE.MathUtils.clamp(startX + dx, minX, maxX);
     let z = startZ;
     for (const box of blockers) {
+      if (box.maxY <= npcY + 0.35 || box.minY >= npcY + 1.8) continue;
       if (x + radius > box.minX && x - radius < box.maxX && z + radius > box.minZ && z - radius < box.maxZ) {
         if (dx > 0) x = box.minX - radius;
         else if (dx < 0) x = box.maxX + radius;
@@ -767,8 +850,9 @@ export class NpcSystem {
     }
 
     // Resolve Z axis second
-    z = THREE.MathUtils.clamp(startZ + dz, -65, 65);
+    z = THREE.MathUtils.clamp(startZ + dz, minZ, maxZ);
     for (const box of blockers) {
+      if (box.maxY <= npcY + 0.35 || box.minY >= npcY + 1.8) continue;
       if (x + radius > box.minX && x - radius < box.maxX && z + radius > box.minZ && z - radius < box.maxZ) {
         if (dz > 0) z = box.minZ - radius;
         else if (dz < 0) z = box.maxZ + radius;

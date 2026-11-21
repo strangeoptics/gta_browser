@@ -42,6 +42,19 @@ const CIV_ACCENTS = ['#36f1e6', '#ff4fa3', '#fff4e6', '#ff9f43', '#2d6a4f'];
 const SKIN_TONES = ['#e8ba9b', '#d69c77', '#b87a56', '#8c563c', '#f2cbb0'];
 const HAIR_COLORS = ['#22181c', '#4a2e1f', '#8c5a32', '#d9b06a', '#1b1620'];
 
+// Private Safehouse footprint (40, -40) — NPCs may never enter the player's safe space
+const SAFEHOUSE_NO_ENTRY: AABB = {
+  minX: 29.0,
+  maxX: 51.0,
+  minY: 0,
+  maxY: 5.0,
+  minZ: -50.0,
+  maxZ: -30.0,
+  tag: 'safehouse-no-entry',
+};
+
+const NPC_RADIUS = 0.42;
+
 export class NpcSystem {
   public readonly npcs: NpcEntity[] = [];
   private readonly scene: THREE.Scene;
@@ -64,11 +77,20 @@ export class NpcSystem {
     return this.createNpc('civilian', spot.x, spot.z, shirt, 45);
   }
 
-  public spawnPoliceNear(playerPos: THREE.Vector3): NpcEntity {
-    const angle = Math.random() * Math.PI * 2;
-    const dist = 28 + Math.random() * 14;
-    const x = THREE.MathUtils.clamp(playerPos.x + Math.cos(angle) * dist, -62, 66);
-    const z = THREE.MathUtils.clamp(playerPos.z + Math.sin(angle) * dist, -62, 62);
+  public spawnPoliceNear(playerPos: THREE.Vector3, blockers: AABB[] = []): NpcEntity {
+    let x = THREE.MathUtils.clamp(playerPos.x + 28, -62, 66);
+    let z = THREE.MathUtils.clamp(playerPos.z, -62, 62);
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const angle = Math.random() * Math.PI * 2;
+      const dist = 28 + Math.random() * 14;
+      const cx = THREE.MathUtils.clamp(playerPos.x + Math.cos(angle) * dist, -62, 66);
+      const cz = THREE.MathUtils.clamp(playerPos.z + Math.sin(angle) * dist, -62, 62);
+      if (!this.overlapsAny(cx, cz, NPC_RADIUS + 0.25, blockers)) {
+        x = cx;
+        z = cz;
+        break;
+      }
+    }
     const officer = this.createNpc('police', x, z, '#1e325c', 75);
     officer.state = 'pursue';
     return officer;
@@ -192,12 +214,20 @@ export class NpcSystem {
     this.onNpcKilled?.(npc);
   }
 
-  public update(dt: number, playerPos: THREE.Vector3, wantedStars: number): void {
+  public update(dt: number, playerPos: THREE.Vector3, wantedStars: number, worldColliders: AABB[] = []): void {
     const clampedDt = Math.min(dt, 0.05);
+
+    // Filter to solid vertical obstacles at NPC torso height + private Safehouse exclusion box
+    const blockers: AABB[] = [SAFEHOUSE_NO_ENTRY];
+    for (const c of worldColliders) {
+      if (c.maxY > 0.45 && c.minY < 1.85) {
+        blockers.push(c);
+      }
+    }
 
     const desiredPolice = wantedStars === 0 ? 0 : Math.min(7, wantedStars + 1);
     if (this.getAlivePoliceCount() < desiredPolice && Math.random() < clampedDt * 0.9) {
-      this.spawnPoliceNear(playerPos);
+      this.spawnPoliceNear(playerPos, blockers);
     }
 
     const aliveCivs = this.npcs.filter((n) => n.alive && n.role === 'civilian').length;
@@ -309,11 +339,27 @@ export class NpcSystem {
         }
       }
 
-      // Limb & Body Animation
+      // Limb & Body Animation + Solid World/Building Wall-Sliding Collision
       const animBlend = 1 - Math.exp(-12 * clampedDt);
       if (moveSpeed > 0.05) {
-        npc.position.x = THREE.MathUtils.clamp(npc.position.x + moveX * moveSpeed * clampedDt, -65, 72);
-        npc.position.z = THREE.MathUtils.clamp(npc.position.z + moveZ * moveSpeed * clampedDt, -65, 65);
+        const prevX = npc.position.x;
+        const prevZ = npc.position.z;
+        const stepX = moveX * moveSpeed * clampedDt;
+        const stepZ = moveZ * moveSpeed * clampedDt;
+
+        // Axis-separated wall sliding so NPCs never clip through buildings, vehicles, or the Safehouse
+        const resolved = this.moveWithWallSlide(prevX, prevZ, stepX, stepZ, NPC_RADIUS, blockers);
+        npc.position.x = resolved.x;
+        npc.position.z = resolved.z;
+
+        const actualDist = Math.hypot(npc.position.x - prevX, npc.position.z - prevZ);
+        const wantedDist = moveSpeed * clampedDt;
+
+        // If blocked head-on by a building wall while patrolling, pick a fresh sidewalk waypoint
+        if (actualDist < wantedDist * 0.28 && npc.state === 'walk') {
+          npc.targetPos.copy(this.randomSidewalkPoint());
+        }
+
         npc.yaw = Math.atan2(moveX, moveZ);
 
         npc.walkPhase += clampedDt * moveSpeed * 2.9;
@@ -372,10 +418,12 @@ export class NpcSystem {
           const push = (minSep - d) * 0.5;
           const nx = dx / d;
           const nz = dz / d;
-          a.position.x -= nx * push;
-          a.position.z -= nz * push;
-          b.position.x += nx * push;
-          b.position.z += nz * push;
+          const resA = this.moveWithWallSlide(a.position.x, a.position.z, -nx * push, -nz * push, NPC_RADIUS, blockers);
+          const resB = this.moveWithWallSlide(b.position.x, b.position.z, nx * push, nz * push, NPC_RADIUS, blockers);
+          a.position.x = resA.x;
+          a.position.z = resA.z;
+          b.position.x = resB.x;
+          b.position.z = resB.z;
           a.group.position.x = a.position.x;
           a.group.position.z = a.position.z;
           b.group.position.x = b.position.x;
@@ -658,6 +706,55 @@ export class NpcSystem {
     };
     this.npcs.push(npc);
     return npc;
+  }
+
+  private overlapsAny(x: number, z: number, radius: number, blockers: AABB[]): boolean {
+    for (const box of blockers) {
+      if (x + radius > box.minX && x - radius < box.maxX && z + radius > box.minZ && z - radius < box.maxZ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private moveWithWallSlide(
+    startX: number,
+    startZ: number,
+    dx: number,
+    dz: number,
+    radius: number,
+    blockers: AABB[],
+  ): { x: number; z: number } {
+    // Resolve X axis first
+    let x = THREE.MathUtils.clamp(startX + dx, -65, 72);
+    let z = startZ;
+    for (const box of blockers) {
+      if (x + radius > box.minX && x - radius < box.maxX && z + radius > box.minZ && z - radius < box.maxZ) {
+        if (dx > 0) x = box.minX - radius;
+        else if (dx < 0) x = box.maxX + radius;
+        else {
+          const pLeft = box.minX - (x + radius);
+          const pRight = box.maxX - (x - radius);
+          x += Math.abs(pLeft) < Math.abs(pRight) ? pLeft : pRight;
+        }
+      }
+    }
+
+    // Resolve Z axis second
+    z = THREE.MathUtils.clamp(startZ + dz, -65, 65);
+    for (const box of blockers) {
+      if (x + radius > box.minX && x - radius < box.maxX && z + radius > box.minZ && z - radius < box.maxZ) {
+        if (dz > 0) z = box.minZ - radius;
+        else if (dz < 0) z = box.maxZ + radius;
+        else {
+          const pBack = box.minZ - (z + radius);
+          const pFront = box.maxZ - (z - radius);
+          z += Math.abs(pBack) < Math.abs(pFront) ? pBack : pFront;
+        }
+      }
+    }
+
+    return { x, z };
   }
 
   private randomSidewalkPoint(): THREE.Vector3 {

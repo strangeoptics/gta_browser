@@ -689,6 +689,119 @@ export function buildSafehouse(
   poolLight.position.set(poolCX, roofY + 0.6, poolCZ);
   scene.add(poolLight);
 
+  // --- Inflatable Unicorn Swim Ring floating in the Rooftop Pool ---
+  const unicornFloat = new THREE.Group();
+  const floatBaseX = poolCX + 1.1;
+  const floatBaseZ = poolCZ - 0.25;
+  const floatWaterY = roofY - 0.14;
+  unicornFloat.position.set(floatBaseX, floatWaterY, floatBaseZ);
+
+  const vinylWhiteMat = new THREE.MeshStandardMaterial({ color: '#fdfaff', roughness: 0.18, metalness: 0.08 });
+  const vinylPinkMat = new THREE.MeshStandardMaterial({ color: '#ff6eb4', roughness: 0.22, metalness: 0.08 });
+  const vinylCyanMat = new THREE.MeshStandardMaterial({ color: '#36f1e6', roughness: 0.22, metalness: 0.08 });
+  const vinylYellowMat = new THREE.MeshStandardMaterial({ color: '#ffd166', roughness: 0.22, metalness: 0.08 });
+  const vinylPurpleMat = new THREE.MeshStandardMaterial({ color: '#c084fc', roughness: 0.22, metalness: 0.08 });
+  const goldHornMat = new THREE.MeshStandardMaterial({ color: '#f5c542', roughness: 0.18, metalness: 0.85 });
+  const eyeMat = new THREE.MeshStandardMaterial({ color: '#15121d', roughness: 0.12, metalness: 0.3 });
+
+  // Main inflatable torus ring
+  const floatRing = new THREE.Mesh(new THREE.TorusGeometry(0.56, 0.19, 16, 32), vinylWhiteMat);
+  floatRing.rotation.x = Math.PI / 2;
+  floatRing.position.y = 0.08;
+  floatRing.castShadow = true;
+  unicornFloat.add(floatRing);
+
+  // Cute inflatable side wings
+  for (const sx of [-1, 1]) {
+    const wing = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.09, 0.34), vinylWhiteMat);
+    wing.position.set(sx * 0.72, 0.2, -0.04);
+    wing.rotation.z = sx * 0.32;
+    wing.rotation.y = sx * -0.2;
+    unicornFloat.add(wing);
+
+    const wingTip = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.07, 0.22), vinylPinkMat);
+    wingTip.position.set(sx * 0.8, 0.25, -0.08);
+    wingTip.rotation.z = sx * 0.42;
+    unicornFloat.add(wingTip);
+  }
+
+  // Curved unicorn neck rising from front of the ring (+Z)
+  const neckLower = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.19, 0.36, 14), vinylWhiteMat);
+  neckLower.position.set(0, 0.32, 0.56);
+  neckLower.rotation.x = 0.14;
+  neckLower.castShadow = true;
+  unicornFloat.add(neckLower);
+
+  const neckUpper = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.145, 0.32, 14), vinylWhiteMat);
+  neckUpper.position.set(0, 0.58, 0.6);
+  neckUpper.rotation.x = -0.08;
+  neckUpper.castShadow = true;
+  unicornFloat.add(neckUpper);
+
+  // Sculpted unicorn head & rounded snout
+  const headMesh = new THREE.Mesh(new THREE.SphereGeometry(0.175, 14, 12), vinylWhiteMat);
+  headMesh.position.set(0, 0.76, 0.62);
+  headMesh.scale.set(0.92, 0.96, 1.15);
+  headMesh.castShadow = true;
+  unicornFloat.add(headMesh);
+
+  const snout = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.125, 0.24, 12), vinylWhiteMat);
+  snout.rotation.x = Math.PI / 2 + 0.18;
+  snout.position.set(0, 0.71, 0.82);
+  unicornFloat.add(snout);
+
+  const noseTip = new THREE.Mesh(new THREE.SphereGeometry(0.085, 10, 8), vinylPinkMat);
+  noseTip.position.set(0, 0.69, 0.93);
+  noseTip.scale.set(1.0, 0.85, 0.65);
+  unicornFloat.add(noseTip);
+
+  // Glossy cartoon eyes & pointed ears
+  for (const sx of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.03, 10, 8), eyeMat);
+    eye.position.set(sx * 0.135, 0.78, 0.7);
+    unicornFloat.add(eye);
+
+    const earOuter = new THREE.Mesh(new THREE.ConeGeometry(0.055, 0.16, 8), vinylWhiteMat);
+    earOuter.position.set(sx * 0.1, 0.93, 0.57);
+    earOuter.rotation.z = sx * -0.28;
+    earOuter.rotation.x = -0.15;
+    unicornFloat.add(earOuter);
+
+    const earInner = new THREE.Mesh(new THREE.ConeGeometry(0.032, 0.11, 8), vinylPinkMat);
+    earInner.position.set(sx * 0.1, 0.92, 0.59);
+    earInner.rotation.z = sx * -0.28;
+    earInner.rotation.x = -0.15;
+    unicornFloat.add(earInner);
+  }
+
+  // Golden unicorn horn
+  const horn = new THREE.Mesh(new THREE.ConeGeometry(0.044, 0.3, 12), goldHornMat);
+  horn.position.set(0, 0.97, 0.73);
+  horn.rotation.x = 0.42;
+  horn.castShadow = true;
+  unicornFloat.add(horn);
+
+  // Pastel 80s rainbow mane tufts along back of neck
+  const maneMats = [vinylPinkMat, vinylCyanMat, vinylYellowMat, vinylPurpleMat];
+  for (let m = 0; m < 4; m++) {
+    const tuft = new THREE.Mesh(new THREE.SphereGeometry(0.095 - m * 0.008, 10, 8), maneMats[m]);
+    tuft.position.set(0, 0.8 - m * 0.13, 0.46 - m * 0.02);
+    tuft.scale.set(0.65, 1.0, 1.25);
+    unicornFloat.add(tuft);
+  }
+
+  // Matching pastel rainbow tail at the rear (-Z) of the ring
+  for (let t = 0; t < 3; t++) {
+    const tailTuft = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 8), maneMats[t]);
+    tailTuft.position.set((t - 1) * 0.07, 0.24 + (t === 1 ? 0.05 : 0), -0.74);
+    tailTuft.scale.set(0.8, 1.1, 1.4);
+    unicornFloat.add(tailTuft);
+  }
+
+  scene.add(unicornFloat);
+  let floatOffsetX = 0;
+  let floatOffsetZ = 0;
+
   // 2 Rooftop Sun Loungers on the sunny south terrace beside the pool
   const whiteMat = new THREE.MeshStandardMaterial({ color: '#f2eae2', roughness: 0.65 });
   const padCoralMat = new THREE.MeshStandardMaterial({ color: '#e66e8e', roughness: 0.8 });
@@ -808,6 +921,27 @@ export function buildSafehouse(
       // Gentle water shimmer (calm, never blinding)
       poolMat.emissiveIntensity = 0.2 + Math.sin(elapsed * 2.2) * 0.05;
       poolWater.position.y = roofY - 0.16 + Math.sin(elapsed * 1.9) * 0.025;
+
+      // Bobbing & gently drifting inflatable unicorn swim ring (nudges away if player swims into it!)
+      if (playerPos && playerPos.y > roofY - 1.4) {
+        const dx = unicornFloat.position.x - playerPos.x;
+        const dz = unicornFloat.position.z - playerPos.z;
+        const dist = Math.hypot(dx, dz);
+        if (dist < 1.15 && dist > 0.001) {
+          const push = (1.15 - dist) * 2.6 * clampedDt;
+          floatOffsetX = THREE.MathUtils.clamp(floatOffsetX + (dx / dist) * push, -2.0, 1.8);
+          floatOffsetZ = THREE.MathUtils.clamp(floatOffsetZ + (dz / dist) * push, -1.3, 1.5);
+        }
+      }
+      floatOffsetX *= Math.exp(-0.25 * clampedDt);
+      floatOffsetZ *= Math.exp(-0.25 * clampedDt);
+
+      unicornFloat.position.x = floatBaseX + floatOffsetX + Math.sin(elapsed * 0.42) * 0.55;
+      unicornFloat.position.z = floatBaseZ + floatOffsetZ + Math.cos(elapsed * 0.33) * 0.42;
+      unicornFloat.position.y = floatWaterY + Math.sin(elapsed * 1.9 + 0.6) * 0.035;
+      unicornFloat.rotation.y = elapsed * 0.22 + Math.sin(elapsed * 0.5) * 0.35;
+      unicornFloat.rotation.x = Math.sin(elapsed * 1.6) * 0.055;
+      unicornFloat.rotation.z = Math.cos(elapsed * 1.35) * 0.055;
     },
   };
 }

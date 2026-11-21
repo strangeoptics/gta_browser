@@ -4,6 +4,7 @@ import type { ShootableTarget } from '../combat/WeaponSystem';
 import type { GamepadSnapshot } from '../engine/GamepadInput';
 import type { StuntRamp } from '../world/StuntRamps';
 import { ROAD_COORDS } from '../world/CityLayout';
+import { createMotorcycleMesh } from './MotorcycleBuilder';
 
 export interface Vehicle {
   id: string;
@@ -14,6 +15,7 @@ export interface Vehicle {
   mesh: THREE.Group;
   bodyMat: THREE.MeshStandardMaterial;
   riderMesh?: THREE.Group;
+  kickstand?: THREE.Object3D;
   originalColor: string;
   position: THREE.Vector3;
   spawnX: number;
@@ -30,7 +32,7 @@ export interface Vehicle {
   destroyed: boolean;
   respawnTimer: number;
   smokeTimer: number;
-  wheels: THREE.Mesh[];
+  wheels: THREE.Object3D[];
   tailMat?: THREE.MeshStandardMaterial;
   reverseMat?: THREE.MeshStandardMaterial;
   lightbarRed?: THREE.Mesh;
@@ -121,10 +123,13 @@ export class VehicleSystem {
 
     CAR_SPECS.forEach((spec, idx) => {
       const built = spec.bike
-        ? this.createBikeMesh(spec.color, spec.neon)
+        ? createMotorcycleMesh(spec.color, spec.neon)
         : this.createCarMesh(spec.color, spec.neon, spec.police);
       built.group.position.set(spec.x, 0, spec.z);
       built.group.rotation.y = spec.yaw;
+      if (spec.bike) {
+        built.group.rotation.z = 0.09; // Subtle parked lean on side kickstand
+      }
       scene.add(built.group);
 
       const v: Vehicle = {
@@ -136,6 +141,7 @@ export class VehicleSystem {
         mesh: built.group,
         bodyMat: built.bodyMat,
         riderMesh: built.riderMesh,
+        kickstand: 'kickstand' in built ? built.kickstand : undefined,
         originalColor: spec.color,
         position: new THREE.Vector3(spec.x, 0, spec.z),
         spawnX: spec.x,
@@ -154,9 +160,9 @@ export class VehicleSystem {
         smokeTimer: 0,
         wheels: built.wheels,
         tailMat: built.tailMat,
-        reverseMat: built.reverseMat,
-        lightbarRed: built.lightbarRed,
-        lightbarBlue: built.lightbarBlue,
+        reverseMat: 'reverseMat' in built ? built.reverseMat : undefined,
+        lightbarRed: 'lightbarRed' in built ? built.lightbarRed : undefined,
+        lightbarBlue: 'lightbarBlue' in built ? built.lightbarBlue : undefined,
         isAiControlled: spec.ai,
         aiSpeed: spec.ai ? 7.5 : 0,
         aiTargetX: spec.x,
@@ -206,6 +212,8 @@ export class VehicleSystem {
     this.activeVehicle = v;
     v.isAiControlled = false;
     if (v.riderMesh) v.riderMesh.visible = true;
+    if (v.kickstand) v.kickstand.visible = false;
+    if (v.isBike) v.mesh.rotation.z = 0;
     this.camInitialized = false;
   }
 
@@ -213,7 +221,8 @@ export class VehicleSystem {
     if (!this.activeVehicle) return null;
     const v = this.activeVehicle;
     if (v.riderMesh) v.riderMesh.visible = false;
-    v.mesh.rotation.z = 0;
+    if (v.kickstand) v.kickstand.visible = true;
+    v.mesh.rotation.z = v.isBike ? 0.09 : 0;
     const sideX = Math.cos(v.yaw) * -2.2;
     const sideZ = -Math.sin(v.yaw) * -2.2;
     const out = {
@@ -250,8 +259,10 @@ export class VehicleSystem {
       if (v === this.activeVehicle) continue;
       const cos = Math.abs(Math.cos(v.yaw));
       const sin = Math.abs(Math.sin(v.yaw));
-      const halfX = 1.05 * cos + 2.15 * sin;
-      const halfZ = 1.05 * sin + 2.15 * cos;
+      const wHalf = v.isBike ? 0.52 : 1.05;
+      const lHalf = v.isBike ? 1.25 : 2.15;
+      const halfX = wHalf * cos + lHalf * sin;
+      const halfZ = wHalf * sin + lHalf * cos;
       out.push({
         minX: v.position.x - halfX,
         maxX: v.position.x + halfX,
@@ -829,9 +840,11 @@ export class VehicleSystem {
         const fwdZ = Math.cos(v.yaw);
         const rightX = Math.cos(v.yaw);
         const rightZ = -Math.sin(v.yaw);
-        for (const side of [-0.95, 0.95]) {
-          const wx = v.position.x - fwdX * 1.35 + rightX * side;
-          const wz = v.position.z - fwdZ * 1.35 + rightZ * side;
+        const driftSides = v.isBike ? [0] : [-0.95, 0.95];
+        const rearOffset = v.isBike ? 0.82 : 1.35;
+        for (const side of driftSides) {
+          const wx = v.position.x - fwdX * rearOffset + rightX * side;
+          const wz = v.position.z - fwdZ * rearOffset + rightZ * side;
           this.onDriftMark?.(wx, wz, v.yaw);
           const mat = new THREE.MeshBasicMaterial({
             color: '#d8e8f2',
@@ -1034,7 +1047,7 @@ export class VehicleSystem {
   ): {
     group: THREE.Group;
     bodyMat: THREE.MeshStandardMaterial;
-    wheels: THREE.Mesh[];
+    wheels: THREE.Object3D[];
     tailMat?: THREE.MeshStandardMaterial;
     reverseMat?: THREE.MeshStandardMaterial;
     lightbarRed?: THREE.Mesh;
@@ -1158,110 +1171,5 @@ export class VehicleSystem {
     }
 
     return { group, bodyMat, wheels, tailMat, reverseMat, lightbarRed, lightbarBlue, riderMesh: undefined as THREE.Group | undefined };
-  }
-
-  private createBikeMesh(
-    bodyColor: string,
-    neonColor: string,
-  ): {
-    group: THREE.Group;
-    bodyMat: THREE.MeshStandardMaterial;
-    wheels: THREE.Mesh[];
-    tailMat?: THREE.MeshStandardMaterial;
-    reverseMat?: THREE.MeshStandardMaterial;
-    lightbarRed?: THREE.Mesh;
-    lightbarBlue?: THREE.Mesh;
-    riderMesh: THREE.Group;
-  } {
-    const group = new THREE.Group();
-    const bodyMat = new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 0.22, metalness: 0.65 });
-    const darkMat = new THREE.MeshStandardMaterial({ color: '#1b1624', roughness: 0.55, metalness: 0.6 });
-    const neonMat = new THREE.MeshStandardMaterial({
-      color: neonColor,
-      emissive: neonColor,
-      emissiveIntensity: 2.6,
-    });
-
-    // Sleek sportbike fairing & fuel tank
-    const frame = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.42, 1.55), bodyMat);
-    frame.position.set(0, 0.64, 0.05);
-    frame.castShadow = true;
-    group.add(frame);
-
-    const cowl = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.34, 0.55), bodyMat);
-    cowl.position.set(0, 0.88, 0.62);
-    cowl.rotation.x = 0.42;
-    group.add(cowl);
-
-    // Handlebars
-    const bars = new THREE.Mesh(new THREE.BoxGeometry(0.86, 0.06, 0.08), darkMat);
-    bars.position.set(0, 1.04, 0.52);
-    group.add(bars);
-
-    // Headlight & neon side trim
-    const head = new THREE.Mesh(
-      new THREE.BoxGeometry(0.28, 0.14, 0.08),
-      new THREE.MeshStandardMaterial({ color: '#fff4d4', emissive: '#ffdf9e', emissiveIntensity: 3.4 }),
-    );
-    head.position.set(0, 0.86, 0.92);
-    group.add(head);
-
-    const trim = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.06, 1.35), neonMat);
-    trim.position.set(0, 0.62, 0.05);
-    group.add(trim);
-
-    // 2 Sportbike Wheels with glowing neon rim rings
-    const wheelGeo = new THREE.CylinderGeometry(0.35, 0.35, 0.18, 14);
-    wheelGeo.rotateZ(Math.PI / 2);
-    const wheels: THREE.Mesh[] = [];
-    for (const wz of [0.88, -0.82]) {
-      const w = new THREE.Mesh(wheelGeo, darkMat);
-      w.position.set(0, 0.35, wz);
-      w.castShadow = true;
-      group.add(w);
-      wheels.push(w);
-    }
-
-    // Stylized 80s Miami Rider visible while riding the PCJ-86
-    const riderMesh = new THREE.Group();
-    const blazerMat = new THREE.MeshStandardMaterial({ color: '#f2e8e1', roughness: 0.6 });
-    const pantsMat = new THREE.MeshStandardMaterial({ color: '#272c42', roughness: 0.78 });
-    const skinMat = new THREE.MeshStandardMaterial({ color: '#e2b192', roughness: 0.7 });
-    const helmetMat = new THREE.MeshStandardMaterial({
-      color: '#1b1426',
-      emissive: '#36f1e6',
-      emissiveIntensity: 0.35,
-      roughness: 0.15,
-      metalness: 0.8,
-    });
-
-    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.54, 0.28), blazerMat);
-    torso.position.set(0, 1.18, -0.1);
-    torso.rotation.x = 0.38;
-    riderMesh.add(torso);
-
-    const headMesh = new THREE.Mesh(new THREE.SphereGeometry(0.18, 10, 8), helmetMat);
-    headMesh.position.set(0, 1.54, 0.08);
-    riderMesh.add(headMesh);
-
-    for (const side of [-0.26, 0.26]) {
-      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.44, 0.12), blazerMat);
-      arm.position.set(side, 1.15, 0.25);
-      arm.rotation.x = 1.1;
-      riderMesh.add(arm);
-
-      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.5, 0.16), pantsMat);
-      leg.position.set(side * 0.9, 0.72, -0.15);
-      leg.rotation.x = -0.35;
-      riderMesh.add(leg);
-    }
-    const hands = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.08, 0.08), skinMat);
-    hands.position.set(0, 1.04, 0.5);
-    riderMesh.add(hands);
-
-    riderMesh.visible = false;
-    group.add(riderMesh);
-
-    return { group, bodyMat, wheels, riderMesh };
   }
 }

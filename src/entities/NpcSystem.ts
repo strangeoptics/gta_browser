@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { ShootableTarget } from '../combat/WeaponSystem';
 import { BLOCK_CENTERS } from '../world/CityLayout';
+import { getFaceTexture, getOutfitTexture } from './CharacterTextures';
 
 export type NpcRole = 'civilian' | 'police' | 'bounty';
 
@@ -8,6 +9,7 @@ export interface NpcEntity {
   id: string;
   role: NpcRole;
   group: THREE.Group;
+  bodyRoot: THREE.Group;
   position: THREE.Vector3;
   yaw: number;
   hp: number;
@@ -16,9 +18,16 @@ export interface NpcEntity {
   state: 'walk' | 'flee' | 'pursue' | 'attack';
   walkPhase: number;
   fireCooldown: number;
+  flinchTimer: number;
+  muzzleTimer: number;
+  fallProgress: number;
+  fallDir: number;
   targetPos: THREE.Vector3;
-  leftLeg: THREE.Mesh;
-  rightLeg: THREE.Mesh;
+  leftLegPivot: THREE.Group;
+  rightLegPivot: THREE.Group;
+  leftArmPivot: THREE.Group;
+  rightArmPivot: THREE.Group;
+  muzzleFlash?: THREE.Mesh;
   deathTimer: number;
 }
 
@@ -27,7 +36,10 @@ interface EnemyTracer {
   life: number;
 }
 
-const CIV_SHIRTS = ['#ff7eb3', '#36f1e6', '#ffbe6b', '#d9b8ff', '#fff0d9', '#7ef2c8'];
+const CIV_SHIRTS = ['#ff7eb3', '#36f1e6', '#ffbe6b', '#d9b8ff', '#fff0d9', '#7ef2c8', '#ff8b7b'];
+const CIV_ACCENTS = ['#36f1e6', '#ff4fa3', '#fff4e6', '#ff9f43', '#2d6a4f'];
+const SKIN_TONES = ['#e8ba9b', '#d69c77', '#b87a56', '#8c563c', '#f2cbb0'];
+const HAIR_COLORS = ['#22181c', '#4a2e1f', '#8c5a32', '#d9b06a', '#1b1620'];
 
 export class NpcSystem {
   public readonly npcs: NpcEntity[] = [];
@@ -40,7 +52,6 @@ export class NpcSystem {
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
-    // Spawn initial coastal pedestrians around the blocks
     for (let i = 0; i < 12; i++) {
       this.spawnCivilian();
     }
@@ -53,7 +64,6 @@ export class NpcSystem {
   }
 
   public spawnPoliceNear(playerPos: THREE.Vector3): NpcEntity {
-    // Pick a street corner ~28-44m away from the player
     const angle = Math.random() * Math.PI * 2;
     const dist = 28 + Math.random() * 14;
     const x = THREE.MathUtils.clamp(playerPos.x + Math.cos(angle) * dist, -62, 66);
@@ -64,7 +74,7 @@ export class NpcSystem {
   }
 
   public spawnBountyTarget(x: number, z: number): NpcEntity {
-    const boss = this.createNpc('bounty', x, z, '#ff2e88', 110);
+    const boss = this.createNpc('bounty', x, z, '#f5f0eb', 110);
     boss.state = 'walk';
     return boss;
   }
@@ -98,6 +108,7 @@ export class NpcSystem {
         const dist = Math.sqrt(dSq);
         const dmg = maxDamage * (1 - dist / radius);
         npc.hp -= dmg;
+        npc.flinchTimer = 0.22;
         if (npc.hp <= 0) {
           this.killNpc(npc);
         } else if (npc.role === 'civilian') {
@@ -116,6 +127,7 @@ export class NpcSystem {
         mesh: npc.group,
         onHit: (damage: number) => {
           npc.hp -= damage;
+          npc.flinchTimer = 0.18;
           if (npc.role === 'civilian') npc.state = 'flee';
           else npc.state = 'pursue';
 
@@ -151,22 +163,21 @@ export class NpcSystem {
   private killNpc(npc: NpcEntity): void {
     if (!npc.alive) return;
     npc.alive = false;
-    npc.deathTimer = 5.0;
-    npc.group.rotation.x = -Math.PI / 2;
-    npc.group.position.y = 0.25;
+    npc.deathTimer = 5.5;
+    npc.fallProgress = 0;
+    npc.fallDir = Math.random() > 0.5 ? 1 : -1;
+    if (npc.muzzleFlash) npc.muzzleFlash.visible = false;
     this.onNpcKilled?.(npc);
   }
 
   public update(dt: number, playerPos: THREE.Vector3, wantedStars: number): void {
     const clampedDt = Math.min(dt, 0.05);
 
-    // Maintain police presence matching Wanted Level
     const desiredPolice = wantedStars === 0 ? 0 : Math.min(7, wantedStars + 1);
     if (this.getAlivePoliceCount() < desiredPolice && Math.random() < clampedDt * 0.9) {
       this.spawnPoliceNear(playerPos);
     }
 
-    // Keep at least 10 civilians alive in the district
     const aliveCivs = this.npcs.filter((n) => n.alive && n.role === 'civilian').length;
     if (aliveCivs < 10 && Math.random() < clampedDt * 0.6) {
       this.spawnCivilian();
@@ -176,6 +187,13 @@ export class NpcSystem {
       const npc = this.npcs[i];
 
       if (!npc.alive) {
+        // Smooth ragdoll-style fall onto the pavement
+        npc.fallProgress = Math.min(1, npc.fallProgress + clampedDt * 3.4);
+        const eased = 1 - Math.pow(1 - npc.fallProgress, 2);
+        npc.bodyRoot.rotation.x = -eased * (Math.PI / 2);
+        npc.bodyRoot.rotation.z = eased * npc.fallDir * 0.24;
+        npc.bodyRoot.position.y = eased * 0.16;
+
         npc.deathTimer -= clampedDt;
         if (npc.deathTimer <= 0) {
           this.scene.remove(npc.group);
@@ -184,6 +202,21 @@ export class NpcSystem {
         continue;
       }
 
+      // Muzzle flash decay
+      if (npc.muzzleTimer > 0) {
+        npc.muzzleTimer -= clampedDt;
+        if (npc.muzzleTimer <= 0 && npc.muzzleFlash) {
+          npc.muzzleFlash.visible = false;
+        }
+      }
+
+      // Hit flinch tilt recovery
+      if (npc.flinchTimer > 0) {
+        npc.flinchTimer = Math.max(0, npc.flinchTimer - clampedDt);
+      }
+      const targetFlinch = npc.flinchTimer > 0 ? -0.28 : 0;
+      npc.bodyRoot.rotation.x += (targetFlinch - npc.bodyRoot.rotation.x) * (1 - Math.exp(-16 * clampedDt));
+
       const toPlayerX = playerPos.x - npc.position.x;
       const toPlayerZ = playerPos.z - npc.position.z;
       const distToPlayer = Math.hypot(toPlayerX, toPlayerZ);
@@ -191,6 +224,7 @@ export class NpcSystem {
       let moveX = 0;
       let moveZ = 0;
       let moveSpeed = 0;
+      let aiming = false;
 
       if (npc.role === 'civilian') {
         if (npc.state === 'flee') {
@@ -214,12 +248,10 @@ export class NpcSystem {
           }
         }
       } else {
-        // Police or Bounty Enforcer AI
         const shouldEngage = npc.role === 'police' ? wantedStars > 0 : distToPlayer < 34 || npc.hp < npc.maxHp;
 
         if (!shouldEngage) {
           if (npc.role === 'police' && wantedStars === 0 && distToPlayer > 35) {
-            // Despawn distant idle cops when heat clears
             this.scene.remove(npc.group);
             this.npcs.splice(i, 1);
             continue;
@@ -235,6 +267,7 @@ export class NpcSystem {
             moveSpeed = 2.2;
           }
         } else {
+          aiming = distToPlayer < 28;
           const preferredRange = npc.role === 'bounty' ? 14 : 17;
           if (distToPlayer > preferredRange) {
             npc.state = 'pursue';
@@ -246,27 +279,53 @@ export class NpcSystem {
             npc.yaw = Math.atan2(toPlayerX, toPlayerZ);
           }
 
-          // Shoot at player when in range
           npc.fireCooldown -= clampedDt;
-          if (distToPlayer < 28 && npc.fireCooldown <= 0) {
+          if (aiming && npc.fireCooldown <= 0) {
             npc.fireCooldown = npc.role === 'bounty' ? 0.95 : 1.35;
             this.fireNpcShot(npc, playerPos);
           }
         }
       }
 
+      // Limb & Body Animation
+      const animBlend = 1 - Math.exp(-12 * clampedDt);
       if (moveSpeed > 0.05) {
         npc.position.x = THREE.MathUtils.clamp(npc.position.x + moveX * moveSpeed * clampedDt, -65, 72);
         npc.position.z = THREE.MathUtils.clamp(npc.position.z + moveZ * moveSpeed * clampedDt, -65, 65);
         npc.yaw = Math.atan2(moveX, moveZ);
 
-        npc.walkPhase += clampedDt * moveSpeed * 2.8;
-        const swing = Math.sin(npc.walkPhase) * 0.55;
-        npc.leftLeg.rotation.x = swing;
-        npc.rightLeg.rotation.x = -swing;
+        npc.walkPhase += clampedDt * moveSpeed * 2.9;
+        const swing = Math.sin(npc.walkPhase) * (moveSpeed > 3.5 ? 0.72 : 0.48);
+        npc.leftLegPivot.rotation.x = swing;
+        npc.rightLegPivot.rotation.x = -swing;
+        npc.bodyRoot.position.y = Math.abs(Math.sin(npc.walkPhase)) * 0.045;
+
+        if (npc.role === 'civilian' && npc.state === 'flee') {
+          // Panic arms raised while fleeing
+          const panicWave = Math.sin(npc.walkPhase * 1.4) * 0.22;
+          npc.leftArmPivot.rotation.x += (-2.5 + panicWave - npc.leftArmPivot.rotation.x) * animBlend;
+          npc.rightArmPivot.rotation.x += (-2.5 - panicWave - npc.rightArmPivot.rotation.x) * animBlend;
+        } else if (aiming) {
+          // Aim weapon straight ahead while moving
+          npc.rightArmPivot.rotation.x += (-1.52 - npc.rightArmPivot.rotation.x) * animBlend;
+          npc.leftArmPivot.rotation.x += (-1.25 - npc.leftArmPivot.rotation.x) * animBlend;
+        } else {
+          // Natural opposite arm swing
+          npc.leftArmPivot.rotation.x += (-swing * 0.7 - npc.leftArmPivot.rotation.x) * animBlend;
+          npc.rightArmPivot.rotation.x += (swing * 0.7 - npc.rightArmPivot.rotation.x) * animBlend;
+        }
       } else {
-        npc.leftLeg.rotation.x *= 0.85;
-        npc.rightLeg.rotation.x *= 0.85;
+        npc.leftLegPivot.rotation.x *= 0.84;
+        npc.rightLegPivot.rotation.x *= 0.84;
+        npc.bodyRoot.position.y *= 0.84;
+        if (aiming) {
+          const recoilLift = npc.muzzleTimer > 0 ? -0.25 : 0;
+          npc.rightArmPivot.rotation.x += (-1.55 + recoilLift - npc.rightArmPivot.rotation.x) * animBlend;
+          npc.leftArmPivot.rotation.x += (-1.35 - npc.leftArmPivot.rotation.x) * animBlend;
+        } else {
+          npc.leftArmPivot.rotation.x *= 0.85;
+          npc.rightArmPivot.rotation.x *= 0.85;
+        }
       }
 
       npc.group.position.x = npc.position.x;
@@ -288,7 +347,14 @@ export class NpcSystem {
   }
 
   private fireNpcShot(npc: NpcEntity, playerPos: THREE.Vector3): void {
-    const start = new THREE.Vector3(npc.position.x, npc.position.y + 1.35, npc.position.z);
+    if (npc.muzzleFlash) {
+      npc.muzzleFlash.visible = true;
+      npc.muzzleTimer = 0.07;
+    }
+
+    const fwdX = Math.sin(npc.yaw);
+    const fwdZ = Math.cos(npc.yaw);
+    const start = new THREE.Vector3(npc.position.x + fwdX * 0.55, npc.position.y + 1.32, npc.position.z + fwdZ * 0.55);
     const jitter = new THREE.Vector3(
       (Math.random() - 0.5) * 1.4,
       (Math.random() - 0.5) * 0.8 + 1.1,
@@ -306,7 +372,6 @@ export class NpcSystem {
     this.scene.add(line);
     this.enemyTracers.push({ line, life: 0.1 });
 
-    // Fair hit probability based on distance
     const dist = npc.position.distanceTo(playerPos);
     const hitChance = THREE.MathUtils.clamp(0.52 - dist * 0.012, 0.12, 0.48);
     if (Math.random() < hitChance) {
@@ -314,67 +379,212 @@ export class NpcSystem {
     }
   }
 
+  /**
+   * Builds a detailed Vice-City-style articulated character with:
+   * - Procedural face texture (eyes / 80s sunglasses / mustache)
+   * - Procedural outfit texture (Miami Hawaiian / pastel blazer / Vice PD uniform / white suit)
+   * - Hairstyles / caps, belt, shoes, pivoted arms & legs, and 3D weapons + muzzle flash
+   */
   private createNpc(role: NpcRole, x: number, z: number, shirtColor: string, maxHp: number): NpcEntity {
+    const seed = this.nextId++;
     const group = new THREE.Group();
     group.position.set(x, 0.18, z);
 
-    const skinMat = new THREE.MeshStandardMaterial({ color: '#d9a484', roughness: 0.75 });
-    const shirtMat = new THREE.MeshStandardMaterial({
-      color: shirtColor,
-      emissive: role === 'bounty' ? '#ff2e88' : '#000000',
-      emissiveIntensity: role === 'bounty' ? 0.5 : 0,
+    const bodyRoot = new THREE.Group();
+    group.add(bodyRoot);
+
+    const skinColor = SKIN_TONES[seed % SKIN_TONES.length];
+    const hairColor = HAIR_COLORS[(seed * 3) % HAIR_COLORS.length];
+    const accentColor = CIV_ACCENTS[seed % CIV_ACCENTS.length];
+    const wearsSunglasses = role === 'bounty' || role === 'police' || seed % 2 === 0;
+    const hasMustache = role === 'police' ? seed % 2 === 0 : seed % 4 === 1;
+
+    const skinMat = new THREE.MeshStandardMaterial({ color: skinColor, roughness: 0.72 });
+    const hairMat = new THREE.MeshStandardMaterial({ color: hairColor, roughness: 0.82 });
+    const outfitTex = getOutfitTexture(role, shirtColor, accentColor, seed);
+    const torsoMat = new THREE.MeshStandardMaterial({
+      map: outfitTex,
       roughness: 0.65,
     });
-    const pantsMat = new THREE.MeshStandardMaterial({
-      color: role === 'police' ? '#141a2b' : '#352b42',
-      roughness: 0.8,
+    const sleeveMat = new THREE.MeshStandardMaterial({
+      color: role === 'bounty' ? '#f5f0eb' : shirtColor,
+      roughness: 0.65,
+    });
+    const pantsColor =
+      role === 'police'
+        ? '#141d33'
+        : role === 'bounty'
+          ? '#efeae4'
+          : seed % 3 === 0
+            ? '#f0e2ce'
+            : '#2c3047';
+    const pantsMat = new THREE.MeshStandardMaterial({ color: pantsColor, roughness: 0.78 });
+    const shoeMat = new THREE.MeshStandardMaterial({
+      color: role === 'police' ? '#141418' : '#f4eee8',
+      roughness: 0.55,
     });
 
-    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.68, 0.28), shirtMat);
-    torso.position.y = 1.08;
+    // Pelvis & Belt
+    const pelvis = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.16, 0.26), pantsMat);
+    pelvis.position.y = 0.78;
+    bodyRoot.add(pelvis);
+
+    const belt = new THREE.Mesh(
+      new THREE.BoxGeometry(0.48, 0.06, 0.28),
+      new THREE.MeshStandardMaterial({ color: '#1b151e', roughness: 0.4 }),
+    );
+    belt.position.y = 0.86;
+    bodyRoot.add(belt);
+
+    // Torso (broad shoulders, textured front/back)
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.58, 0.26), torsoMat);
+    torso.position.y = 1.16;
     torso.castShadow = true;
-    group.add(torso);
+    bodyRoot.add(torso);
 
-    const head = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.32, 0.32), skinMat);
-    head.position.y = 1.62;
+    // Neck
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.09, 0.1, 8), skinMat);
+    neck.position.y = 1.48;
+    bodyRoot.add(neck);
+
+    // Head with procedural face texture on front (+Z)
+    const faceTex = getFaceTexture(skinColor, wearsSunglasses, hasMustache);
+    const faceMat = new THREE.MeshStandardMaterial({ map: faceTex, roughness: 0.65 });
+    const headMats = [skinMat, skinMat, hairMat, skinMat, faceMat, hairMat];
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.3, 0.28), headMats);
+    head.position.y = 1.65;
     head.castShadow = true;
-    group.add(head);
+    bodyRoot.add(head);
 
+    // Hairstyles / Headgear
     if (role === 'police') {
-      const cap = new THREE.Mesh(
-        new THREE.BoxGeometry(0.35, 0.12, 0.38),
-        new THREE.MeshStandardMaterial({ color: '#132245', roughness: 0.6 }),
-      );
-      cap.position.set(0, 1.82, 0.03);
-      group.add(cap);
+      const capMat = new THREE.MeshStandardMaterial({ color: '#132245', roughness: 0.5 });
+      const capTop = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.1, 0.32), capMat);
+      capTop.position.set(0, 1.83, 0);
+      bodyRoot.add(capTop);
+      const brim = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.03, 0.14), new THREE.MeshStandardMaterial({ color: '#0c1018', roughness: 0.25 }));
+      brim.position.set(0, 1.79, 0.18);
+      bodyRoot.add(brim);
+      const emblem = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.02), new THREE.MeshStandardMaterial({ color: '#ffd15c', metalness: 0.8, roughness: 0.2 }));
+      emblem.position.set(0, 1.83, 0.17);
+      bodyRoot.add(emblem);
     } else if (role === 'bounty') {
-      // Glowing marker halo above bounty target
+      // Slicked 80s hair + glowing target halo
+      const hair = new THREE.Mesh(new THREE.BoxGeometry(0.31, 0.09, 0.31), hairMat);
+      hair.position.set(0, 1.82, -0.02);
+      bodyRoot.add(hair);
       const halo = new THREE.Mesh(
-        new THREE.TorusGeometry(0.28, 0.04, 8, 16),
+        new THREE.TorusGeometry(0.28, 0.035, 8, 16),
         new THREE.MeshBasicMaterial({ color: '#ff4fa3' }),
       );
       halo.rotation.x = Math.PI / 2;
-      halo.position.y = 2.05;
-      group.add(halo);
+      halo.position.y = 2.08;
+      bodyRoot.add(halo);
+    } else {
+      // Civilian hair variety: feathered 80s cut, ponytail, or coastal cap
+      const style = seed % 3;
+      if (style === 0) {
+        const hair = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.12, 0.32), hairMat);
+        hair.position.set(0, 1.81, -0.02);
+        bodyRoot.add(hair);
+      } else if (style === 1) {
+        const hair = new THREE.Mesh(new THREE.BoxGeometry(0.31, 0.11, 0.3), hairMat);
+        hair.position.set(0, 1.81, -0.02);
+        bodyRoot.add(hair);
+        const ponytail = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.24, 0.11), hairMat);
+        ponytail.position.set(0, 1.66, -0.18);
+        bodyRoot.add(ponytail);
+      } else {
+        const capMat = new THREE.MeshStandardMaterial({ color: accentColor, roughness: 0.6 });
+        const cap = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.09, 0.3), capMat);
+        cap.position.set(0, 1.82, 0);
+        bodyRoot.add(cap);
+        const visor = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.025, 0.13), capMat);
+        visor.position.set(0, 1.78, 0.18);
+        bodyRoot.add(visor);
+      }
     }
 
-    const legGeo = new THREE.BoxGeometry(0.18, 0.72, 0.2);
-    const leftLeg = new THREE.Mesh(legGeo, pantsMat);
-    leftLeg.position.set(-0.14, 0.36, 0);
-    leftLeg.castShadow = true;
-    group.add(leftLeg);
+    // Articulated Arms (pivoted at shoulders)
+    const buildArm = (side: -1 | 1, withWeapon: boolean): { pivot: THREE.Group; flash?: THREE.Mesh } => {
+      const pivot = new THREE.Group();
+      pivot.position.set(side * 0.31, 1.38, 0);
 
-    const rightLeg = new THREE.Mesh(legGeo, pantsMat);
-    rightLeg.position.set(0.14, 0.36, 0);
-    rightLeg.castShadow = true;
-    group.add(rightLeg);
+      const upper = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.28, 0.14), sleeveMat);
+      upper.position.y = -0.12;
+      upper.castShadow = true;
+      pivot.add(upper);
+
+      const lower = new THREE.Mesh(
+        new THREE.BoxGeometry(0.12, 0.26, 0.12),
+        role === 'bounty' ? sleeveMat : skinMat,
+      );
+      lower.position.y = -0.36;
+      pivot.add(lower);
+
+      const hand = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.1), skinMat);
+      hand.position.y = -0.52;
+      pivot.add(hand);
+
+      let flash: THREE.Mesh | undefined;
+      if (withWeapon) {
+        const gunMat = new THREE.MeshStandardMaterial({ color: '#24202b', metalness: 0.75, roughness: 0.3 });
+        const barrelLen = role === 'bounty' ? 0.34 : 0.24;
+        const gun = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.08, barrelLen), gunMat);
+        gun.position.set(0, -0.56, barrelLen * 0.35);
+        gun.rotation.x = Math.PI / 2;
+        pivot.add(gun);
+
+        flash = new THREE.Mesh(
+          new THREE.OctahedronGeometry(0.09, 0),
+          new THREE.MeshBasicMaterial({ color: role === 'bounty' ? '#ff4fa3' : '#ffcf66' }),
+        );
+        flash.position.set(0, -0.56 - barrelLen * 0.4, 0.08);
+        flash.visible = false;
+        pivot.add(flash);
+      }
+
+      bodyRoot.add(pivot);
+      return { pivot, flash };
+    };
+
+    const leftArm = buildArm(-1, false);
+    const rightArm = buildArm(1, role === 'police' || role === 'bounty');
+
+    // Articulated Legs + Shoes (pivoted at hips)
+    const buildLeg = (side: -1 | 1): THREE.Group => {
+      const pivot = new THREE.Group();
+      pivot.position.set(side * 0.13, 0.74, 0);
+
+      const isShorts = role === 'civilian' && seed % 2 === 1;
+      const upper = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.36, 0.18), pantsMat);
+      upper.position.y = -0.18;
+      upper.castShadow = true;
+      pivot.add(upper);
+
+      const lower = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.32, 0.16), isShorts ? skinMat : pantsMat);
+      lower.position.y = -0.5;
+      lower.castShadow = true;
+      pivot.add(lower);
+
+      const shoe = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.1, 0.26), shoeMat);
+      shoe.position.set(0, -0.69, 0.04);
+      pivot.add(shoe);
+
+      bodyRoot.add(pivot);
+      return pivot;
+    };
+
+    const leftLegPivot = buildLeg(-1);
+    const rightLegPivot = buildLeg(1);
 
     this.scene.add(group);
 
     const npc: NpcEntity = {
-      id: `npc-${this.nextId++}`,
+      id: `npc-${seed}`,
       role,
       group,
+      bodyRoot,
       position: new THREE.Vector3(x, 0.18, z),
       yaw: Math.random() * Math.PI * 2,
       hp: maxHp,
@@ -383,9 +593,16 @@ export class NpcSystem {
       state: 'walk',
       walkPhase: Math.random() * 6,
       fireCooldown: 0.6 + Math.random() * 0.8,
+      flinchTimer: 0,
+      muzzleTimer: 0,
+      fallProgress: 0,
+      fallDir: 1,
       targetPos: this.randomSidewalkPoint(),
-      leftLeg,
-      rightLeg,
+      leftLegPivot,
+      rightLegPivot,
+      leftArmPivot: leftArm.pivot,
+      rightArmPivot: rightArm.pivot,
+      muzzleFlash: rightArm.flash,
       deathTimer: 0,
     };
     this.npcs.push(npc);

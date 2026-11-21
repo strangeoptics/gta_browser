@@ -16,4 +16,5 @@ export interface PlayerStatus {
   grounded: boolean;
   sprinting: boolean;
   crouching: boolean;
+  swimming: boolean;
 }

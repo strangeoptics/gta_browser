@@ -1213,6 +1213,7 @@ function animate(now: number): void {
   let playerSpeed = 0;
   let playerGrounded = true;
   let playerCrouching = false;
+  let playerSwimming = false;
   let headingYaw = player.getYaw();
 
   if (!inAnyCraft) {
@@ -1233,6 +1234,7 @@ function animate(now: number): void {
     playerSpeed = status.speed;
     playerGrounded = status.grounded;
     playerCrouching = status.crouching;
+    playerSwimming = status.swimming;
   } else if (inVehicle) {
     const car = vehicles.getActiveVehicle();
     if (car) {
@@ -1454,8 +1456,8 @@ function animate(now: number): void {
   }
   weapons.setHandMode(Boolean(lookedFood) || Boolean(lookedCabinetWeapon) || lookedAtTv || handHoldTimer > 0);
 
-  const wHud = weapons.update(dt, isPlaying && !inAnyCraft, playerSpeed, world.worldMeshes, shootables, pad, drunkLevel);
-  weapons.setViewmodelVisible(!inAnyCraft && !player.isThirdPerson());
+  const wHud = weapons.update(dt, isPlaying && !inAnyCraft && !playerSwimming, playerSpeed, world.worldMeshes, shootables, pad, drunkLevel);
+  weapons.setViewmodelVisible(!inAnyCraft && !player.isThirdPerson() && !playerSwimming);
   playerAvatar.setVisible(!inAnyCraft && player.isThirdPerson());
   playerAvatar.update(
     dt,
@@ -1466,6 +1468,7 @@ function animate(now: number): void {
     playerCrouching,
     wHud.ads,
     wHud.isMelee,
+    playerSwimming,
   );
   if (inVehicle) {
     const car = vehicles.getActiveVehicle();

@@ -983,18 +983,12 @@ export function buildNorthPoint(
     // Fast broad-phase reject outside Cape Vice Cliff & Serpentine bounding box
     if (x < 39 || x > 106 || z < -134 || z > -76) return null;
 
-    let bestY: number | null = null;
-
-    // 1) Check flat 11m Lighthouse Summit Plateau
-    const dxC = x - CLIFF_CX;
-    const dzC = z - CLIFF_CZ;
-    const distC = Math.hypot(dxC, dzC);
-    if (distC <= PLATEAU_R + 0.6) {
-      bestY = PLATEAU_Y;
-    }
-
-    // 2) Check distance to each Serpentine Road segment for smooth climb/descent
+    // 1) Find the CLOSEST point on the Serpentine Road spline (NOT the highest!)
+    // Using closest projection guarantees a 100% smooth, continuous ramp with zero stair-stepping!
     const roadHitDistSq = (HALF_W + 0.55) * (HALF_W + 0.55);
+    let bestRoadDistSq = roadHitDistSq;
+    let roadY: number | null = null;
+
     for (let i = 0; i < ROAD_SEGS; i++) {
       const a = samples[i].pos;
       const b = samples[i + 1].pos;
@@ -1007,15 +1001,23 @@ export function buildNorthPoint(
       const px = a.x + abx * t;
       const pz = a.z + abz * t;
       const dSq = (x - px) * (x - px) + (z - pz) * (z - pz);
-      if (dSq <= roadHitDistSq) {
-        const y = a.y + (b.y - a.y) * t;
-        if (bestY === null || y > bestY) {
-          bestY = y;
-        }
+      if (dSq < bestRoadDistSq) {
+        bestRoadDistSq = dSq;
+        roadY = a.y + (b.y - a.y) * t;
       }
     }
 
-    return bestY;
+    // 2) Check flat 11m Lighthouse Summit Plateau
+    const dxC = x - CLIFF_CX;
+    const dzC = z - CLIFF_CZ;
+    const onPlateau = dxC * dxC + dzC * dzC <= (PLATEAU_R + 0.4) * (PLATEAU_R + 0.4);
+
+    if (roadY !== null) {
+      // Smooth merge into the 11m summit plateau at the top of the serpentine
+      return onPlateau && roadY > PLATEAU_Y - 1.2 ? Math.max(roadY, PLATEAU_Y) : roadY;
+    }
+
+    return onPlateau ? PLATEAU_Y : null;
   };
 
   // ===========================================================================

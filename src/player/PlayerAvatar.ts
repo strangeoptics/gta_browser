@@ -183,6 +183,7 @@ export class PlayerAvatar {
     crouching: boolean,
     aiming: boolean,
     isKatana: boolean,
+    swimming = false,
   ): void {
     if (!this.group.visible) return;
     const clampedDt = Math.min(dt, 0.05);
@@ -191,14 +192,60 @@ export class PlayerAvatar {
     // Player camera looks along (-sin(yaw), -cos(yaw)); avatar faces +Z locally -> yaw + PI
     this.group.rotation.y = yaw + Math.PI;
 
-    this.gunMesh.visible = !isKatana;
-    this.katanaMesh.visible = isKatana;
+    this.gunMesh.visible = !isKatana && !swimming;
+    this.katanaMesh.visible = isKatana && !swimming;
 
-    // Crouch squash
-    const targetScaleY = crouching ? 0.72 : 1.0;
+    // Crouch squash (upright while swimming)
+    const targetScaleY = crouching && !swimming ? 0.72 : 1.0;
     this.bodyRoot.scale.y += (targetScaleY - this.bodyRoot.scale.y) * (1 - Math.exp(-12 * clampedDt));
 
-    const blend = 1 - Math.exp(-12 * clampedDt);
+    const blend = 1 - Math.exp(-10 * clampedDt);
+    if (swimming) {
+      const moving = speed > 0.55;
+      const strokeRate = moving ? (speed > 5.2 ? 7.8 : 5.6) : 2.6;
+      this.walkPhase += clampedDt * strokeRate;
+
+      // Smoothly pitch torso prone for freestyle crawl when moving, or upright treading water when idle
+      const targetPitch = moving ? 1.18 : 0.22;
+      const targetRoll = moving ? Math.sin(this.walkPhase) * 0.22 : 0;
+      const targetLiftY = (moving ? 0.52 : 0.28) + Math.sin(this.walkPhase * (moving ? 1.0 : 1.5)) * 0.055;
+      this.bodyRoot.rotation.x += (targetPitch - this.bodyRoot.rotation.x) * blend;
+      this.bodyRoot.rotation.z += (targetRoll - this.bodyRoot.rotation.z) * blend;
+      this.bodyRoot.position.y += (targetLiftY - this.bodyRoot.position.y) * blend;
+
+      if (moving) {
+        // Freestyle crawl: alternating overhead arm strokes + fast flutter kick!
+        const leftStroke = -Math.PI * 0.5 - Math.cos(this.walkPhase) * 1.45;
+        const rightStroke = -Math.PI * 0.5 + Math.cos(this.walkPhase) * 1.45;
+        this.leftArmPivot.rotation.x += (leftStroke - this.leftArmPivot.rotation.x) * blend;
+        this.rightArmPivot.rotation.x += (rightStroke - this.rightArmPivot.rotation.x) * blend;
+        this.leftArmPivot.rotation.z += ((0.28 + Math.sin(this.walkPhase) * 0.22) - this.leftArmPivot.rotation.z) * blend;
+        this.rightArmPivot.rotation.z += ((-0.28 + Math.sin(this.walkPhase) * 0.22) - this.rightArmPivot.rotation.z) * blend;
+
+        const kick = Math.sin(this.walkPhase * 2.2) * 0.48;
+        this.leftLegPivot.rotation.x = kick;
+        this.rightLegPivot.rotation.x = -kick;
+      } else {
+        // Treading water: gentle breaststroke arm sweeps & slow alternating leg kicks
+        const sweep = Math.sin(this.walkPhase);
+        this.leftArmPivot.rotation.x += ((-0.65 + sweep * 0.35) - this.leftArmPivot.rotation.x) * blend;
+        this.rightArmPivot.rotation.x += ((-0.65 + sweep * 0.35) - this.rightArmPivot.rotation.x) * blend;
+        this.leftArmPivot.rotation.z += ((0.45 + Math.cos(this.walkPhase) * 0.35) - this.leftArmPivot.rotation.z) * blend;
+        this.rightArmPivot.rotation.z += ((-0.45 - Math.cos(this.walkPhase) * 0.35) - this.rightArmPivot.rotation.z) * blend;
+
+        const tread = Math.sin(this.walkPhase * 1.5) * 0.34;
+        this.leftLegPivot.rotation.x = tread;
+        this.rightLegPivot.rotation.x = -tread;
+      }
+      return;
+    }
+
+    // Smoothly reset swim posture back to standing
+    this.bodyRoot.rotation.x += (0 - this.bodyRoot.rotation.x) * blend;
+    this.bodyRoot.rotation.z += (0 - this.bodyRoot.rotation.z) * blend;
+    this.leftArmPivot.rotation.z += (0 - this.leftArmPivot.rotation.z) * blend;
+    this.rightArmPivot.rotation.z += (0 - this.rightArmPivot.rotation.z) * blend;
+
     if (grounded && speed > 0.5) {
       this.walkPhase += clampedDt * speed * 2.1;
       const swing = Math.sin(this.walkPhase) * (speed > 7.5 ? 0.75 : 0.48);

@@ -21,6 +21,8 @@ export class PlayerController {
   private lastMouseY = 0;
   private grounded = false;
   private crouching = false;
+  private swimming = false;
+  private swimTimer = 0;
   private thirdPerson = false;
   private readonly camRaycaster = new THREE.Raycaster();
 
@@ -235,15 +237,19 @@ export class PlayerController {
       this.yaw += Math.sin(t * 1.45) * drunkLevel * 0.14 * clampedDt;
     }
 
-    const targetSpeed = this.crouching
-      ? this.crouchSpeed
-      : wantsSprint
-        ? this.sprintSpeed
-        : this.walkSpeed;
+    const targetSpeed = this.swimming
+      ? wantsSprint
+        ? 6.6
+        : 4.5
+      : this.crouching
+        ? this.crouchSpeed
+        : wantsSprint
+          ? this.sprintSpeed
+          : this.walkSpeed;
 
     const targetVx = this.wishDir.x * targetSpeed;
     const targetVz = this.wishDir.z * targetSpeed;
-    const accel = this.grounded ? this.accelGround : this.accelAir;
+    const accel = this.swimming ? 5.2 : this.grounded ? this.accelGround : this.accelAir;
     const blend = 1 - Math.exp(-accel * clampedDt);
 
     this.velocity.x += (targetVx - this.velocity.x) * blend;
@@ -251,7 +257,7 @@ export class PlayerController {
 
     // Jump (Space or Gamepad A)
     const wantsJump = this.keys.has('Space') || Boolean(pad?.connected && pad.jump);
-    if (active && this.grounded && wantsJump && !this.crouching) {
+    if (active && this.grounded && wantsJump && !this.crouching && !this.swimming) {
       this.velocity.y = this.jumpSpeed;
       this.grounded = false;
     }
@@ -289,15 +295,23 @@ export class PlayerController {
     this.position.set(resolved.x, resolved.y, resolved.z);
     this.velocity.y = resolved.vy;
     this.grounded = resolved.grounded;
+    this.swimming = baseGroundY < -0.32 && this.position.y < -0.26;
 
-    // Smooth eye height & subtle head-bob
-    const targetEye = this.crouching ? this.crouchEye : this.standEye;
-    this.currentEyeHeight += (targetEye - this.currentEyeHeight) * (1 - Math.exp(-12 * clampedDt));
+    // Smooth eye height & subtle head-bob (or rhythmic freestyle swim bobbing in water!)
+    const targetEye = this.swimming ? 1.02 : this.crouching ? this.crouchEye : this.standEye;
+    this.currentEyeHeight += (targetEye - this.currentEyeHeight) * (1 - Math.exp(-10 * clampedDt));
 
     const horizSpeed = Math.hypot(this.velocity.x, this.velocity.z);
     let bobOffsetY = 0;
     let bobOffsetX = 0;
-    if (this.grounded && horizSpeed > 0.6) {
+    let swimRoll = 0;
+    if (this.swimming) {
+      const strokeRate = horizSpeed > 0.6 ? (wantsSprint ? 6.8 : 4.8) : 2.2;
+      this.swimTimer += clampedDt * strokeRate;
+      bobOffsetY = Math.sin(this.swimTimer) * (horizSpeed > 0.6 ? 0.085 : 0.045);
+      bobOffsetX = Math.cos(this.swimTimer * 0.5) * (horizSpeed > 0.6 ? 0.06 : 0.02);
+      swimRoll = horizSpeed > 0.6 ? Math.sin(this.swimTimer * 0.5) * 0.045 : 0;
+    } else if (this.grounded && horizSpeed > 0.6) {
       const bobFreq = wantsSprint ? 13.5 : 9.2;
       const bobAmp = wantsSprint ? 0.065 : 0.038;
       this.bobTimer += clampedDt * bobFreq;
@@ -340,7 +354,7 @@ export class PlayerController {
       );
       this.camera.rotation.y = this.yaw;
       this.camera.rotation.x = this.pitch;
-      this.camera.rotation.z = 0;
+      this.camera.rotation.z = swimRoll;
     }
 
     return {
@@ -351,6 +365,7 @@ export class PlayerController {
       grounded: this.grounded,
       sprinting: wantsSprint && horizSpeed > 1.0,
       crouching: this.crouching,
+      swimming: this.swimming,
     };
   }
 }

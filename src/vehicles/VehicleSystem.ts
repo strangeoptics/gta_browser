@@ -532,6 +532,7 @@ export class VehicleSystem {
     pad?: GamepadSnapshot,
     stuntRamps?: StuntRamp[],
     shouldTrafficStop?: (x: number, z: number, yaw: number) => boolean,
+    drunkLevel = 0,
   ): DrivingHudState {
     const clampedDt = Math.min(dt, 0.05);
     this.ramCooldown = Math.max(0, this.ramCooldown - clampedDt);
@@ -588,7 +589,7 @@ export class VehicleSystem {
       }
 
       if (v === this.activeVehicle) {
-        this.updatePlayerDrivenCar(v, clampedDt, isActive, solidColliders, bounds, pad, stuntRamps);
+        this.updatePlayerDrivenCar(v, clampedDt, elapsed, isActive, solidColliders, bounds, pad, stuntRamps, drunkLevel);
       } else if (v.isPursuitUnit && wantedStars >= 2) {
         // Active Vice PD Cruiser chase!
         this.updatePolicePursuitCar(v, clampedDt, playerPos, solidColliders, bounds);
@@ -782,11 +783,13 @@ export class VehicleSystem {
   private updatePlayerDrivenCar(
     v: Vehicle,
     dt: number,
+    elapsed: number,
     isActive: boolean,
     solidColliders: AABB[],
     bounds: { minX: number; maxX: number; minZ: number; maxZ: number },
     pad?: GamepadSnapshot,
     stuntRamps?: StuntRamp[],
+    drunkLevel = 0,
   ): void {
     const kbAccel = (this.keys.has('KeyW') ? 1 : 0) - (this.keys.has('KeyS') ? 1 : 0);
     const kbSteer = (this.keys.has('KeyA') ? 1 : 0) - (this.keys.has('KeyD') ? 1 : 0);
@@ -794,7 +797,11 @@ export class VehicleSystem {
     const padSteer = pad?.connected ? -pad.moveX : 0;
 
     const accelInput = isActive ? THREE.MathUtils.clamp(kbAccel + padAccel, -1, 1) : 0;
-    const steerInput = isActive ? THREE.MathUtils.clamp(kbSteer + padSteer, -1, 1) : 0;
+    const drunkSteerDrift =
+      drunkLevel > 0.02
+        ? (Math.sin(elapsed * 1.75) * 0.52 + Math.sin(elapsed * 3.35) * 0.24) * drunkLevel
+        : 0;
+    const steerInput = isActive ? THREE.MathUtils.clamp(kbSteer + padSteer + drunkSteerDrift, -1.2, 1.2) : 0;
     const handbrake = isActive && (this.keys.has('Space') || Boolean(pad?.connected && pad.handbrake));
 
     const maxForward = v.isBike ? 29.5 : 24.5;

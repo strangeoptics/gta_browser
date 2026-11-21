@@ -270,9 +270,34 @@ export function buildNeonClub(
   const barX = clubX - 5.8;
   const barMat = new THREE.MeshStandardMaterial({ color: '#1b1029', roughness: 0.22, metalness: 0.5 });
   addBox(1.2, 1.16, 9.2, barX, 0.18 + 0.58, clubZ, barMat, true, 'prop');
-  const barTrim = new THREE.Mesh(new THREE.BoxGeometry(1.28, 0.08, 9.3), pinkNeon);
+  const barTrimMat = new THREE.MeshStandardMaterial({
+    color: '#ff4fa3',
+    emissive: '#ff3d96',
+    emissiveIntensity: 0.55,
+    roughness: 0.25,
+  });
+  const barTrim = new THREE.Mesh(new THREE.BoxGeometry(1.28, 0.08, 9.3), barTrimMat);
   barTrim.position.set(barX, 0.18 + 1.18, clubZ);
   scene.add(barTrim);
+
+  // 3 Glowing Miami Vice Cocktail Glasses sitting on the bar counter
+  const cocktailColors = ['#ff4fa3', '#36f1e6', '#ff9f43'];
+  cocktailColors.forEach((col, i) => {
+    const cz = clubZ - 1.6 + i * 1.6;
+    const glass = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.085, 0.05, 0.24, 10),
+      new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 0.5, roughness: 0.14 }),
+    );
+    glass.position.set(barX + 0.15, 0.18 + 1.32, cz);
+    scene.add(glass);
+    const straw = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.01, 0.01, 0.2, 6),
+      new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.4 }),
+    );
+    straw.position.set(barX + 0.18, 0.18 + 1.46, cz);
+    straw.rotation.z = -0.25;
+    scene.add(straw);
+  });
 
   // 5 Chrome Barstools in front of the bar
   const stoolTopMat = new THREE.MeshStandardMaterial({ color: '#ff4fa3', roughness: 0.4 });
@@ -287,18 +312,24 @@ export function buildNeonClub(
   }
 
   // Backlit neon bottle wall along the back wall (x = clubX - 8.3)
+  const shelfBacklitMat = new THREE.MeshStandardMaterial({
+    color: '#2ad4cc',
+    emissive: '#1ea8a2',
+    emissiveIntensity: 0.42,
+    roughness: 0.25,
+  });
   const bottleColors = ['#36f1e6', '#ff4fa3', '#ffd15c', '#52f29c', '#a86bff'];
   const bottleGeo = new THREE.CylinderGeometry(0.055, 0.07, 0.34, 6);
   for (let shelf = 0; shelf < 3; shelf++) {
     const sy = 1.35 + shelf * 0.72;
-    const shelfBoard = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.06, 8.0), cyanNeon);
+    const shelfBoard = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.06, 8.0), shelfBacklitMat);
     shelfBoard.position.set(clubX - 8.35, sy, clubZ);
     scene.add(shelfBoard);
     for (let bz = -3.4; bz <= 3.4; bz += 0.62) {
       const col = bottleColors[Math.abs(Math.round(bz * 10) + shelf) % bottleColors.length];
       const bottle = new THREE.Mesh(
         bottleGeo,
-        new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 0.75, roughness: 0.15 }),
+        new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 0.45, roughness: 0.18 }),
       );
       bottle.position.set(clubX - 8.32, sy + 0.2, clubZ + bz);
       scene.add(bottle);
@@ -403,10 +434,10 @@ export function buildNeonClub(
       pos.z < clubZ + clubD / 2 &&
       pos.y < clubH,
     isNearBar: (pos: THREE.Vector3) =>
-      pos.x > barX + 0.3 &&
-      pos.x < barX + 3.4 &&
-      Math.abs(pos.z - clubZ) < 4.4 &&
-      pos.y < 2.2,
+      pos.x > barX - 0.5 &&
+      pos.x < barX + 4.2 &&
+      Math.abs(pos.z - clubZ) < 5.2 &&
+      pos.y < 2.4,
     getProximity: (pos: THREE.Vector3) => {
       if (
         pos.x > clubX - clubW / 2 &&

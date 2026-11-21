@@ -36,38 +36,42 @@ src/
 ├── engine/
 │   ├── GamepadInput.ts      # Browser Gamepad API poller returning GamepadSnapshot
 │   ├── Physics.ts           # AABB cylinder-approx player collision with wall-sliding, step-up (0.28m) & terrain height
-│   ├── Storage.ts           # localStorage persistence for settings & player progress (cash, missions, armor, launcher, outfit)
+│   ├── Storage.ts           # localStorage persistence (starts at $300 cash, missions, armor, launcher, 5 outfits)
 │   └── TouchControls.ts     # Mobile/tablet virtual stick + buttons (merges into GamepadSnapshot; hidden on desktop)
 ├── entities/
 │   ├── CharacterTextures.ts # Cached 128×128 procedural face (sunglasses/mustache) & 80s outfit canvas textures
 │   ├── HelicopterSystem.ts  # Vice PD Chopper (deploys at 3+ stars, sweeping SpotLight, shootable)
-│   └── NpcSystem.ts         # Articulated civilians, Vice PD & bounty NPCs, NPC colliders & separation
+│   └── NpcSystem.ts         # Articulated civilians, Vice PD & bounty NPCs, world/Safehouse wall-sliding collisions & precinct spawns
 ├── gameplay/
 │   ├── HeistSystem.ts       # 3-stage "Ocean Club Finale" story heist (+$3,500)
 │   ├── ObjectiveSystem.ts   # 5 rotating mini-objectives (stash, race, bounty, dropoff, survive)
 │   ├── PayNSpray.ts         # Drive-in respray bay at (-56, -38): repairs, repaints & clears Wanted stars
 │   ├── ShopSystem.ts        # AMMU-NEON kiosk at Central Plaza (-4.5, 4.5)
+│   ├── VigilanteSystem.ts   # Police Vigilante mode ([G]) in Vice PD vehicles with escalating bounties
 │   └── WantedSystem.ts      # 0–5 star heat & decay system
 ├── hud/
-│   └── Minimap.ts           # Rotating circular 2D-canvas radar (streets, buildings, vehicles, $, P, C, ⌂, ★, H)
+│   └── Minimap.ts           # Rotating circular 2D-canvas radar (streets, buildings, vehicles, $, P, C, ⌂, PD, ★, H)
 ├── player/
-│   ├── PlayerAvatar.ts      # 3rd-person 80s protagonist model with 4 switchable outfits & held weapon
-│   └── PlayerController.ts  # Pointer-Lock + drag/arrow fallback FPS & Over-the-Shoulder 3rd-person camera (with wall-clip raycast)
+│   ├── PlayerAvatar.ts      # 3rd-person 80s protagonist model with 5 switchable outfits (incl. Vice PD Uniform) & held weapon
+│   └── PlayerController.ts  # Pointer-Lock + drag/arrow fallback FPS & Over-the-Shoulder 3rd-person camera (with wall-clip raycast & drunk stagger)
 ├── vehicles/
 │   ├── BoatSystem.ts        # Drivable Stinger Speedboat moored off the beach pier (x~111, z=8)
-│   └── VehicleSystem.ts     # Cars + PCJ-86 Neon Bike, 2-sphere car-to-car collisions, crash damage, explosions, stunt jumps, AI traffic & police pursuit
+│   ├── MotorcycleBuilder.ts # Detailed procedural 80s superbike ("PCJ-86 NEON BIKE") with torus tires, forks, engine & rider
+│   └── VehicleSystem.ts     # Cars + PCJ-86 Bike, 2-sphere car-to-car collisions, crash damage, explosions, stunt jumps, AI traffic & police pursuit
 └── world/
     ├── BeachProps.ts        # Lifeguard tower, illuminated wooden pier, loungers, volleyball net, dune grass & circling seagulls
     ├── CityBuilder.ts       # Sky dome, PMREM reflections, wet roads, Art-Deco buildings, sloping beach, ocean shader, weather & time-of-day
     ├── CityLayout.ts        # Deterministic 3×3 city grid & reserved walk-in interior blocks
     ├── DecalSystem.ts       # Fixed-cap (150) ring buffer for drift skidmarks, blast scorches & bullet holes
     ├── DestructibleProps.ts # Smashable hydrants (water geyser), café tables & neon bins
-    ├── NeonClub.ts          # Walk-in NEON CLUB (40, 0): disco ball, floor-reaching spotlights, bar, bartender, DJ & dancers
+    ├── NeonClub.ts          # Walk-in NEON CLUB (40, 0): disco ball, floor-reaching spotlights, bar/cocktails (drunk system), bartender, DJ & dancers
+    ├── PoliceStation.ts     # Walk-in VICE PD PRECINCT 06 (-40, 0): lobby, Desk Sergeant, Wanted board, donuts, 2 cells, evidence armory (+$1,500 case), rooftop helipad
     ├── RoadblockSystem.ts   # Vice PD roadblocks at 3+ stars with smashable barricades
-    ├── Safehouse.ts         # Walk-in 2-level VICE SAFEHOUSE (40, -40): auto roll-up garage, sliding doors, kitchenette/fridge, recessed rooftop pool
+    ├── Safehouse.ts         # Walk-in 2-level VICE SAFEHOUSE (40, -40): tight-sensor garage, sliding doors, kitchenette/fridge, gun cabinet, TV, recessed rooftop pool + unicorn float
     ├── StuntRamps.ts        # Neon stunt ramps (beach & downtown)
     ├── Textures.ts          # Procedural wet asphalt/puddle, beach sand, sidewalk, Art-Deco facade & neon sign textures
-    └── TrafficLights.ts     # Working 3-phase traffic signals at the 4 central intersections
+    ├── TrafficLights.ts     # Working 3-phase traffic signals at the 4 central intersections
+    └── ViceNewsTv.ts        # Procedural 80s US news channel ("VICE 6 NEWS") with animated anchor, ticker & Web Speech API voice
 ```
 
 ---
@@ -84,6 +88,7 @@ Respect these coordinates when adding buildings, props, or spawn points:
   - Ocean plane starts at `x = 94` (`y = -0.18`, transparent shallow wash).
   - Wooden pier at `z = 8` (`x = 87..108`) leads to the moored Speedboat at `(111, 8)`.
 - **Reserved Special Blocks in `CityLayout.ts`:**
+  - `row=1, col=0` `(-40, 0)`: Hollow walk-in **VICE PD · PRECINCT 06** Police Station (entrance faces `+X` Central Plaza, rooftop helipad).
   - `row=1, col=1` `(0, 0)`: Central Plaza + **AMMU-NEON Shop** at `(-4.5, 4.5)`.
   - `row=1, col=2` `(40, 0)`: Hollow walk-in **NEON CLUB** (entrance faces `+X` Ocean Drive).
   - `row=0, col=2` `(40, -40)`: Hollow 2-level **VICE SAFEHOUSE** (garage + lounge + recessed rooftop pool).

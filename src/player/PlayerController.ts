@@ -167,6 +167,7 @@ export class PlayerController {
     getGroundHeight?: (x: number, z: number) => number,
     worldMeshes?: THREE.Object3D[],
     isAds = false,
+    drunkLevel = 0,
   ): PlayerStatus {
     const clampedDt = Math.min(dt, 0.05);
     const active = this.getIsActive();
@@ -216,6 +217,18 @@ export class PlayerController {
 
     if (this.wishDir.lengthSq() > 1) {
       this.wishDir.normalize();
+    }
+
+    // Drunken lateral stagger & slight involuntary sway when walking
+    if (drunkLevel > 0.02 && active) {
+      const t = performance.now() * 0.001;
+      const stagger = (Math.sin(t * 2.15) * 0.65 + Math.cos(t * 3.6) * 0.35) * drunkLevel;
+      if (this.wishDir.lengthSq() > 0.05) {
+        this.wishDir.addScaledVector(this.rightVec, stagger * 0.58);
+      } else {
+        this.wishDir.addScaledVector(this.rightVec, stagger * 0.14);
+      }
+      this.yaw += Math.sin(t * 1.4) * drunkLevel * 0.22 * clampedDt;
     }
 
     const targetSpeed = this.crouching

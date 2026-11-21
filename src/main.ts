@@ -173,6 +173,7 @@ let wastedTimer = 0;
 let isBustedState = false;
 let bustProgress = 0;
 let lastBustedFine = 0;
+let cocktailScore = 0; // <= 1.0 = sober, > 1.0 = progressively drunk (max 4.5 -> drunkLevel 1.0)
 const wastedTextEl = wastedOverlayEl.querySelector<HTMLElement>('.wasted-text')!;
 const wastedSubEl = wastedOverlayEl.querySelector<HTMLElement>('.wasted-sub')!;
 
@@ -298,7 +299,7 @@ optPerfInput.addEventListener('change', () => {
 });
 resetSaveBtn.addEventListener('click', () => {
   clearProgress();
-  objectives.cash = 0;
+  objectives.cash = 300;
   objectives.completedCount = 0;
   lastCompletedCount = 0;
   playerArmor = 0;
@@ -816,14 +817,25 @@ window.addEventListener('keydown', (e) => {
       persistProgress();
       showQuickToast(`SPIND · ${outfitName} ANGEZOGEN`);
     } else if (world.isNearClubBar(player.position)) {
-      if (playerHp >= 100) {
-        showQuickToast('HP BEREITS VOLL');
-      } else if (objectives.cash >= 50) {
+      if (objectives.cash >= 50) {
         objectives.cash -= 50;
+        const prevHp = playerHp;
         playerHp = Math.min(100, playerHp + 30);
+        const gained = Math.round(playerHp - prevHp);
+        cocktailScore = Math.min(5.0, cocktailScore + 1.0);
+        const level = THREE.MathUtils.clamp((cocktailScore - 1.0) / 3.5, 0, 1);
         audio.playPurchase();
         persistProgress();
-        showQuickToast('MIAMI VICE COCKTAIL · +30 HP');
+        const hpNote = gained > 0 ? ` · +${gained} HP` : '';
+        if (level <= 0.01) {
+          showQuickToast(`MIAMI VICE COCKTAIL${hpNote} · ERFRISCHEND!`);
+        } else if (level < 0.45) {
+          showQuickToast(`MIAMI VICE COCKTAIL${hpNote} · LEICHT ANGESCHWIPST`);
+        } else if (level < 0.8) {
+          showQuickToast(`MIAMI VICE COCKTAIL${hpNote} · BETRUNKEN!`);
+        } else {
+          showQuickToast(`MIAMI VICE COCKTAIL${hpNote} · VOLLRAUSCH!`);
+        }
       } else {
         showQuickToast('ZU WENIG CASH · COCKTAIL KOSTET $50');
       }
@@ -857,14 +869,12 @@ window.addEventListener('keydown', (e) => {
   }
 });
 
+let quickToastText = '';
+let quickToastTimer = 0;
+
 function showQuickToast(text: string): void {
-  toastBannerEl.textContent = text;
-  toastBannerEl.classList.add('visible');
-  window.setTimeout(() => {
-    if (toastBannerEl.textContent === text) {
-      toastBannerEl.classList.remove('visible');
-    }
-  }, 1900);
+  quickToastText = text;
+  quickToastTimer = 2.4;
 }
 
 // Pointer Lock flow
@@ -974,6 +984,8 @@ function animate(now: number): void {
     if (wastedTimer <= 0) {
       wastedOverlayEl.classList.remove('visible', 'busted');
       playerHp = 100;
+      cocktailScore = 0;
+      canvas.style.filter = '';
       wanted.reset();
       npcs.clearPolice();
       heli.clear();
@@ -1011,6 +1023,12 @@ function animate(now: number): void {
   }
 
   const isPlaying = player.getIsActive() && !shopOpen && wastedTimer <= 0;
+
+  // Gradually sober up over time; 1st cocktail keeps drunkLevel at 0
+  if (cocktailScore > 0) {
+    cocktailScore = Math.max(0, cocktailScore - dt * 0.032);
+  }
+  const drunkLevel = THREE.MathUtils.clamp((cocktailScore - 1.0) / 3.5, 0, 1);
 
   if (isPlaying && pad.connected) {
     if (pad.interactPressed) tryToggleVehicleOrBoat();
@@ -1052,6 +1070,7 @@ function animate(now: number): void {
       world.getGroundHeight,
       world.worldMeshes,
       weapons.isAdsActive(),
+      drunkLevel,
     );
     playerSpeed = status.speed;
     playerGrounded = status.grounded;
@@ -1079,6 +1098,7 @@ function animate(now: number): void {
     pad,
     world.stuntRamps,
     world.shouldTrafficStop,
+    drunkLevel,
   );
   const boatHud = boat.update(dt, elapsed, isPlaying, player.position, camera, pad);
 
@@ -1249,7 +1269,7 @@ function animate(now: number): void {
   }
   weapons.setHandMode(Boolean(lookedFood) || Boolean(lookedCabinetWeapon) || lookedAtTv || handHoldTimer > 0);
 
-  const wHud = weapons.update(dt, isPlaying && !inAnyCraft, playerSpeed, world.worldMeshes, shootables, pad);
+  const wHud = weapons.update(dt, isPlaying && !inAnyCraft, playerSpeed, world.worldMeshes, shootables, pad, drunkLevel);
   weapons.setViewmodelVisible(!inAnyCraft && !player.isThirdPerson());
   playerAvatar.setVisible(!inAnyCraft && player.isThirdPerson());
   playerAvatar.update(
@@ -1325,8 +1345,10 @@ function animate(now: number): void {
     }
   }
 
-  if (objHud.toastText) {
-    toastBannerEl.textContent = objHud.toastText;
+  if (quickToastTimer > 0) quickToastTimer = Math.max(0, quickToastTimer - dt);
+  const activeToast = quickToastTimer > 0 ? quickToastText : objHud.toastText;
+  if (activeToast) {
+    toastBannerEl.textContent = activeToast;
     toastBannerEl.classList.add('visible');
   } else {
     toastBannerEl.classList.remove('visible');
@@ -1414,7 +1436,7 @@ function animate(now: number): void {
       interactPromptEl.textContent = '[F] SPIND · VICE PD UNIFORM ANZIEHEN';
       interactPromptEl.classList.add('visible');
     } else if (world.isNearClubBar(player.position)) {
-      interactPromptEl.textContent = '[F] MIAMI VICE COCKTAIL · $50 (+30 HP)';
+      interactPromptEl.textContent = '[F] MIAMI VICE COCKTAIL TRINKEN · $50';
       interactPromptEl.classList.add('visible');
     } else if (heistHud.nearStartMarker && !heistHud.active) {
       interactPromptEl.textContent = '[H] OCEAN CLUB HEIST STARTEN (+$3.500)';
@@ -1430,13 +1452,23 @@ function animate(now: number): void {
     }
   }
 
-  // Apply decaying Camera-Shake right before rendering
+  // Apply decaying Camera-Shake & progressive Drunk camera sway/vision effects right before rendering
   if (shakeTrauma > 0.001) {
     const s = shakeTrauma * shakeTrauma;
     camera.position.x += (Math.random() - 0.5) * s * 0.45;
     camera.position.y += (Math.random() - 0.5) * s * 0.45;
     camera.rotation.z += (Math.random() - 0.5) * s * 0.06;
     shakeTrauma = Math.max(0, shakeTrauma - dt * 2.4);
+  }
+
+  if (drunkLevel > 0.01) {
+    camera.rotation.z += Math.sin(elapsed * 1.65) * 0.11 * drunkLevel;
+    camera.rotation.x += Math.cos(elapsed * 1.25) * 0.035 * drunkLevel;
+    bloomPass.strength = 0.72 + drunkLevel * 0.42;
+    canvas.style.filter = `saturate(${(1 + drunkLevel * 0.45).toFixed(2)}) blur(${(drunkLevel * 1.35).toFixed(2)}px)`;
+  } else {
+    bloomPass.strength = 0.72;
+    if (canvas.style.filter) canvas.style.filter = '';
   }
 
   composer.render();

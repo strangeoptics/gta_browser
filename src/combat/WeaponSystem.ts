@@ -176,6 +176,8 @@ export class WeaponSystem {
   private swayX = 0;
   private swayY = 0;
   private bobPhase = 0;
+  private drunkLevel = 0;
+  private drunkTime = 0;
   private flashTimer = 0;
   private hitmarkerAlpha = 0;
   private hitmarkerKill = false;
@@ -425,8 +427,11 @@ export class WeaponSystem {
     worldMeshes: THREE.Object3D[],
     targets: ShootableTarget[],
     pad?: GamepadSnapshot,
+    drunkLevel = 0,
   ): WeaponHudState {
     const clampedDt = Math.min(dt, 0.05);
+    this.drunkLevel = drunkLevel;
+    this.drunkTime += clampedDt;
 
     // Gamepad weapon switch & reload
     if (this.enabled && isActive && pad?.connected) {
@@ -513,11 +518,14 @@ export class WeaponSystem {
       ? Math.sin((1 - this.reloadTimer / def.reloadTime) * Math.PI) * 0.14
       : 0;
 
-    this.rig.position.x += this.swayX + bobX;
-    this.rig.position.y += this.swayY + bobY - reloadDip;
+    const drunkWobbleX = Math.sin(this.drunkTime * 2.3) * 0.036 * this.drunkLevel;
+    const drunkWobbleY = Math.cos(this.drunkTime * 1.8) * 0.024 * this.drunkLevel;
+
+    this.rig.position.x += this.swayX + bobX + drunkWobbleX;
+    this.rig.position.y += this.swayY + bobY + drunkWobbleY - reloadDip;
     this.rig.position.z += this.recoilZ;
-    this.rig.rotation.x = this.recoilRotX - reloadDip * 2.2;
-    this.rig.rotation.z = this.reloading ? -reloadDip * 2.6 : -this.swayX * 2.2;
+    this.rig.rotation.x = this.recoilRotX - reloadDip * 2.2 + drunkWobbleY * 1.4;
+    this.rig.rotation.z = (this.reloading ? -reloadDip * 2.6 : -this.swayX * 2.2) - drunkWobbleX * 3.8;
 
     // Diagonal neon katana slash swing
     if (!this.handMode && isMelee && this.slashAnimTimer > 0) {
@@ -542,7 +550,7 @@ export class WeaponSystem {
     // Update tracers & sparks
     this.updateEffects(clampedDt);
 
-    const spreadRad = (effectiveAds ? def.spreadAds : def.spreadHip) + this.recoilRotX * 0.18;
+    const spreadRad = (effectiveAds ? def.spreadAds : def.spreadHip) + this.recoilRotX * 0.18 + this.drunkLevel * 0.075;
     const spreadPx = isMelee ? 12 : Math.round(10 + spreadRad * 420 + (playerSpeed > 1 ? 4 : 0));
 
     return {
@@ -616,7 +624,7 @@ export class WeaponSystem {
     this.camera.getWorldPosition(camOrigin);
     this.onShotFired?.(def.id, camOrigin);
 
-    const spread = this.ads ? def.spreadAds : def.spreadHip;
+    const spread = (this.ads ? def.spreadAds : def.spreadHip) + this.drunkLevel * 0.085;
 
     // Build combined raycast list + map mesh -> ShootableTarget
     const targetMap = new Map<THREE.Object3D, ShootableTarget>();

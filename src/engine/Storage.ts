@@ -24,7 +24,7 @@ export const DEFAULT_SETTINGS: GameSettings = {
 };
 
 export const DEFAULT_PROGRESS: SaveProgress = {
-  cash: 0,
+  cash: 300,
   completedMissions: 0,
   launcherUnlocked: false,
   armor: 0,
@@ -70,12 +70,12 @@ export function loadProgress(): SaveProgress {
     if (!raw) return { ...DEFAULT_PROGRESS };
     const parsed = JSON.parse(raw) as Partial<SaveProgress>;
     return {
-      cash: typeof parsed.cash === 'number' ? Math.max(0, Math.floor(parsed.cash)) : 0,
+      cash: typeof parsed.cash === 'number' ? Math.max(0, Math.floor(parsed.cash)) : DEFAULT_PROGRESS.cash,
       completedMissions:
         typeof parsed.completedMissions === 'number' ? Math.max(0, Math.floor(parsed.completedMissions)) : 0,
       launcherUnlocked: Boolean(parsed.launcherUnlocked),
       armor: typeof parsed.armor === 'number' ? Math.max(0, Math.min(100, parsed.armor)) : 0,
-      outfitIndex: typeof parsed.outfitIndex === 'number' ? Math.max(0, Math.floor(parsed.outfitIndex)) % 4 : 0,
+      outfitIndex: typeof parsed.outfitIndex === 'number' ? Math.max(0, Math.floor(parsed.outfitIndex)) % 5 : 0,
     };
   } catch {
     return { ...DEFAULT_PROGRESS };

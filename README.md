@@ -16,16 +16,20 @@ Gebaut mit **Three.js**, **TypeScript**, **Vite** und der **Web Audio API** — 
 - **Miami Coastal District (3×3 Blocks + Abschüssiger Strand & NEON CLUB):**
   - Prozedurale Art-Deco-Pastellfassaden, leuchtende Neon-Schilder, zwei **Aussichtsdecks**, funktionierende **Ampeln** an den 4 Hauptkreuzungen, Post-Rain-**Laternen-Dunst** und **Neon-Stunt-Rampen** (*INSANE STUNT BONUS!*).
   - **Abschüssiger Miami Beach:** Sanft abfallende Dünen mit spiegelndem **nassem Ufersand**, halbtransparenter Brandung, **South-Beach-Lifeguard-Turm** (begehbar), beleuchtetem **Holzsteg zum Speedboat**, Sonnenliegen, Beachvolleyball-Netz, kreisenden **Möwen** & räumlichem **Meeresrauschen**.
-  - **Begehbarer NEON CLUB (`C`):** Rotierende **Spiegel-Discokugel**, 4 bis zum Boden reichende **Effektstrahler**, beleuchtete Bar mit **Barkeeper & Miami Vice Cocktails (`F`)**, DJ-Pult mit basspulsierenden **Subwoofer-Türmen**, 5 Tänzer und **räumliche 126-BPM-Clubmusik**.
+  - **Begehbarer NEON CLUB (`C`):** Rotierende **Spiegel-Discokugel**, 4 bis zum Boden reichende **Effektstrahler**, beleuchtete Bar mit **Barkeeper & Miami Vice Cocktails (`F`, `$50`, auch bei 100 % HP)** — ab dem 2. Cocktail treten **stufenweise Betrunkenheits-Effekte** beim Laufen, Schießen, Fahren und in der Kamera auf — plus DJ-Pult, Subwoofer-Türme, 5 Tänzer und **räumliche 126-BPM-Clubmusik**.
+  - **Begehbare Polizeistation — VICE PD · PRECINCT 06 (`PD` in West Downtown `-40, 0`):**
+    - Art-Deco-Revier mit blauen Kugellampen, automatischen Glasschiebetüren, begehbarer Außentreppe zum **Dach-Helipad (`H`)**, Empfangstresen mit Desk-Sergeant, dynamischer **„MOST WANTED“-Pinnwand**, **Donut-Bar** (3D-Hand) und **2 Gitterzellen** (mit automatischer Schiebe-Zellentür).
+    - **Asservaten- & Waffenkammer:** Kostenlose **Kevlar-Weste (`100 %`)**, **Shotgun + Munition**, **Vice-PD-Uniform** (5. Outfit) sowie ein **Syndikat-Geldkoffer (`+$1.500`)** — Diebstahl löst sofort rotes Alarmlicht, Code-3-Funk & Fahndung aus!
+    - **Kaution, „VERHAFTET“ & Vigilante:** Sterne am Tresen wegbestechen (`F`), GTA-Verhaftung bei 2+★ mit **Knast-Respawn in Zelle 2** (Waffen bleiben erhalten), Verstärkung direkt vom Revier & **Bürgerwehr-Modus (`G`)** in jedem Vice-PD-Streifenwagen.
   - **Tageszeit, Wetter & Zerstörung:** `T` (Golden Hour / Sunset / Neon Night), `Y` (Tropenschauer mit Blitz & Donner), zerstörbare Hydranten (mit Wasserfontäne!), Café-Tische & Mülltonnen.
 - **First- & Third-Person-Gunplay (5 Waffen inkl. Nahkampf) & Drive-By:**
   - Umschaltbar zu Fuß per **`V`** zwischen **First-Person** und **3rd-Person (Over-the-Shoulder mit 80s-Spielermodell)**.
   - **Neon Katana (`0`)**, **Vice 9mm (`1`)**, **Neon Mac-10 SMG (`2`)**, **Palm 12G Shotgun (`3`)**, **Neon Launcher (`4 · RPG`)** + **Drive-By-Schießen (`LMB`)** aus dem Fahrzeug.
 - **Fahrbare Retro-Autos, 80s-Motorrad („PCJ-86“), Speedboat & Polizei-Eskalation:**
-  - 9 Fahrzeuge inkl. **PCJ-86 Neon-Motorrad** (mit Kurven-Schräglage & 3D-Fahrer), Auto-zu-Auto-Kollisionen, geschwindigkeitsabhängigem Crash-Schaden, **Explosionen**, **Brems- & Rückfahrlichtern**, Drift-Rauch & Skidmarks, **Pay ’n’ Spray (`F`)** sowie dem **Stinger Speedboat** am Pier.
-  - **1–5 Wanted-Sterne:** Personen-Kollisionen, verfolgende **Vice-PD-Streifenwagen** (ab 2★), **Polizei-Straßensperren** & abschießbarer **Vice-PD-Helikopter mit Suchscheinwerfer** (ab 3★) plus **Polizeifunk**.
+  - 9 Fahrzeuge inkl. detailreicher **PCJ-86 Neon-Superbike** (abgerundete Sportreifen, 5-Speichen-Felgen, Upside-Down-Gabel, Reihen-4-Zylinder, Doppel-Auspuff, Digital-Cockpit, Seitenständer, dynamisches Bremslicht & Kurven-Schräglage), Auto-zu-Auto-Kollisionen, Crash-Schaden, **Explosionen**, **Brems- & Rückfahrlichtern**, Drift-Rauch & Skidmarks, **Pay ’n’ Spray (`F`)** sowie dem **Stinger Speedboat** am Pier.
+  - **1–5 Wanted-Sterne:** Solide Gebäude-, Fahrzeug- & Safehouse-Kollision für alle NPCs, verfolgende **Vice-PD-Streifenwagen** (ab 2★), **Polizei-Straßensperren** & abschießbarer **Vice-PD-Helikopter mit Suchscheinwerfer** (ab 3★) plus **Polizeifunk**.
 - **Eigene Basis — VICE SAFEHOUSE (`⌂` am Nord-Ocean-Drive):**
-  - Begehbare 2-Ebenen-Art-Deco-Villa mit **automatischem Rolltor** (private Garage mit engem Nahbereichs-Sensor), **automatischen Glasschiebe- & Innentüren**, Lounge (Sofa, **einschaltbarer 80s-CRT-TV „VICE CHANNEL 6“**, **öffenbarer Waffenschrank** mit allen 5 3D-Waffen, Kleiderschrank, Tresor), **Küchenzeile mit selbstöffnendem Kühlschrank** und **Penthouse-Dachterrasse mit eingelassenem, begehbarem Pool** inkl. Unterwasser-Stufen.
+  - Begehbare 2-Ebenen-Art-Deco-Villa mit **automatischem Rolltor** (private Garage mit engem Nahbereichs-Sensor), **automatischen Glasschiebe- & Innentüren**, Lounge (Sofa, **einschaltbarer 80s-CRT-TV „VICE CHANNEL 6“**, **öffenbarer Waffenschrank** mit allen 5 3D-Waffen, Kleiderschrank mit 5 Outfits, Tresor), **Küchenzeile mit selbstöffnendem Kühlschrank** und **Penthouse-Dachterrasse mit eingelassenem, begehbarem Pool** inkl. Unterwasser-Stufen & schwimmendem **Einhorn-Schwimmreifen**.
   - **Interaktive Gameplay-Funktionen:**
     - **VICE CHANNEL 6 News-TV:** Fadenkreuz auf den Fernseher richten (wechselt zur **3D-Hand**) und per **`LMB` / `F`** ein- oder ausschalten — animierter 80s-Nachrichtensprecher, dynamischer Breaking-News-Ticker (reagiert auf Wanted-Sterne & Cash), Synth-Intro-Jingle & echte `en-US`-Sprachausgabe (`Web Speech API`).
     - **Küche & Kühlschrank:** 10 essbare Snacks & Drinks im Kühlschrank und auf der Theke — beim Anvisieren erscheint die **3D-Hand** zum Nehmen & Essen (`LMB` / `F`, auch bei 100 % HP).
@@ -48,12 +52,13 @@ Gebaut mit **Three.js**, **TypeScript**, **Vite** und der **Web Audio API** — 
 | `0` `1` `2` `3` `4` / `Mausrad` | Waffe wechseln (Katana / 9mm / SMG / Shotgun / Launcher) |
 | `R` | Nachladen |
 | `H` | Ocean Club Story-Heist starten (`+$3.500`) |
+| `G` | Bürgerwehr-Modus (Vigilante) im Vice-PD-Streifenwagen starten / beenden |
 | `Shift` / `C` | Sprinten / Ducken |
 | `Space` | Springen / Drift-Handbremse im Auto |
 | `E` | Auto oder Speedboat ein- / aussteigen |
 | `V` | Kamera wechseln (zu Fuß: 1st/3rd-Person · im Auto: Chase/Cockpit) |
 | `Q` | 80s-Radio-Sender wechseln |
-| `F` | Pay ’n’ Spray / Safehouse (Heilen, Outfit, Garage, Essen, Waffenschrank, TV) / Club-Cocktail |
+| `F` | Pay ’n’ Spray / Safehouse / Polizeiwache (Kaution, Asservaten, Uniform) / Club-Cocktail |
 | `B` | AMMU-NEON Shop öffnen (am Central Plaza) |
 | `T` / `Y` | Tageszeit wechseln / Tropenschauer an & aus |
 | `P` / `K` | Fotomodus an & aus / PNG-Screenshot im Fotomodus |
@@ -105,9 +110,11 @@ src/
 │   ├── HelicopterSystem.ts    # Vice-PD-Helikopter mit Suchscheinwerfer & Abschuss
 │   └── NpcSystem.ts           # Artikulierte Passanten, Vice-PD-KI & Syndikat-Ziele
 ├── gameplay/
+│   ├── HeistSystem.ts         # 3-stufiger Story-Heist "Ocean Club Finale" (+$3.500)
 │   ├── ObjectiveSystem.ts     # 5 rotierende Mini-Missionen & 3D-Neon-Beacon
 │   ├── PayNSpray.ts           # Lackiererei (Reparatur, Neulack & Sterne löschen)
 │   ├── ShopSystem.ts          # AMMU-NEON Upgrade-Kiosk am Central Plaza
+│   ├── VigilanteSystem.ts     # Bürgerwehr-Modus ([G]) in Vice-PD-Streifenwagen
 │   └── WantedSystem.ts        # 1–5 Wanted-Sterne & Heat-Abbau
 ├── hud/
 │   └── Minimap.ts             # Mitdrehendes Miami-Radar (2D-Canvas)
@@ -115,6 +122,7 @@ src/
 │   └── PlayerController.ts    # Pointer-Lock FPS-Controller mit Fallback-Steuerung
 ├── vehicles/
 │   ├── BoatSystem.ts          # Fahrbares Stinger Speedboat am Strand
+│   ├── MotorcycleBuilder.ts   # Hochdetailliertes 80s-Superbike (PCJ-86 Neon Bike)
 │   └── VehicleSystem.ts       # Retro-Autos, Kollisionen, Crash-Schaden, Explosionen & Polizei-Jäger
 ├── world/
 │   ├── BeachProps.ts          # Lifeguard-Turm, Holzsteg, Sonnenliegen, Volleyball & Möwen
@@ -123,8 +131,9 @@ src/
 │   ├── DecalSystem.ts         # Drift-Skidmarks, Brandspuren & Einschusslöcher
 │   ├── DestructibleProps.ts   # Zerstörbare Hydranten (Wasserfontäne), Cafés & Mülltonnen
 │   ├── NeonClub.ts            # Begehbarer NEON CLUB (Discokugel, Strahler, Bar, Barkeeper, DJ)
+│   ├── PoliceStation.ts       # Begehbare VICE PD Polizeistation (Zellen, Asservaten, Helipad)
 │   ├── RoadblockSystem.ts     # Vice-PD-Straßensperren mit durchbrechbaren Barrikaden
-│   ├── Safehouse.ts           # Begehbare VICE SAFEHOUSE Villa (Garage, Küche, Waffenschrank, TV & Dachpool)
+│   ├── Safehouse.ts           # Begehbare VICE SAFEHOUSE Villa (Garage, Küche, Waffenschrank, TV, Einhorn-Pool)
 │   ├── StuntRamps.ts          # Neon-Stunt-Rampen für Insane Stunt Bonuses
 │   ├── Textures.ts            # Prozedurale Pfützen-, Sand-, Fassaden- & Neon-Texturen
 │   ├── TrafficLights.ts       # Funktionierende Ampeln an den 4 Hauptkreuzungen

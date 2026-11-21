@@ -151,6 +151,7 @@ export class WeaponSystem {
   private readonly camera: THREE.PerspectiveCamera;
   private readonly rig = new THREE.Group();
   private readonly weaponModels: THREE.Group[] = [];
+  private readonly handModel: THREE.Group;
   private readonly muzzleTips: THREE.Vector3[] = [];
   private readonly muzzleFlash: THREE.Mesh;
   private readonly muzzleLight: THREE.PointLight;
@@ -159,6 +160,8 @@ export class WeaponSystem {
   private ammo: number[] = WEAPONS.map((w) => w.magSize);
   private fireCooldown = 0;
   private slashAnimTimer = 0;
+  private handMode = false;
+  private eatAnimTimer = 0;
   private reloading = false;
   private reloadTimer = 0;
   private triggerDown = false;
@@ -211,6 +214,11 @@ export class WeaponSystem {
       this.rig.add(m);
     });
 
+    // Procedural 3D open Hand viewmodel (shown instead of weapon when aiming at food!)
+    this.handModel = this.buildHandModel();
+    this.handModel.visible = false;
+    this.rig.add(this.handModel);
+
     // Muzzle flash sprite-like star mesh + point light
     const flashMat = new THREE.MeshBasicMaterial({
       color: 0xffcc66,
@@ -238,6 +246,23 @@ export class WeaponSystem {
 
   public setViewmodelVisible(visible: boolean): void {
     this.rig.visible = this.enabled && visible;
+  }
+
+  public setHandMode(active: boolean): void {
+    if (this.handMode === active) return;
+    this.handMode = active;
+    this.handModel.visible = active;
+    this.weaponModels.forEach((m, i) => {
+      m.visible = !active && i === this.slotIndex;
+    });
+  }
+
+  public triggerEatAnimation(): void {
+    this.eatAnimTimer = 0.42;
+  }
+
+  public isHandMode(): boolean {
+    return this.handMode;
   }
 
   public isAdsActive(): boolean {
@@ -421,6 +446,7 @@ export class WeaponSystem {
 
     this.fireCooldown = Math.max(0, this.fireCooldown - clampedDt);
     this.slashAnimTimer = Math.max(0, this.slashAnimTimer - clampedDt);
+    this.eatAnimTimer = Math.max(0, this.eatAnimTimer - clampedDt);
     this.hitmarkerAlpha = Math.max(0, this.hitmarkerAlpha - clampedDt * 4.5);
 
     // Reload timer
@@ -432,8 +458,8 @@ export class WeaponSystem {
       }
     }
 
-    // Firing / Melee Slash logic
-    if (this.enabled && isActive && effectiveTrigger && !this.reloading && this.fireCooldown <= 0) {
+    // Firing / Melee Slash logic (suppressed while Hand Mode is active so LMB eats instead of shooting!)
+    if (!this.handMode && this.enabled && isActive && effectiveTrigger && !this.reloading && this.fireCooldown <= 0) {
       if (def.auto || !this.semiConsumed) {
         if (isMelee) {
           this.performKatanaSlash(def, targets);
@@ -494,13 +520,23 @@ export class WeaponSystem {
     this.rig.rotation.z = this.reloading ? -reloadDip * 2.6 : -this.swayX * 2.2;
 
     // Diagonal neon katana slash swing
-    if (isMelee && this.slashAnimTimer > 0) {
+    if (!this.handMode && isMelee && this.slashAnimTimer > 0) {
       const p = 1 - this.slashAnimTimer / 0.24;
       const swing = Math.sin(p * Math.PI);
       this.rig.position.x -= swing * 0.42;
       this.rig.position.y -= swing * 0.14;
       this.rig.rotation.z += swing * 1.45;
       this.rig.rotation.x -= swing * 0.85;
+    }
+
+    // Grab-and-eat hand animation (reaches forward then brings bite up toward camera!)
+    if (this.handMode && this.eatAnimTimer > 0) {
+      const p = 1 - this.eatAnimTimer / 0.42;
+      const arc = Math.sin(p * Math.PI);
+      this.rig.position.x -= arc * 0.18;
+      this.rig.position.y += arc * 0.14;
+      this.rig.position.z += arc * 0.16;
+      this.rig.rotation.x += arc * 0.65;
     }
 
     // Update tracers & sparks
@@ -711,8 +747,45 @@ export class WeaponSystem {
   }
 
   // ---------------------------------------------------------------------------
-  // Procedural 3D Weapon Viewmodels
+  // Procedural 3D Weapon & Hand Viewmodels
   // ---------------------------------------------------------------------------
+  private buildHandModel(): THREE.Group {
+    const group = new THREE.Group();
+    const skinMat = new THREE.MeshStandardMaterial({ color: '#e2b192', roughness: 0.72 });
+    const cuffMat = new THREE.MeshStandardMaterial({ color: '#f2e8e1', roughness: 0.6 });
+
+    // Forearm + pastel Miami blazer cuff
+    const sleeve = new THREE.Mesh(new THREE.BoxGeometry(0.082, 0.075, 0.22), cuffMat);
+    sleeve.position.set(0, -0.02, 0.14);
+    group.add(sleeve);
+
+    const wrist = new THREE.Mesh(new THREE.BoxGeometry(0.068, 0.06, 0.09), skinMat);
+    wrist.position.set(0, -0.01, 0.01);
+    group.add(wrist);
+
+    // Open palm reaching forward
+    const palm = new THREE.Mesh(new THREE.BoxGeometry(0.088, 0.036, 0.1), skinMat);
+    palm.position.set(0, 0.0, -0.07);
+    group.add(palm);
+
+    // 4 Fingers slightly curved for grabbing
+    for (let f = 0; f < 4; f++) {
+      const finger = new THREE.Mesh(new THREE.BoxGeometry(0.016, 0.018, 0.075), skinMat);
+      finger.position.set(-0.03 + f * 0.02, 0.004, -0.145);
+      finger.rotation.x = -0.22;
+      group.add(finger);
+    }
+
+    // Thumb on the inner left side
+    const thumb = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.018, 0.065), skinMat);
+    thumb.position.set(-0.052, 0.0, -0.085);
+    thumb.rotation.y = 0.55;
+    group.add(thumb);
+
+    group.rotation.set(0.18, 0.14, 0.12);
+    return group;
+  }
+
   private buildKatanaModel(): { group: THREE.Group; muzzleLocal: THREE.Vector3 } {
     const group = new THREE.Group();
     const gripMat = new THREE.MeshStandardMaterial({ color: '#1b1624', roughness: 0.85 });

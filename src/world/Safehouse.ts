@@ -2,6 +2,15 @@ import * as THREE from 'three';
 import type { AABB } from '../types';
 import { createNeonSignTexture } from './Textures';
 
+export interface FoodItem {
+  id: string;
+  name: string;
+  heal: number;
+  mesh: THREE.Object3D;
+  available: boolean;
+  respawnTimer: number;
+}
+
 export interface SafehouseHandle {
   position: THREE.Vector3;
   isInside: (pos: THREE.Vector3) => boolean;
@@ -9,6 +18,8 @@ export interface SafehouseHandle {
   isNearLounge: (pos: THREE.Vector3) => boolean;
   isNearWardrobe: (pos: THREE.Vector3) => boolean;
   isNearFridge: (pos: THREE.Vector3) => boolean;
+  getFoodItems: () => FoodItem[];
+  consumeFood: (item: FoodItem) => void;
   update: (elapsed: number, dt: number, playerPos?: THREE.Vector3) => void;
 }
 
@@ -308,6 +319,11 @@ export function buildSafehouse(
   faucet.position.set(43.7, 1.4, kitchenZ + 0.26);
   scene.add(faucet);
 
+  const foodItems: FoodItem[] = [];
+  const registerFood = (id: string, name: string, heal: number, mesh: THREE.Object3D): void => {
+    foodItems.push({ id, name, heal, mesh, available: true, respawnTimer: 0 });
+  };
+
   // Retro 2-burner stovetop & Miami Pizza Box on the counter
   const burnerMat = new THREE.MeshStandardMaterial({ color: '#1b1622', roughness: 0.4 });
   for (const bx of [45.2, 45.8]) {
@@ -322,6 +338,7 @@ export function buildSafehouse(
   pizzaBox.position.set(46.3, 1.28, kitchenZ - 0.05);
   pizzaBox.rotation.y = 0.2;
   scene.add(pizzaBox);
+  registerFood('food-pizza-box', 'MIAMI PIZZA', 30, pizzaBox);
 
   // Retro Pastel-Mint Refrigerator with Hollow Lit Interior & Stocked Food (x = 48.0, z = -38.4)
   const fridgeX = 48.0;
@@ -368,12 +385,15 @@ export function buildSafehouse(
   pizzaSlice.rotation.x = Math.PI / 2;
   pizzaSlice.position.set(fridgeX - 0.22, 1.98, fridgeZ);
   scene.add(pizzaSlice);
+  registerFood('food-pizza-slice', 'PIZZA-STÜCK', 25, pizzaSlice);
+
   const takeout = new THREE.Mesh(
     new THREE.BoxGeometry(0.32, 0.16, 0.32),
     new THREE.MeshStandardMaterial({ color: '#ff6f91', roughness: 0.6 }),
   );
   takeout.position.set(fridgeX + 0.22, 2.0, fridgeZ + 0.04);
   scene.add(takeout);
+  registerFood('food-takeout', 'NOODLE TAKEOUT', 25, takeout);
 
   // Middle Shelf (y = 1.42): 4 Neon Soda Cans & Milk Carton
   const canColors = ['#36f1e6', '#ff4fa3', '#ffd15c', '#52f29c'];
@@ -384,6 +404,7 @@ export function buildSafehouse(
     );
     can.position.set(fridgeX - 0.34 + i * 0.16, 1.54, fridgeZ - 0.04);
     scene.add(can);
+    registerFood(`food-soda-${i}`, 'NEON SODA', 15, can);
   });
   const milk = new THREE.Mesh(
     new THREE.BoxGeometry(0.16, 0.34, 0.16),
@@ -391,21 +412,25 @@ export function buildSafehouse(
   );
   milk.position.set(fridgeX + 0.32, 1.6, fridgeZ + 0.06);
   scene.add(milk);
+  registerFood('food-milk', 'FRISCHE MILCH', 15, milk);
 
-  // Bottom Shelf (y = 0.87): Tropical Watermelon, Oranges & Green Salad Bowl
+  // Bottom Shelf (y = 0.87): Tropical Watermelon & Oranges
   const melon = new THREE.Mesh(
     new THREE.SphereGeometry(0.19, 10, 8),
     new THREE.MeshStandardMaterial({ color: '#2d8a56', roughness: 0.55 }),
   );
   melon.position.set(fridgeX - 0.22, 1.07, fridgeZ + 0.04);
   scene.add(melon);
-  for (const ox of [0.1, 0.28]) {
+  registerFood('food-melon', 'WASSERMELONE', 30, melon);
+
+  for (const [idx, ox] of [0.1, 0.28].entries()) {
     const orange = new THREE.Mesh(
       new THREE.SphereGeometry(0.09, 8, 8),
       new THREE.MeshStandardMaterial({ color: '#ff8c2b', roughness: 0.6 }),
     );
     orange.position.set(fridgeX + ox, 0.98, fridgeZ - 0.05);
     scene.add(orange);
+    registerFood(`food-orange-${idx}`, 'MIAMI ORANGE', 15, orange);
   }
 
   // Hinged Fridge Door (swings open smoothly toward east when player approaches!)
@@ -549,8 +574,27 @@ export function buildSafehouse(
       Math.hypot(pos.x - (cx - 5.5), pos.z - (cz - 7.0)) < 2.4 && pos.y < 2.2,
     isNearFridge: (pos: THREE.Vector3) =>
       Math.hypot(pos.x - fridgeX, pos.z - (fridgeZ - 1.3)) < 2.2 && pos.y < 2.2,
+    getFoodItems: () => foodItems.filter((f) => f.available),
+    consumeFood: (item: FoodItem) => {
+      if (!item.available) return;
+      item.available = false;
+      item.mesh.visible = false;
+      item.respawnTimer = 20.0;
+    },
     update: (elapsed: number, dt: number, playerPos?: THREE.Vector3) => {
-      const blend = 1 - Math.exp(-6.5 * Math.min(dt, 0.05));
+      const clampedDt = Math.min(dt, 0.05);
+      const blend = 1 - Math.exp(-6.5 * clampedDt);
+
+      // Restock consumed food items after 20s
+      for (const f of foodItems) {
+        if (!f.available) {
+          f.respawnTimer -= clampedDt;
+          if (f.respawnTimer <= 0) {
+            f.available = true;
+            f.mesh.visible = true;
+          }
+        }
+      }
 
       // Automatic Garage Door, Sliding Doors & Fridge Door proximity sensors
       const distGarage = playerPos ? Math.hypot(playerPos.x - (cx + 10.0), playerPos.z - (cz + 5.7)) : 99;

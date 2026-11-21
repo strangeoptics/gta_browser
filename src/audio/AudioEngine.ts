@@ -473,6 +473,28 @@ export class AudioEngine {
     beep.stop(now + 0.12);
   }
 
+  public playEatCrunch(): void {
+    if (!this.ctx || !this.masterGain || !this.noiseBuffer || this.muted) return;
+    const now = this.ctx.currentTime;
+    // Two quick crisp bite crunches
+    [0, 0.11].forEach((offset) => {
+      const src = this.ctx!.createBufferSource();
+      src.buffer = this.noiseBuffer!;
+      const filter = this.ctx!.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.value = 1200 + offset * 2000;
+      filter.Q.value = 1.6;
+      const gain = this.ctx!.createGain();
+      gain.gain.setValueAtTime(0.26, now + offset);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.08);
+      src.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.masterGain!);
+      src.start(now + offset);
+      src.stop(now + offset + 0.09);
+    });
+  }
+
   private playWetFootstep(): void {
     if (!this.ctx || !this.masterGain || !this.noiseBuffer || this.muted) return;
     const now = this.ctx.currentTime;

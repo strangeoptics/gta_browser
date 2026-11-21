@@ -7,6 +7,7 @@ import './style.css';
 import { PlayerController } from './player/PlayerController';
 import { PlayerAvatar } from './player/PlayerAvatar';
 import { buildMiamiCity } from './world/CityBuilder';
+import type { FoodItem } from './world/Safehouse';
 import { WeaponSystem } from './combat/WeaponSystem';
 import { VehicleSystem } from './vehicles/VehicleSystem';
 import { BoatSystem } from './vehicles/BoatSystem';
@@ -186,6 +187,26 @@ let photoMode = false;
 let photoYaw = 0;
 let photoPitch = 0;
 const photoKeys = new Set<string>();
+const foodRaycaster = new THREE.Raycaster();
+let lookedFood: FoodItem | null = null;
+let handHoldTimer = 0;
+
+function eatLookedFood(): boolean {
+  if (!lookedFood || !lookedFood.available) return false;
+  const item = lookedFood;
+  world.consumeFood(item);
+  const prevHp = playerHp;
+  playerHp = Math.min(100, playerHp + item.heal);
+  const gained = Math.round(playerHp - prevHp);
+  audio.playEatCrunch();
+  weapons.triggerEatAnimation();
+  handHoldTimer = 0.45; // keep hand visible briefly during bite animation!
+  showQuickToast(
+    gained > 0 ? `${item.name} GEGESSEN · +${gained} HP` : `${item.name} GEGESSEN · LECKER!`,
+  );
+  lookedFood = null;
+  return true;
+}
 
 objectives.cash = savedProgress.cash;
 objectives.completedCount = savedProgress.completedMissions;
@@ -547,6 +568,14 @@ window.addEventListener('keyup', (e) => {
   photoKeys.delete(e.code);
 });
 
+window.addEventListener('mousedown', (e) => {
+  if (e.button === 0 && player.getIsActive() && !shopOpen && !photoMode && !vehicles.isInVehicle() && !boat.isInBoat()) {
+    if (lookedFood && lookedFood.available) {
+      eatLookedFood();
+    }
+  }
+});
+
 window.addEventListener('mousemove', (e) => {
   if (!photoMode || document.pointerLockElement !== canvas) return;
   photoYaw -= e.movementX * 0.0022 * settings.mouseSensitivity;
@@ -627,19 +656,19 @@ window.addEventListener('keydown', (e) => {
       } else {
         tryUsePayNSpray();
       }
+    } else if (lookedFood && lookedFood.available) {
+      eatLookedFood();
     } else if (world.isNearSafehouseWardrobe(player.position)) {
       const outfitName = playerAvatar.nextOutfit();
       audio.playPurchase();
       persistProgress();
       showQuickToast(`OUTFIT · ${outfitName}`);
     } else if (world.isNearSafehouseFridge(player.position)) {
-      if (playerHp >= 100) {
-        showQuickToast('KÜHLSCHRANK · DU BIST SCHON SATT (100% HP)');
-      } else {
-        playerHp = Math.min(100, playerHp + 25);
-        audio.playPurchase();
-        showQuickToast('KÜHLSCHRANK-SNACK · +25 HP');
-      }
+      const prevHp = playerHp;
+      playerHp = Math.min(100, playerHp + 25);
+      const gained = Math.round(playerHp - prevHp);
+      audio.playEatCrunch();
+      showQuickToast(gained > 0 ? `KÜHLSCHRANK-SNACK · +${gained} HP` : 'KÜHLSCHRANK-SNACK · LECKER!');
     } else if (world.isNearSafehouseLounge(player.position)) {
       playerHp = 100;
       weapons.refillAllAmmo();
@@ -980,6 +1009,29 @@ function animate(now: number): void {
     ...destructibles.getShootableTargets(),
     ...heli.getShootableTargets(),
   ];
+  // Crosshair raycast for Safehouse food items -> switches weapon viewmodel to open Hand!
+  if (handHoldTimer > 0) handHoldTimer = Math.max(0, handHoldTimer - dt);
+  lookedFood = null;
+  if (isPlaying && !inAnyCraft && world.isInsideSafehouse(player.position)) {
+    const foods = world.getFoodItems();
+    if (foods.length > 0) {
+      const camOrigin = new THREE.Vector3();
+      camera.getWorldPosition(camOrigin);
+      const camDir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+      foodRaycaster.set(camOrigin, camDir);
+      foodRaycaster.far = 3.0;
+      const foodHits = foodRaycaster.intersectObjects(
+        foods.map((f) => f.mesh),
+        true,
+      );
+      if (foodHits.length > 0) {
+        const hitObj = foodHits[0].object;
+        lookedFood = foods.find((f) => f.mesh === hitObj || f.mesh.children.includes(hitObj)) ?? null;
+      }
+    }
+  }
+  weapons.setHandMode(Boolean(lookedFood) || handHoldTimer > 0);
+
   const wHud = weapons.update(dt, isPlaying && !inAnyCraft, playerSpeed, world.worldMeshes, shootables, pad);
   weapons.setViewmodelVisible(!inAnyCraft && !player.isThirdPerson());
   playerAvatar.setVisible(!inAnyCraft && player.isThirdPerson());
@@ -1099,7 +1151,10 @@ function animate(now: number): void {
     hitmarkerEl.style.opacity = String(wHud.hitmarkerAlpha);
     hitmarkerEl.classList.toggle('kill', wHud.hitmarkerKill && wHud.hitmarkerAlpha > 0.05);
 
-    if (shop.isPlayerNear(player.position) && !shopOpen) {
+    if (lookedFood) {
+      interactPromptEl.textContent = `[LMB / F] ${lookedFood.name} NEHMEN & ESSEN (+${lookedFood.heal} HP)`;
+      interactPromptEl.classList.add('visible');
+    } else if (shop.isPlayerNear(player.position) && !shopOpen) {
       interactPromptEl.textContent = '[B] AMMU-NEON SHOP ÖFFNEN ($)';
       interactPromptEl.classList.add('visible');
     } else if (world.isNearSafehouseWardrobe(player.position)) {

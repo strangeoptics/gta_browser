@@ -111,6 +111,12 @@ export class Minimap {
     ctx.fillStyle = '#ff9f43';
     ctx.fillText('P', px, pz);
 
+    // Walk-in NEON CLUB marker (C) on Ocean Drive (40, 0)
+    const cx = (40 - playerX) * scale;
+    const cz = (0 - playerZ) * scale;
+    ctx.fillStyle = '#ff4fa3';
+    ctx.fillText('C', cx, cz);
+
     // Ocean Club Heist Start marker (★) at (60, -26) when idle
     if (!heistTarget) {
       const hstX = (60 - playerX) * scale;

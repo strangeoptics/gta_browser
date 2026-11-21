@@ -707,8 +707,9 @@ function animate(now: number): void {
   shop.update(elapsed);
   payNSpray.update(dt, elapsed);
   wanted.update(dt);
+  const insideClub = world.isInsideClub(player.position);
   npcs.update(dt, player.position, wanted.stars);
-  heli.update(dt, elapsed, player.position, wanted.stars);
+  heli.update(dt, elapsed, player.position, insideClub ? 0 : wanted.stars);
   const heistHud = heist.update(elapsed, player.position, vehicles, boat, npcs, wanted);
   const objHud = objectives.update(dt, elapsed, player.position, vehicles, npcs, wanted);
 

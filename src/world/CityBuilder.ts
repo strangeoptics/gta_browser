@@ -21,6 +21,7 @@ export interface MiamiWorld {
   layout: CityLayout;
   cycleTimeOfDay: () => string;
   toggleRain: () => boolean;
+  isInsideClub: (pos: THREE.Vector3) => boolean;
   onThunder?: () => void;
   update: (elapsed: number, dt: number, playerPos?: THREE.Vector3) => void;
 }
@@ -349,6 +350,135 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
   });
 
   // ---------------------------------------------------------------------------
+  // 4b) Walk-In Interior: NEON CLUB at Ocean Drive Block (cx = 40, cz = 0)
+  // ---------------------------------------------------------------------------
+  const clubX = 40;
+  const clubZ = 0;
+  const clubW = 18; // x: 31 .. 49
+  const clubD = 16; // z: -8 .. +8
+  const clubH = 6.2;
+  const wallT = 0.6;
+
+  const clubExtMat = new THREE.MeshStandardMaterial({ color: '#241436', roughness: 0.55, metalness: 0.25 });
+  const clubTrimPink = new THREE.MeshStandardMaterial({
+    color: '#ff4fa3',
+    emissive: '#ff4fa3',
+    emissiveIntensity: 2.5,
+  });
+  const clubTrimCyan = new THREE.MeshStandardMaterial({
+    color: '#36f1e6',
+    emissive: '#36f1e6',
+    emissiveIntensity: 2.5,
+  });
+
+  // Back wall (-X), North wall (-Z), South wall (+Z)
+  addStaticBox(wallT, clubH, clubD, clubX - clubW / 2, 0.18 + clubH / 2, clubZ, clubExtMat, true, 'club-wall');
+  addStaticBox(clubW, clubH, wallT, clubX, 0.18 + clubH / 2, clubZ - clubD / 2, clubExtMat, true, 'club-wall');
+  addStaticBox(clubW, clubH, wallT, clubX, 0.18 + clubH / 2, clubZ + clubD / 2, clubExtMat, true, 'club-wall');
+
+  // Front wall (+X, facing Ocean Drive) with wide 4.8m open entrance doorway in the center!
+  const sideSpan = (clubD - 4.8) / 2; // 5.6m on each side
+  addStaticBox(wallT, clubH, sideSpan, clubX + clubW / 2, 0.18 + clubH / 2, clubZ - (2.4 + sideSpan / 2), clubExtMat, true, 'club-wall');
+  addStaticBox(wallT, clubH, sideSpan, clubX + clubW / 2, 0.18 + clubH / 2, clubZ + (2.4 + sideSpan / 2), clubExtMat, true, 'club-wall');
+  // Header above doorway (clearance 3.4m)
+  addStaticBox(wallT, clubH - 3.4, 4.8, clubX + clubW / 2, 0.18 + 3.4 + (clubH - 3.4) / 2, clubZ, clubExtMat, true, 'club-wall');
+
+  // Roof slab (provides real cover from the Police Helicopter!)
+  addStaticBox(clubW + 0.6, 0.5, clubD + 0.6, clubX, 0.18 + clubH + 0.25, clubZ, clubExtMat, true, 'club-roof');
+
+  // Glowing NEON CLUB Marquee Sign above Ocean Drive entrance
+  const clubSignTex = createNeonSignTexture('NEON CLUB', '#ff4fa3');
+  const clubSignMat = new THREE.MeshStandardMaterial({
+    map: clubSignTex,
+    emissive: '#ffffff',
+    emissiveMap: clubSignTex,
+    emissiveIntensity: 2.0,
+  });
+  const clubSign = new THREE.Mesh(new THREE.BoxGeometry(6.2, 1.5, 0.25), clubSignMat);
+  clubSign.rotation.y = Math.PI / 2;
+  clubSign.position.set(clubX + clubW / 2 + 0.45, 0.18 + 4.8, clubZ);
+  scene.add(clubSign);
+
+  // Exterior neon trim strips
+  const extTrim = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.18, clubD + 0.2), clubTrimCyan);
+  extTrim.position.set(clubX + clubW / 2 + 0.35, 0.18 + clubH + 0.1, clubZ);
+  scene.add(extTrim);
+
+  // Interior glowing checkerboard dancefloor (6x5 tiles)
+  const danceTiles: { mesh: THREE.Mesh; mat: THREE.MeshStandardMaterial; phase: number }[] = [];
+  const tileGeo = new THREE.BoxGeometry(1.52, 0.06, 1.52);
+  for (let gx = 0; gx < 6; gx++) {
+    for (let gz = 0; gz < 5; gz++) {
+      const isPink = (gx + gz) % 2 === 0;
+      const mat = new THREE.MeshStandardMaterial({
+        color: isPink ? '#ff4fa3' : '#36f1e6',
+        emissive: isPink ? '#ff4fa3' : '#36f1e6',
+        emissiveIntensity: 1.2,
+        roughness: 0.15,
+      });
+      const tile = new THREE.Mesh(tileGeo, mat);
+      tile.position.set(clubX - 1.5 + gx * 1.6, 0.22, clubZ - 3.2 + gz * 1.6);
+      scene.add(tile);
+      danceTiles.push({ mesh: tile, mat, phase: gx * 0.7 + gz * 0.9 });
+    }
+  }
+
+  // Bar Counter along back wall (-X) & DJ Booth along north wall (-Z)
+  const barMat = new THREE.MeshStandardMaterial({ color: '#1b1029', roughness: 0.25, metalness: 0.5 });
+  addStaticBox(1.2, 1.15, 8.5, clubX - 6.8, 0.18 + 0.575, clubZ, barMat, true, 'prop');
+  const barGlow = new THREE.Mesh(new THREE.BoxGeometry(1.26, 0.08, 8.6), clubTrimPink);
+  barGlow.position.set(clubX - 6.8, 0.18 + 1.16, clubZ);
+  scene.add(barGlow);
+
+  // DJ Booth
+  addStaticBox(4.2, 1.3, 1.8, clubX + 1.0, 0.18 + 0.65, clubZ - 6.2, barMat, true, 'prop');
+  const djGlow = new THREE.Mesh(new THREE.BoxGeometry(4.3, 0.1, 1.9), clubTrimCyan);
+  djGlow.position.set(clubX + 1.0, 0.18 + 1.32, clubZ - 6.2);
+  scene.add(djGlow);
+
+  // Rotating interior club lights (pink + cyan)
+  const clubLightPink = new THREE.PointLight('#ff4fa3', 32, 22, 1.6);
+  clubLightPink.position.set(clubX, 5.2, clubZ);
+  scene.add(clubLightPink);
+  const clubLightCyan = new THREE.PointLight('#36f1e6', 32, 22, 1.6);
+  clubLightCyan.position.set(clubX, 5.2, clubZ);
+  scene.add(clubLightCyan);
+
+  // 3 Stylized Dancing Club Guests on the neon dancefloor
+  const dancers: { group: THREE.Group; baseY: number; phase: number }[] = [];
+  const dancerSpots: [number, number, string][] = [
+    [clubX + 0.5, clubZ - 1.2, '#ff7eb3'],
+    [clubX + 2.4, clubZ + 1.5, '#36f1e6'],
+    [clubX - 1.4, clubZ + 1.8, '#ffd15c'],
+  ];
+  dancerSpots.forEach(([dx, dz, col], idx) => {
+    const dg = new THREE.Group();
+    dg.position.set(dx, 0.24, dz);
+    const shirt = new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 0.35 });
+    const dark = new THREE.MeshStandardMaterial({ color: '#1b1426', roughness: 0.7 });
+    const skin = new THREE.MeshStandardMaterial({ color: '#dba486', roughness: 0.7 });
+
+    const legs = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.74, 0.22), dark);
+    legs.position.y = 0.37;
+    dg.add(legs);
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.58, 0.24), shirt);
+    torso.position.y = 1.05;
+    dg.add(torso);
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.28, 0.26), skin);
+    head.position.y = 1.52;
+    dg.add(head);
+    // Raised dancing arms
+    for (const side of [-0.32, 0.32]) {
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.48, 0.12), shirt);
+      arm.position.set(side, 1.44, 0);
+      arm.rotation.z = side > 0 ? -0.45 : 0.45;
+      dg.add(arm);
+    }
+    scene.add(dg);
+    dancers.push({ group: dg, baseY: 0.24, phase: idx * 2.1 });
+  });
+
+  // ---------------------------------------------------------------------------
   // 5) Verticality: Walkable Exterior Art-Deco Rooftop Stairs & Neon Terraces
   // ---------------------------------------------------------------------------
   // 1) Central Plaza corner building terrace (stairs rise along west side of building at x=5.2, z=5.0 -> rooftop y=12.18)
@@ -632,8 +762,25 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
       (scene.fog as THREE.FogExp2).density = rainActive ? 0.0095 : 0.0068;
       return rainActive;
     },
+    isInsideClub: (pos: THREE.Vector3) =>
+      pos.x > clubX - clubW / 2 &&
+      pos.x < clubX + clubW / 2 &&
+      pos.z > clubZ - clubD / 2 &&
+      pos.z < clubZ + clubD / 2 &&
+      pos.y < clubH,
     update: (elapsed: number, dt: number, playerPos?: THREE.Vector3) => {
       oceanUniforms.uTime.value = elapsed;
+
+      // Animate NEON CLUB pulsing dancefloor, sweeping spotlights & dancers
+      for (const dtile of danceTiles) {
+        dtile.mat.emissiveIntensity = 0.65 + 0.95 * (0.5 + 0.5 * Math.sin(elapsed * 5.2 + dtile.phase));
+      }
+      clubLightPink.position.set(clubX + Math.cos(elapsed * 2.2) * 5.0, 5.2, clubZ + Math.sin(elapsed * 2.2) * 4.5);
+      clubLightCyan.position.set(clubX - Math.cos(elapsed * 1.9) * 5.0, 5.2, clubZ - Math.sin(elapsed * 1.9) * 4.5);
+      for (const d of dancers) {
+        d.group.position.y = d.baseY + Math.abs(Math.sin(elapsed * 5.6 + d.phase)) * 0.14;
+        d.group.rotation.y = Math.sin(elapsed * 2.4 + d.phase) * 0.65;
+      }
       palmGroup.children.forEach((palm, idx) => {
         const crown = palm.userData.crown as THREE.Object3D | undefined;
         if (crown) {

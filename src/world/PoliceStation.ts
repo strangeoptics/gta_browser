@@ -10,8 +10,10 @@ export interface PoliceStationHandle {
   isNearKevlar: (pos: THREE.Vector3) => boolean;
   isNearArmory: (pos: THREE.Vector3) => boolean;
   isNearUniform: (pos: THREE.Vector3) => boolean;
+  isNearEvidenceCash: (pos: THREE.Vector3) => boolean;
   canTakeKevlar: () => boolean;
   takeKevlar: () => void;
+  takeEvidenceCash: () => void;
   getDonuts: () => FoodItem[];
   consumeDonut: (item: FoodItem) => void;
   triggerAlarm: () => void;
@@ -428,8 +430,9 @@ export function buildPoliceStation(
   let cellGateOpenT = 1;
 
   // --- 5) Evidence & Armory Room (SW Wing: x: -49.5..-39.5, z: 1.5..9.5) ---
-  const kevlarPos = new THREE.Vector3(cx - 6.8, floorY, cz + 3.6);
-  const armoryPos = new THREE.Vector3(cx - 6.8, floorY, cz + 7.2);
+  const kevlarPos = new THREE.Vector3(cx - 6.8, floorY, cz + 3.4);
+  const evidenceCashPos = new THREE.Vector3(cx - 6.8, floorY, cz + 5.4);
+  const armoryPos = new THREE.Vector3(cx - 6.8, floorY, cz + 7.5);
   const uniformPos = new THREE.Vector3(cx - 2.6, floorY, cz + 8.6);
 
   // Kevlar Vest Pedestal + Floating Tactical Vest
@@ -445,6 +448,25 @@ export function buildPoliceStation(
   scene.add(kevlarMesh);
   let kevlarAvailable = true;
   let kevlarRespawn = 0;
+
+  // Confiscated Syndicate Cash Briefcase (+$1,500 Evidence Heist!)
+  addBox(0.95, 0.9, 0.95, evidenceCashPos.x, floorY + 0.45, evidenceCashPos.z, navyMat);
+  const cashCaseMesh = new THREE.Group();
+  const caseBody = new THREE.Mesh(
+    new THREE.BoxGeometry(0.56, 0.36, 0.16),
+    new THREE.MeshStandardMaterial({ color: '#1b1d24', roughness: 0.3, metalness: 0.78 }),
+  );
+  const caseTrim = new THREE.Mesh(
+    new THREE.BoxGeometry(0.58, 0.06, 0.18),
+    new THREE.MeshStandardMaterial({ color: '#ffd15c', emissive: '#ffaa22', emissiveIntensity: 1.4, metalness: 0.85, roughness: 0.2 }),
+  );
+  const caseHandle = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.07, 0.05), trimGoldMat);
+  caseHandle.position.y = 0.21;
+  cashCaseMesh.add(caseBody, caseTrim, caseHandle);
+  cashCaseMesh.position.set(evidenceCashPos.x, floorY + 1.35, evidenceCashPos.z);
+  scene.add(cashCaseMesh);
+  let evidenceCashAvailable = true;
+  let evidenceCashRespawn = 0;
 
   // Police Shotgun & Ammo Rack
   addBox(0.9, 1.9, 2.2, armoryPos.x - 1.6, floorY + 0.95, armoryPos.z, steelMat);
@@ -500,11 +522,18 @@ export function buildPoliceStation(
       Math.hypot(pos.x - armoryPos.x, pos.z - armoryPos.z) < 2.4 && pos.y < 2.5,
     isNearUniform: (pos: THREE.Vector3) =>
       Math.hypot(pos.x - uniformPos.x, pos.z - uniformPos.z) < 2.2 && pos.y < 2.5,
+    isNearEvidenceCash: (pos: THREE.Vector3) =>
+      evidenceCashAvailable && Math.hypot(pos.x - evidenceCashPos.x, pos.z - evidenceCashPos.z) < 2.2 && pos.y < 2.5,
     canTakeKevlar: () => kevlarAvailable,
     takeKevlar: () => {
       kevlarAvailable = false;
       kevlarMesh.visible = false;
       kevlarRespawn = 45.0;
+    },
+    takeEvidenceCash: () => {
+      evidenceCashAvailable = false;
+      cashCaseMesh.visible = false;
+      evidenceCashRespawn = 60.0;
     },
     getDonuts: () => donuts.filter((d) => d.available),
     consumeDonut: (item: FoodItem) => {
@@ -545,6 +574,16 @@ export function buildPoliceStation(
       } else {
         kevlarMesh.rotation.y = elapsed * 1.4;
         kevlarMesh.position.y = floorY + 1.48 + Math.sin(elapsed * 2.6) * 0.06;
+      }
+      if (!evidenceCashAvailable) {
+        evidenceCashRespawn -= clampedDt;
+        if (evidenceCashRespawn <= 0) {
+          evidenceCashAvailable = true;
+          cashCaseMesh.visible = true;
+        }
+      } else {
+        cashCaseMesh.rotation.y = -elapsed * 1.6;
+        cashCaseMesh.position.y = floorY + 1.35 + Math.sin(elapsed * 3.0 + 1.0) * 0.07;
       }
 
       // Automatic front & evidence room glass sliding doors

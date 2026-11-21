@@ -19,6 +19,7 @@ import { HelicopterSystem } from './entities/HelicopterSystem';
 import { WantedSystem } from './gameplay/WantedSystem';
 import { ObjectiveSystem } from './gameplay/ObjectiveSystem';
 import { HeistSystem } from './gameplay/HeistSystem';
+import { VigilanteSystem } from './gameplay/VigilanteSystem';
 import { ShopSystem } from './gameplay/ShopSystem';
 import { PayNSpray } from './gameplay/PayNSpray';
 import { Minimap } from './hud/Minimap';
@@ -140,6 +141,7 @@ const heli = new HelicopterSystem(scene);
 const wanted = new WantedSystem();
 const objectives = new ObjectiveSystem(scene);
 const heist = new HeistSystem(scene);
+const vigilante = new VigilanteSystem();
 const shop = new ShopSystem(scene);
 const payNSpray = new PayNSpray(scene);
 const minimap = new Minimap(minimapCanvas);
@@ -714,6 +716,22 @@ window.addEventListener('keydown', (e) => {
     return;
   }
 
+  if (e.code === 'KeyG' && player.getIsActive() && !shopOpen && wastedTimer <= 0) {
+    const car = vehicles.getActiveVehicle();
+    if (vigilante.isActive()) {
+      vigilante.stop();
+      showQuickToast('VIGILANTE-MODUS BEENDET');
+    } else if (car && car.isPolice) {
+      vigilante.start(player.position, npcs);
+      audio.playCheckpoint();
+      sendPoliceDispatch('Vigilante-Modus aktiv! Erster Verdächtiger auf dem Radar markiert.', true);
+      showQuickToast('VIGILANTE · STUFE 1 GESTARTET');
+    } else {
+      showQuickToast('VIGILANTE · NUR IN EINEM VICE-PD-STREIFENWAGEN [G]');
+    }
+    return;
+  }
+
   if (e.code === 'KeyF' && player.getIsActive() && !shopOpen && wastedTimer <= 0) {
     const car = vehicles.getActiveVehicle();
     if (car) {
@@ -766,6 +784,15 @@ window.addEventListener('keydown', (e) => {
       } else {
         showQuickToast(`ZU WENIG CASH · KAUTION KOSTET $${bribeCost}`);
       }
+    } else if (world.isNearPdEvidenceCash(player.position)) {
+      world.takePdEvidenceCash();
+      objectives.cash += 1500;
+      world.triggerPdAlarm();
+      wanted.addHeat(105);
+      audio.playMissionPassed();
+      persistProgress();
+      showQuickToast('ASSERVATEN-RAUB · +$1.500 — 3★ GROẞFAHNDUNG!');
+      sendPoliceDispatch('CODE 3! Syndikat-Geldkoffer aus Precinct 06 gestohlen — Großfahndung!', true);
     } else if (world.isNearPdKevlar(player.position)) {
       world.takePdKevlar();
       playerArmor = 100;
@@ -1110,6 +1137,21 @@ function animate(now: number): void {
   }
   heli.update(dt, elapsed, player.position, indoors ? 0 : wanted.stars);
   const heistHud = heist.update(elapsed, player.position, vehicles, boat, npcs, wanted);
+  const activePoliceCar = Boolean(vehicles.getActiveVehicle()?.isPolice);
+  const vigilanteHud = vigilante.update(dt, player.position, activePoliceCar, npcs);
+  if (vigilanteHud.rewardEarned > 0) {
+    objectives.cash += vigilanteHud.rewardEarned;
+    objectives.completedCount++;
+    lastCompletedCount = objectives.completedCount;
+    audio.playMissionPassed();
+    persistProgress();
+  }
+  if (vigilanteHud.dispatchMsg) {
+    sendPoliceDispatch(vigilanteHud.dispatchMsg, true);
+  }
+  if (vigilanteHud.toastText) {
+    showQuickToast(vigilanteHud.toastText);
+  }
   const objHud = objectives.update(dt, elapsed, player.position, vehicles, npcs, wanted);
 
   if (heistHud.stageToast) {
@@ -1237,7 +1279,7 @@ function animate(now: number): void {
     objectives.current,
     elapsed,
     heli.active ? heli.position : null,
-    heistHud.targetPos,
+    vigilanteHud.targetPos ?? heistHud.targetPos,
   );
 
   // --- HUD Updates ---
@@ -1257,7 +1299,13 @@ function animate(now: number): void {
   starsEl.classList.toggle('active', wanted.stars > 0);
   cashEl.textContent = `$${objHud.cash.toLocaleString('en-US')}`;
 
-  if (heistHud.active) {
+  if (vigilanteHud.active) {
+    objTagEl.textContent = '★ VIGILANTE';
+    objTagEl.classList.add('heist');
+    objTitleEl.textContent = vigilanteHud.title;
+    objDescEl.textContent = vigilanteHud.description;
+    objDistEl.textContent = `${vigilanteHud.timerText} · ${vigilanteHud.distanceM} m`;
+  } else if (heistHud.active) {
     objTagEl.textContent = '★ HEIST';
     objTagEl.classList.add('heist');
     objTitleEl.textContent = heistHud.title;
@@ -1300,8 +1348,9 @@ function animate(now: number): void {
     vehicleSpeedEl.textContent = `${driveHud.speedKmh}`;
     vehicleHpFillEl.style.width = `${driveHud.hpPct}%`;
     vehicleHpFillEl.classList.toggle('low', driveHud.hpPct < 35);
-    vehicleCamHintEl.textContent = `[LMB] DRIVE-BY · [Q] ${audio.getRadioStation()} · [V] CAM · [E] AUS`;
     const car = vehicles.getActiveVehicle();
+    const vigHint = car?.isPolice ? ` · [G] ${vigilante.isActive() ? 'VIGILANTE AUS' : 'VIGILANTE'}` : '';
+    vehicleCamHintEl.textContent = `[LMB] DRIVE-BY · [Q] ${audio.getRadioStation()}${vigHint} · [V] CAM · [E] AUS`;
     if (car && world.isInSafehouseGarage(car.position)) {
       interactPromptEl.textContent = '[F] PRIVATE GARAGE · GRATIS REPARATUR (100%)';
       interactPromptEl.classList.add('visible');
@@ -1351,6 +1400,9 @@ function animate(now: number): void {
       interactPromptEl.classList.add('visible');
     } else if (world.isNearPdDesk(player.position) && wanted.stars >= 1) {
       interactPromptEl.textContent = `[F] KAUTION / BESTECHUNG · $${wanted.stars * 200} (STERNE LÖSCHEN)`;
+      interactPromptEl.classList.add('visible');
+    } else if (world.isNearPdEvidenceCash(player.position)) {
+      interactPromptEl.textContent = '[F] SYNDIKAT-GELDKOFFER STEHLEN (+$1.500 · ⚠ 3★ ALARM)';
       interactPromptEl.classList.add('visible');
     } else if (world.isNearPdKevlar(player.position)) {
       interactPromptEl.textContent = '[F] KEVLAR-WESTE STEHLEN (100% ARMOR · ⚠ ALARM)';

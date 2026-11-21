@@ -37,6 +37,7 @@ export interface DrivingHudState {
   vehicleName: string;
   speedKmh: number;
   hpPct: number;
+  drifting: boolean;
   firstPersonCam: boolean;
   nearbyVehicleName: string | null;
 }
@@ -82,6 +83,12 @@ export class VehicleSystem {
   private readonly smokeParticles: SmokeParticle[] = [];
   private readonly smokeGeo = new THREE.BoxGeometry(0.28, 0.28, 0.28);
 
+  // Dynamic headlight SpotLight for the player-driven car (illuminates wet asphalt & facades!)
+  private readonly headlightSpot: THREE.SpotLight;
+  private readonly headlightTarget = new THREE.Object3D();
+  private isDrifting = false;
+  private driftSmokeTimer = 0;
+
   public onVehicleHitNpc?: (vehiclePos: THREE.Vector3, speed: number) => void;
   public onVehicleExploded?: (pos: THREE.Vector3, radius: number, maxDamage: number) => void;
   public onPoliceRamPlayer?: (damage: number) => void;
@@ -92,6 +99,12 @@ export class VehicleSystem {
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
+
+    // Warm halogen headlight cone for the active player vehicle
+    this.headlightSpot = new THREE.SpotLight('#ffe4b5', 0, 44, Math.PI / 5.2, 0.55, 1.4);
+    this.headlightSpot.target = this.headlightTarget;
+    this.scene.add(this.headlightSpot);
+    this.scene.add(this.headlightTarget);
 
     CAR_SPECS.forEach((spec, idx) => {
       const built = this.createCarMesh(spec.color, spec.neon, spec.police);
@@ -553,11 +566,24 @@ export class VehicleSystem {
 
     this.updateExplosionVfx(clampedDt);
 
-    // Update camera if player is driving
+    // Update camera & headlight SpotLight if player is driving
     if (this.activeVehicle) {
       const v = this.activeVehicle;
       const forwardX = Math.sin(v.yaw);
       const forwardZ = Math.cos(v.yaw);
+
+      this.headlightSpot.intensity = 42;
+      this.headlightSpot.position.set(
+        v.position.x + forwardX * 2.1,
+        v.position.y + 0.95,
+        v.position.z + forwardZ * 2.1,
+      );
+      this.headlightTarget.position.set(
+        v.position.x + forwardX * 18,
+        0.1,
+        v.position.z + forwardZ * 18,
+      );
+      this.headlightTarget.updateMatrixWorld();
 
       if (this.firstPersonCam) {
         camera.position.set(
@@ -599,17 +625,21 @@ export class VehicleSystem {
         vehicleName: v.name,
         speedKmh: Math.round(Math.abs(v.speed) * 3.6),
         hpPct: Math.round((v.hp / v.maxHp) * 100),
+        drifting: this.isDrifting,
         firstPersonCam: this.firstPersonCam,
         nearbyVehicleName: null,
       };
     }
 
+    this.headlightSpot.intensity = 0;
+    this.isDrifting = false;
     const nearby = this.findNearestVehicle(playerPos);
     return {
       inVehicle: false,
       vehicleName: '',
       speedKmh: 0,
       hpPct: 100,
+      drifting: false,
       firstPersonCam: this.firstPersonCam,
       nearbyVehicleName: nearby ? nearby.name : null,
     };
@@ -726,10 +756,42 @@ export class VehicleSystem {
     }
 
     if (handbrake) {
-      v.speed *= Math.exp(-5.5 * dt);
+      v.speed *= Math.exp(-4.6 * dt);
     }
 
     v.speed = THREE.MathUtils.clamp(v.speed, maxReverse, maxForward);
+
+    // Emit white-cyan tire drift smoke when handbraking at speed
+    this.isDrifting = handbrake && Math.abs(v.speed) > 5.5;
+    if (this.isDrifting) {
+      this.driftSmokeTimer -= dt;
+      if (this.driftSmokeTimer <= 0) {
+        this.driftSmokeTimer = 0.045;
+        const fwdX = Math.sin(v.yaw);
+        const fwdZ = Math.cos(v.yaw);
+        const rightX = Math.cos(v.yaw);
+        const rightZ = -Math.sin(v.yaw);
+        for (const side of [-0.95, 0.95]) {
+          const wx = v.position.x - fwdX * 1.35 + rightX * side;
+          const wz = v.position.z - fwdZ * 1.35 + rightZ * side;
+          const mat = new THREE.MeshBasicMaterial({
+            color: '#d8e8f2',
+            transparent: true,
+            opacity: 0.52,
+          });
+          const puff = new THREE.Mesh(this.smokeGeo, mat);
+          puff.scale.setScalar(1.2);
+          puff.position.set(wx, 0.24, wz);
+          this.scene.add(puff);
+          this.smokeParticles.push({
+            mesh: puff,
+            vel: new THREE.Vector3((Math.random() - 0.5) * 1.2, 0.9 + Math.random() * 0.7, (Math.random() - 0.5) * 1.2),
+            life: 0.48,
+            maxLife: 0.48,
+          });
+        }
+      }
+    }
 
     const speedFactor = Math.min(1, Math.abs(v.speed) / 4.5);
     const dirSign = v.speed >= 0 ? 1 : -1;

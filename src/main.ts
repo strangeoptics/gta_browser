@@ -289,12 +289,24 @@ shopCloseBtn.addEventListener('click', () => {
   closeShop();
 });
 
-// Enter / Exit Vehicle on [E], Shop on [B], Mute Audio on [M]
+// Enter / Exit Vehicle on [E], Shop on [B], Radio on [Q], Mute Audio on [M]
 window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyM') {
     const muted = audio.toggleMute();
     audioStatusEl.textContent = muted ? 'AUDIO: STUMM [M]' : 'AUDIO: AN [M]';
     audioStatusEl.classList.toggle('muted', muted);
+    return;
+  }
+
+  if (e.code === 'KeyQ' && player.getIsActive() && !shopOpen) {
+    const station = audio.nextRadioStation();
+    toastBannerEl.textContent = `RADIO · ${station}`;
+    toastBannerEl.classList.add('visible');
+    window.setTimeout(() => {
+      if (toastBannerEl.textContent === `RADIO · ${station}`) {
+        toastBannerEl.classList.remove('visible');
+      }
+    }, 1800);
     return;
   }
 
@@ -475,6 +487,7 @@ function animate(now: number): void {
     isPlaying,
     driveHud.inVehicle,
     driveHud.speedKmh,
+    driveHud.drifting,
     playerSpeed,
     playerGrounded,
     wanted.stars,
@@ -537,7 +550,7 @@ function animate(now: number): void {
     vehicleSpeedEl.textContent = `${driveHud.speedKmh}`;
     vehicleHpFillEl.style.width = `${driveHud.hpPct}%`;
     vehicleHpFillEl.classList.toggle('low', driveHud.hpPct < 35);
-    vehicleCamHintEl.textContent = `[V] ${driveHud.firstPersonCam ? 'COCKPIT' : 'CHASE'} · [E] AUSSTEIGEN`;
+    vehicleCamHintEl.textContent = `[Q] ${audio.getRadioStation()} · [V] ${driveHud.firstPersonCam ? 'COCKPIT' : 'CHASE'} · [E] AUS`;
     interactPromptEl.classList.remove('visible');
   } else {
     weaponNameEl.textContent = wHud.name;

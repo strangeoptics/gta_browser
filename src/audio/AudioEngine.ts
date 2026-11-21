@@ -11,20 +11,26 @@ export class AudioEngine {
   private masterGain: GainNode | null = null;
   private noiseBuffer: AudioBuffer | null = null;
 
-  // Continuous engine & siren nodes
+  // Continuous engine, siren & tire screech nodes
   private engineOsc: OscillatorNode | null = null;
   private engineGain: GainNode | null = null;
   private sirenOsc: OscillatorNode | null = null;
   private sirenGain: GainNode | null = null;
+  private screechOsc: OscillatorNode | null = null;
+  private screechGain: GainNode | null = null;
 
-  // Synthwave pulse state
-  private musicEnabled = true;
+  // Car Radio & Synthwave state
+  private readonly stations = ['VICE FM', 'DUSK CHILL', 'OUTRUN TURBO', 'RADIO AUS'];
+  private stationIndex = 0;
   private muted = false;
   private beatTimer = 0;
   private beatStep = 0;
   private stepTimer = 0;
 
-  private readonly bassLine = [55, 55, 65.41, 73.42, 55, 55, 82.41, 73.42]; // A1-C2-D2-E2 retro groove
+  private readonly viceBass = [55, 55, 65.41, 73.42, 55, 55, 82.41, 73.42];
+  private readonly viceLead = [440, 523.25, 659.25, 587.33, 440, 659.25, 783.99, 659.25];
+  private readonly chillChords = [130.81, 164.81, 196.0, 246.94, 110.0, 130.81, 164.81, 196.0];
+  private readonly outrunBass = [73.42, 146.83, 73.42, 146.83, 87.31, 174.61, 82.41, 164.81];
 
   public unlock(): void {
     if (!this.ctx) {
@@ -67,11 +73,37 @@ export class AudioEngine {
       this.sirenOsc.connect(this.sirenGain);
       this.sirenGain.connect(this.masterGain);
       this.sirenOsc.start();
+
+      // Tire drift screech oscillator
+      this.screechOsc = this.ctx.createOscillator();
+      this.screechOsc.type = 'sawtooth';
+      this.screechOsc.frequency.value = 920;
+      const screechFilter = this.ctx.createBiquadFilter();
+      screechFilter.type = 'bandpass';
+      screechFilter.frequency.value = 1350;
+      screechFilter.Q.value = 4.5;
+      this.screechGain = this.ctx.createGain();
+      this.screechGain.gain.value = 0;
+      this.screechOsc.connect(screechFilter);
+      screechFilter.connect(this.screechGain);
+      this.screechGain.connect(this.masterGain);
+      this.screechOsc.start();
     }
 
     if (this.ctx.state === 'suspended') {
       this.ctx.resume().catch(() => {});
     }
+  }
+
+  public nextRadioStation(): string {
+    this.stationIndex = (this.stationIndex + 1) % this.stations.length;
+    this.beatStep = 0;
+    this.beatTimer = 0.05;
+    return this.stations[this.stationIndex];
+  }
+
+  public getRadioStation(): string {
+    return this.stations[this.stationIndex];
   }
 
   public toggleMute(): boolean {
@@ -335,24 +367,30 @@ export class AudioEngine {
     src.stop(now + 0.06);
   }
 
-  private playSynthPulse(freq: number): void {
+  private playSynthNote(
+    freq: number,
+    type: OscillatorType,
+    volume: number,
+    duration: number,
+    cutoff: number,
+  ): void {
     if (!this.ctx || !this.masterGain || this.muted) return;
     const now = this.ctx.currentTime;
     const osc = this.ctx.createOscillator();
     const filter = this.ctx.createBiquadFilter();
     const gain = this.ctx.createGain();
-    osc.type = 'sawtooth';
+    osc.type = type;
     osc.frequency.setValueAtTime(freq, now);
     filter.type = 'lowpass';
-    filter.frequency.setValueAtTime(420, now);
-    filter.frequency.exponentialRampToValueAtTime(140, now + 0.24);
-    gain.gain.setValueAtTime(0.065, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+    filter.frequency.setValueAtTime(cutoff, now);
+    filter.frequency.exponentialRampToValueAtTime(Math.max(120, cutoff * 0.32), now + duration);
+    gain.gain.setValueAtTime(volume, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
     osc.connect(filter);
     filter.connect(gain);
     gain.connect(this.masterGain);
     osc.start(now);
-    osc.stop(now + 0.3);
+    osc.stop(now + duration + 0.02);
   }
 
   public update(
@@ -361,11 +399,22 @@ export class AudioEngine {
     isActive: boolean,
     inVehicle: boolean,
     speedKmh: number,
+    drifting: boolean,
     onFootSpeed: number,
     grounded: boolean,
     wantedStars: number,
   ): void {
-    if (!this.ctx || !this.engineOsc || !this.engineGain || !this.sirenOsc || !this.sirenGain) return;
+    if (
+      !this.ctx ||
+      !this.engineOsc ||
+      !this.engineGain ||
+      !this.sirenOsc ||
+      !this.sirenGain ||
+      !this.screechOsc ||
+      !this.screechGain
+    ) {
+      return;
+    }
     const now = this.ctx.currentTime;
 
     // 1) Engine hum while driving
@@ -374,13 +423,18 @@ export class AudioEngine {
     this.engineGain.gain.setTargetAtTime(targetEngineGain, now, 0.08);
     this.engineOsc.frequency.setTargetAtTime(targetEngineFreq, now, 0.06);
 
-    // 2) Subtle distant Vice PD siren when Wanted > 0
+    // 2) Tire drift screech when handbraking at speed
+    const targetScreech = isActive && inVehicle && drifting ? 0.085 : 0;
+    this.screechGain.gain.setTargetAtTime(targetScreech, now, 0.05);
+    this.screechOsc.frequency.setTargetAtTime(860 + Math.sin(elapsed * 22) * 90, now, 0.03);
+
+    // 3) Subtle distant Vice PD siren when Wanted > 0
     const targetSirenGain = isActive && wantedStars > 0 ? 0.035 + wantedStars * 0.008 : 0;
     const wail = 560 + Math.sin(elapsed * 4.2) * 185;
     this.sirenGain.gain.setTargetAtTime(targetSirenGain, now, 0.12);
     this.sirenOsc.frequency.setTargetAtTime(wail, now, 0.04);
 
-    // 3) Wet asphalt footsteps
+    // 4) Wet asphalt footsteps
     if (isActive && !inVehicle && grounded && onFootSpeed > 1.2) {
       this.stepTimer -= dt;
       if (this.stepTimer <= 0) {
@@ -391,13 +445,35 @@ export class AudioEngine {
       this.stepTimer = 0.12;
     }
 
-    // 4) Soft 80s synthwave dusk pulse (104 BPM eighth-notes)
-    if (isActive && this.musicEnabled && !this.muted) {
+    // 5) Car Radio / Ambient Synthwave
+    const station = this.stations[this.stationIndex];
+    if (isActive && !this.muted && station !== 'RADIO AUS') {
+      const volScale = inVehicle ? 1.15 : 0.6;
       this.beatTimer -= dt;
       if (this.beatTimer <= 0) {
-        this.beatTimer = 0.288;
-        const note = this.bassLine[this.beatStep % this.bassLine.length];
-        this.playSynthPulse(note);
+        if (station === 'VICE FM') {
+          this.beatTimer = 0.275; // ~109 BPM
+          const bass = this.viceBass[this.beatStep % this.viceBass.length];
+          this.playSynthNote(bass, 'sawtooth', 0.065 * volScale, 0.25, 420);
+          if (inVehicle && this.beatStep % 2 === 0) {
+            const lead = this.viceLead[(this.beatStep / 2) % this.viceLead.length];
+            this.playSynthNote(lead, 'triangle', 0.038 * volScale, 0.32, 1400);
+          }
+        } else if (station === 'DUSK CHILL') {
+          this.beatTimer = 0.36; // dreamy 83 BPM
+          const pad = this.chillChords[this.beatStep % this.chillChords.length];
+          this.playSynthNote(pad, 'triangle', 0.055 * volScale, 0.55, 760);
+          if (this.beatStep % 4 === 0) {
+            this.playSynthNote(pad * 0.5, 'sine', 0.07 * volScale, 0.65, 320);
+          }
+        } else if (station === 'OUTRUN TURBO') {
+          this.beatTimer = 0.22; // punchy 136 BPM
+          const bass = this.outrunBass[this.beatStep % this.outrunBass.length];
+          this.playSynthNote(bass, 'sawtooth', 0.072 * volScale, 0.19, 640);
+          if (inVehicle && this.beatStep % 4 === 2) {
+            this.playSynthNote(bass * 4, 'square', 0.025 * volScale, 0.16, 1800);
+          }
+        }
         this.beatStep++;
       }
     }

@@ -345,7 +345,76 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
   });
 
   // ---------------------------------------------------------------------------
-  // 5) Ocean Drive Boardwalk, Beach & Animated Golden-Hour Ocean (East Edge)
+  // 5) Verticality: Walkable Exterior Art-Deco Rooftop Stairs & Neon Terraces
+  // ---------------------------------------------------------------------------
+  // 1) Central Plaza corner building terrace (stairs rise along west side of building at x=5.2, z=5.0 -> rooftop y=12.18)
+  const stairMat = new THREE.MeshStandardMaterial({ color: '#e7d5c5', roughness: 0.58 });
+  const railNeonMat = new THREE.MeshStandardMaterial({
+    color: '#36f1e6',
+    emissive: '#36f1e6',
+    emissiveIntensity: 2.2,
+  });
+
+  const buildStaircase = (
+    startX: number,
+    startZ: number,
+    dirX: number,
+    dirZ: number,
+    targetHeight: number,
+    width: number,
+  ): void => {
+    const stepH = 0.24; // cleanly below PlayerController maxStepHeight (0.28m)
+    const stepRun = 0.36;
+    const steps = Math.ceil(targetHeight / stepH);
+    for (let s = 0; s < steps; s++) {
+      const topY = 0.18 + (s + 1) * stepH;
+      const sx = startX + dirX * s * stepRun;
+      const sz = startZ + dirZ * s * stepRun;
+      const w = dirX !== 0 ? stepRun + 0.06 : width;
+      const d = dirZ !== 0 ? stepRun + 0.06 : width;
+      addStaticBox(w, topY, d, sx, topY / 2, sz, stairMat, true, 'stairs');
+    }
+    // Glowing neon handrail along the outer edge of the stairway
+    const totalLen = steps * stepRun;
+    const midX = startX + dirX * (totalLen * 0.5);
+    const midZ = startZ + dirZ * (totalLen * 0.5);
+    const rail = new THREE.Mesh(
+      new THREE.BoxGeometry(dirX !== 0 ? Math.hypot(totalLen, targetHeight) : 0.1, 0.1, dirZ !== 0 ? Math.hypot(totalLen, targetHeight) : 0.1),
+      railNeonMat,
+    );
+    rail.position.set(
+      midX + (dirZ !== 0 ? width * 0.48 : 0),
+      0.18 + targetHeight * 0.5 + 0.9,
+      midZ + (dirX !== 0 ? width * 0.48 : 0),
+    );
+    const slope = Math.atan2(targetHeight, totalLen);
+    if (dirZ < 0) rail.rotation.x = slope;
+    else if (dirZ > 0) rail.rotation.x = -slope;
+    else if (dirX > 0) rail.rotation.z = slope;
+    else if (dirX < 0) rail.rotation.z = -slope;
+    scene.add(rail);
+  };
+
+  // Central Plaza Rooftop Lookout (climbs south along the west edge of the mint plaza building up to y=12.18)
+  buildStaircase(-0.85, -0.5, 0, 1, 5.2, 2.0);
+  // Mid-level Art-Deco observation deck overlooking the Central Plaza & AMMU-NEON kiosk
+  addStaticBox(6.4, 0.35, 5.2, -2.6, 0.18 + 5.2, 9.6, stairMat, true, 'deck');
+  const deckGlow = new THREE.Mesh(new THREE.BoxGeometry(6.5, 0.12, 5.3), railNeonMat);
+  deckGlow.position.set(-2.6, 0.18 + 5.45, 9.6);
+  scene.add(deckGlow);
+
+  // Ocean Drive Sunset Overlook Deck (stairs rising from the boardwalk at x=67.5 up to a coastal sunset terrace)
+  buildStaircase(68.2, -10, 0, -1, 4.8, 2.2);
+  addStaticBox(5.6, 0.35, 7.0, 69.2, 0.18 + 4.8, -20.5, stairMat, true, 'deck');
+  const oceanDeckNeon = new THREE.Mesh(
+    new THREE.BoxGeometry(5.7, 0.14, 7.1),
+    new THREE.MeshStandardMaterial({ color: '#ff4fa3', emissive: '#ff4fa3', emissiveIntensity: 2.3 }),
+  );
+  oceanDeckNeon.position.set(69.2, 0.18 + 5.05, -20.5);
+  scene.add(oceanDeckNeon);
+
+  // ---------------------------------------------------------------------------
+  // 5b) Ocean Drive Boardwalk, Beach & Animated Golden-Hour Ocean (East Edge)
   // ---------------------------------------------------------------------------
   // Boardwalk east of x = 66
   addStaticBox(8, 0.22, 144, 70, 0.11, 0, sidewalkMat, false, 'sidewalk');

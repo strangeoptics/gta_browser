@@ -798,10 +798,10 @@ export class VehicleSystem {
 
     const accelInput = isActive ? THREE.MathUtils.clamp(kbAccel + padAccel, -1, 1) : 0;
     const drunkSteerDrift =
-      drunkLevel > 0.02
-        ? (Math.sin(elapsed * 1.75) * 0.52 + Math.sin(elapsed * 3.35) * 0.24) * drunkLevel
+      drunkLevel > 0.005
+        ? (Math.sin(elapsed * 1.55) * 0.28 + Math.sin(elapsed * 2.95) * 0.12) * drunkLevel
         : 0;
-    const steerInput = isActive ? THREE.MathUtils.clamp(kbSteer + padSteer + drunkSteerDrift, -1.2, 1.2) : 0;
+    const steerInput = isActive ? THREE.MathUtils.clamp(kbSteer + padSteer + drunkSteerDrift, -1.1, 1.1) : 0;
     const handbrake = isActive && (this.keys.has('Space') || Boolean(pad?.connected && pad.handbrake));
 
     const maxForward = v.isBike ? 29.5 : 24.5;

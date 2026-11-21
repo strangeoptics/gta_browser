@@ -11,6 +11,7 @@ export interface SaveProgress {
   launcherUnlocked: boolean;
   armor: number;
   outfitIndex: number;
+  starterBonusApplied?: boolean;
 }
 
 const SETTINGS_KEY = 'vice_dusk_settings_v1';
@@ -29,6 +30,7 @@ export const DEFAULT_PROGRESS: SaveProgress = {
   launcherUnlocked: false,
   armor: 0,
   outfitIndex: 0,
+  starterBonusApplied: true,
 };
 
 export function loadSettings(): GameSettings {
@@ -69,13 +71,18 @@ export function loadProgress(): SaveProgress {
     const raw = localStorage.getItem(PROGRESS_KEY);
     if (!raw) return { ...DEFAULT_PROGRESS };
     const parsed = JSON.parse(raw) as Partial<SaveProgress>;
+    const rawCash = typeof parsed.cash === 'number' ? Math.max(0, Math.floor(parsed.cash)) : DEFAULT_PROGRESS.cash;
+    const starterApplied = Boolean(parsed.starterBonusApplied);
+    // One-time migration for existing $0 saves so players immediately start with at least $300
+    const cash = !starterApplied && rawCash < DEFAULT_PROGRESS.cash ? DEFAULT_PROGRESS.cash : rawCash;
     return {
-      cash: typeof parsed.cash === 'number' ? Math.max(0, Math.floor(parsed.cash)) : DEFAULT_PROGRESS.cash,
+      cash,
       completedMissions:
         typeof parsed.completedMissions === 'number' ? Math.max(0, Math.floor(parsed.completedMissions)) : 0,
       launcherUnlocked: Boolean(parsed.launcherUnlocked),
       armor: typeof parsed.armor === 'number' ? Math.max(0, Math.min(100, parsed.armor)) : 0,
       outfitIndex: typeof parsed.outfitIndex === 'number' ? Math.max(0, Math.floor(parsed.outfitIndex)) % 5 : 0,
+      starterBonusApplied: true,
     };
   } catch {
     return { ...DEFAULT_PROGRESS };

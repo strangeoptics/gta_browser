@@ -1,6 +1,14 @@
 import * as THREE from 'three';
 
-export type CarModelType = 'cybertruck' | 'delorean' | 'challenger' | 'bounder' | 'police' | 'supercar';
+export type CarModelType =
+  | 'cybertruck'
+  | 'delorean'
+  | 'challenger'
+  | 'bounder'
+  | 'transam'
+  | 'monaco'
+  | 'police'
+  | 'supercar';
 
 export interface BuiltCar {
   group: THREE.Group;
@@ -10,6 +18,7 @@ export interface BuiltCar {
   reverseMat: THREE.MeshStandardMaterial;
   lightbarRed?: THREE.Mesh;
   lightbarBlue?: THREE.Mesh;
+  scannerLeds?: THREE.Mesh[];
   riderMesh?: THREE.Group;
 }
 
@@ -166,6 +175,7 @@ export function createCarModel(
   const wheels: THREE.Object3D[] = [];
   let lightbarRed: THREE.Mesh | undefined;
   let lightbarBlue: THREE.Mesh | undefined;
+  let scannerLeds: THREE.Mesh[] | undefined;
 
   const addWheels = (
     coords: [number, number][],
@@ -671,7 +681,243 @@ export function createCarModel(
   }
 
   // ===========================================================================
-  // 5) VICE PD CRUISER / INTERCEPTOR — 80s American Police Sedan + Bullbar
+  // 5) 1982 PONTIAC FIREBIRD TRANS AM — Gloss Black 80s Aero Wedge + K.I.T.T. Scanner!
+  // ===========================================================================
+  else if (model === 'transam') {
+    bodyMat.roughness = 0.12;
+    bodyMat.metalness = 0.78;
+
+    // Sleek, ultra-low 3rd-gen Firebird aero wedge with long nose & glass fastback hatch
+    const hull = buildProfileExtrusion(
+      [
+        [-2.32, 0.28],
+        [2.36, 0.26],
+        [2.44, 0.56],  // razor-sharp pointed nose cone
+        [1.1, 0.84],   // long sloping hood
+        [0.18, 1.24],  // steeply raked windshield
+        [-0.78, 1.24], // T-top roof panel
+        [-2.2, 0.88],  // sweeping fastback glass hatch
+        [-2.34, 0.62],
+      ],
+      1.96,
+      bodyMat,
+      0.025,
+    );
+    group.add(hull);
+
+    // Asymmetric 1982 Trans Am Turbo Power-Bulge Hood Scoop
+    const bulge = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.1, 1.05), bodyMat);
+    bulge.position.set(-0.22, 0.84, 1.48);
+    bulge.rotation.x = 0.16;
+    group.add(bulge);
+
+    // T-Top Tinted Glass Roof Panels + Steep Windshield + Huge Wraparound Rear Hatch Glass
+    const windshield = new THREE.Mesh(new THREE.BoxGeometry(1.74, 0.05, 1.04), glassMat);
+    windshield.position.set(0, 1.06, 0.64);
+    windshield.rotation.x = 0.42;
+    group.add(windshield);
+
+    const rearHatch = new THREE.Mesh(new THREE.BoxGeometry(1.66, 0.05, 1.38), glassMat);
+    rearHatch.position.set(0, 1.08, -1.42);
+    rearHatch.rotation.x = -0.26;
+    group.add(rearHatch);
+
+    for (const sx of [-0.46, 0.46]) {
+      const tTop = new THREE.Mesh(new THREE.BoxGeometry(0.74, 0.04, 0.84), glassMat);
+      tTop.position.set(sx, 1.26, -0.3);
+      group.add(tTop);
+    }
+    for (const sx of [-1.0, 1.0]) {
+      const win = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.3, 1.28), glassMat);
+      win.position.set(sx, 1.04, -0.25);
+      group.add(win);
+      // Iconic Trans Am front fender side air extractor vents
+      const fenderVent = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.16, 0.34), darkTrimMat);
+      fenderVent.position.set(sx * 1.005, 0.56, 0.92);
+      group.add(fenderVent);
+      // Aero mirrors
+      const mir = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.08, 0.12), bodyMat);
+      mir.position.set(sx * 1.05, 0.94, 0.56);
+      group.add(mir);
+    }
+
+    // Wraparound Black Aero Rear Spoiler
+    const spoiler = new THREE.Mesh(new THREE.BoxGeometry(1.98, 0.09, 0.28), darkTrimMat);
+    spoiler.position.set(0, 0.96, -2.24);
+    spoiler.rotation.x = 0.16;
+    group.add(spoiler);
+
+    // ICONIC K.I.T.T. ANIMATED RED FRONT SCANNER BAR (6 LED segments!)
+    const scannerHousing = new THREE.Mesh(new THREE.BoxGeometry(0.96, 0.11, 0.08), darkTrimMat);
+    scannerHousing.position.set(0, 0.58, 2.43);
+    group.add(scannerHousing);
+
+    scannerLeds = [];
+    for (let i = 0; i < 6; i++) {
+      const ledMat = new THREE.MeshStandardMaterial({
+        color: '#ff1a2a',
+        emissive: '#ff0e22',
+        emissiveIntensity: i === 2 ? 4.2 : 0.25,
+      });
+      const led = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.065, 0.05), ledMat);
+      led.position.set(-0.35 + i * 0.14, 0.58, 2.46);
+      group.add(led);
+      scannerLeds.push(led);
+    }
+
+    // Recessed lower driving fog lamps beside scanner
+    for (const fx of [-0.72, 0.72]) {
+      const fog = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.09, 0.06), headMat);
+      fog.position.set(fx, 0.44, 2.42);
+      group.add(fog);
+    }
+
+    // Blackout Full-Width 1982 Trans Am Taillight Panel
+    const rearPanel = new THREE.Mesh(new THREE.BoxGeometry(1.92, 0.24, 0.07), darkTrimMat);
+    rearPanel.position.set(0, 0.72, -2.35);
+    group.add(rearPanel);
+    const tailBar = new THREE.Mesh(new THREE.BoxGeometry(1.78, 0.11, 0.05), tailMat);
+    tailBar.position.set(0, 0.72, -2.38);
+    group.add(tailBar);
+    for (const sx of [-0.54, 0.54]) {
+      const rev = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.08, 0.06), reverseMat);
+      rev.position.set(sx, 0.58, -2.37);
+      group.add(rev);
+    }
+
+    const underglow = new THREE.Mesh(new THREE.BoxGeometry(1.64, 0.03, 3.4), glowMat);
+    underglow.position.set(0, 0.2, 0);
+    group.add(underglow);
+
+    addWheels(
+      [
+        [-1.0, 1.44],
+        [1.0, 1.44],
+        [-1.0, -1.38],
+        [1.0, -1.38],
+      ],
+      0.35,
+      0.28,
+      'aero',
+    );
+  }
+
+  // ===========================================================================
+  // 6) 1974 DODGE MONACO — Full-Size 70s Land Yacht ("Bluesmobile"!)
+  // ===========================================================================
+  else if (model === 'monaco') {
+    const creamWhiteMat = new THREE.MeshStandardMaterial({ color: '#ece8dc', roughness: 0.45, metalness: 0.2 });
+
+    // Massive, long 1974 full-size American sedan slab profile (5.2m!)
+    const hull = buildProfileExtrusion(
+      [
+        [-2.58, 0.3],
+        [2.56, 0.3],
+        [2.62, 0.82],  // bold upright 70s front fender line
+        [0.92, 0.92],  // huge flat hood
+        [0.42, 1.44],  // upright 70s windshield
+        [-1.02, 1.44], // long formal sedan roof
+        [-1.48, 0.92], // steep C-pillar
+        [-2.6, 0.84],  // enormous classic 70s trunk deck
+      ],
+      2.06,
+      bodyMat,
+      0.025,
+    );
+    group.add(hull);
+
+    // Classic Black & White Decommissioned Police Sedan Doors & Roof (Bluesmobile look!)
+    const doors = new THREE.Mesh(new THREE.BoxGeometry(2.12, 0.56, 2.02), creamWhiteMat);
+    doors.position.set(0, 0.62, -0.18);
+    group.add(doors);
+
+    const roofWhite = new THREE.Mesh(new THREE.BoxGeometry(1.88, 0.06, 1.42), creamWhiteMat);
+    roofWhite.position.set(0, 1.46, -0.3);
+    group.add(roofWhite);
+
+    // Windshield, rear glass & wide 4-door side windows
+    const windshield = new THREE.Mesh(new THREE.BoxGeometry(1.86, 0.05, 0.72), glassMat);
+    windshield.position.set(0, 1.18, 0.67);
+    windshield.rotation.x = 0.8;
+    group.add(windshield);
+    const rearWin = new THREE.Mesh(new THREE.BoxGeometry(1.84, 0.05, 0.68), glassMat);
+    rearWin.position.set(0, 1.18, -1.25);
+    rearWin.rotation.x = -0.8;
+    group.add(rearWin);
+    for (const sx of [-1.05, 1.05]) {
+      const win = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.38, 1.62), glassMat);
+      win.position.set(sx, 1.2, -0.3);
+      group.add(win);
+      // Chrome body side molding strip
+      const trim = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.05, 5.05), chromeMat);
+      trim.position.set(sx * 1.01, 0.66, 0);
+      group.add(trim);
+    }
+
+    // Iconic A-Pillar Police Spotlight (driver's side)
+    const spotArm = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.24, 6), chromeMat);
+    spotArm.rotation.z = Math.PI / 2;
+    spotArm.position.set(-1.08, 1.18, 0.54);
+    group.add(spotArm);
+    const spotLamp = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.06, 0.14, 10), chromeMat);
+    spotLamp.rotation.x = Math.PI / 2;
+    spotLamp.position.set(-1.18, 1.18, 0.56);
+    group.add(spotLamp);
+
+    // Iconic Bluesmobile Roof-Mounted Giant PA Megaphone Speaker!
+    const megaMount = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.14, 0.42), darkTrimMat);
+    megaMount.position.set(0, 1.54, -0.25);
+    group.add(megaMount);
+    const megaHorn = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.1, 0.72, 14), creamWhiteMat);
+    megaHorn.rotation.x = Math.PI / 2;
+    megaHorn.position.set(0, 1.72, -0.1);
+    group.add(megaHorn);
+
+    // Massive 1974 Chrome Bumpers, Chrome Split Grille & Quad Round 70s Headlights
+    const fBump = new THREE.Mesh(new THREE.BoxGeometry(2.14, 0.2, 0.24), chromeMat);
+    fBump.position.set(0, 0.4, 2.66);
+    group.add(fBump);
+    const rBump = new THREE.Mesh(new THREE.BoxGeometry(2.14, 0.2, 0.24), chromeMat);
+    rBump.position.set(0, 0.4, -2.64);
+    group.add(rBump);
+
+    const grille = new THREE.Mesh(new THREE.BoxGeometry(1.98, 0.28, 0.08), chromeMat);
+    grille.position.set(0, 0.66, 2.62);
+    group.add(grille);
+
+    const hlGeo = new THREE.CylinderGeometry(0.1, 0.1, 0.06, 12);
+    hlGeo.rotateX(Math.PI / 2);
+    for (const hx of [-0.78, -0.52, 0.52, 0.78]) {
+      const hl = new THREE.Mesh(hlGeo, headMat);
+      hl.position.set(hx, 0.66, 2.66);
+      group.add(hl);
+    }
+
+    // Wide 70s Rear Taillight Clusters + Dual Exhausts
+    for (const tx of [-0.72, 0.72]) {
+      const tl = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.15, 0.06), tailMat);
+      tl.position.set(tx, 0.68, -2.62);
+      group.add(tl);
+      const rev = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.11, 0.07), reverseMat);
+      rev.position.set(tx * 0.48, 0.68, -2.62);
+      group.add(rev);
+    }
+
+    addWheels(
+      [
+        [-1.06, 1.62],
+        [1.06, 1.62],
+        [-1.06, -1.52],
+        [1.06, -1.52],
+      ],
+      0.36,
+      0.27,
+      'steel',
+    );
+  }
+
+  // ===========================================================================
+  // 7) VICE PD CRUISER / INTERCEPTOR — 80s American Police Sedan + Bullbar
   // ===========================================================================
   else if (model === 'police') {
     const whiteMat = new THREE.MeshStandardMaterial({ color: '#f2f4f8', roughness: 0.28, metalness: 0.35 });
@@ -864,5 +1110,5 @@ export function createCarModel(
     );
   }
 
-  return { group, bodyMat, wheels, tailMat, reverseMat, lightbarRed, lightbarBlue };
+  return { group, bodyMat, wheels, tailMat, reverseMat, lightbarRed, lightbarBlue, scannerLeds };
 }

@@ -39,6 +39,7 @@ export interface Vehicle {
   reverseMat?: THREE.MeshStandardMaterial;
   lightbarRed?: THREE.Mesh;
   lightbarBlue?: THREE.Mesh;
+  scannerLeds?: THREE.Mesh[];
   // AI traffic state
   isAiControlled: boolean;
   aiSpeed: number;
@@ -86,8 +87,10 @@ const CAR_SPECS: {
   { name: 'DELOREAN DMC-12', model: 'delorean', color: '#c8d0d8', neon: '#36f1e6', x: 56.8, z: 16, yaw: Math.PI, ai: false, police: false, pursuit: false, bike: false },
   { name: 'PCJ-86 NEON BIKE', model: 'supercar', color: '#36f1e6', neon: '#ff4fa3', x: 63.2, z: 20, yaw: Math.PI, ai: false, police: false, pursuit: false, bike: true },
   { name: 'TESLA CYBERTRUCK', model: 'cybertruck', color: '#c2c9d2', neon: '#5ee8ff', x: 63.2, z: -12, yaw: 0, ai: false, police: false, pursuit: false, bike: false },
+  { name: '1982 PONTIAC TRANS AM', model: 'transam', color: '#101118', neon: '#ff1e38', x: 56.8, z: -26, yaw: 0, ai: false, police: false, pursuit: false, bike: false },
   { name: 'DODGE CHALLENGER', model: 'challenger', color: '#e64928', neon: '#ff9f43', x: 16.8, z: 6, yaw: Math.PI, ai: false, police: false, pursuit: false, bike: false },
   { name: '1986 FLEETWOOD BOUNDER', model: 'bounder', color: '#e8dec5', neon: '#ffbe55', x: -23.2, z: -14, yaw: 0, ai: false, police: false, pursuit: false, bike: false },
+  { name: '1974 DODGE MONACO', model: 'monaco', color: '#14151c', neon: '#36f1e6', x: -16.8, z: 24, yaw: Math.PI, ai: false, police: false, pursuit: false, bike: false },
   { name: 'VICE PD CRUISER', model: 'police', color: '#1b1b26', neon: '#36f1e6', x: -26.8, z: 6.8, yaw: 0, ai: false, police: true, pursuit: true, bike: false },
   { name: 'VICE PD INTERCEPTOR', model: 'police', color: '#1b1b26', neon: '#ff3355', x: 20, z: 58, yaw: Math.PI, ai: true, police: true, pursuit: true, bike: false },
   // Cruising traffic cars on the road grid
@@ -180,6 +183,7 @@ export class VehicleSystem {
         reverseMat: 'reverseMat' in built ? built.reverseMat : undefined,
         lightbarRed: 'lightbarRed' in built ? built.lightbarRed : undefined,
         lightbarBlue: 'lightbarBlue' in built ? built.lightbarBlue : undefined,
+        scannerLeds: 'scannerLeds' in built ? built.scannerLeds : undefined,
         isAiControlled: spec.ai,
         aiSpeed: spec.ai ? 7.5 : 0,
         aiTargetX: spec.x,
@@ -603,6 +607,16 @@ export class VehicleSystem {
             ? 0.2
             : 4.4
           : 0.6;
+      }
+
+      // Iconic K.I.T.T. sweeping red scanner LED animation on the 1982 Pontiac Firebird Trans Am!
+      if (v.scannerLeds && v.scannerLeds.length > 0) {
+        const sweepPos = ((Math.sin(elapsed * 3.8) + 1) * 0.5) * (v.scannerLeds.length - 1);
+        for (let s = 0; s < v.scannerLeds.length; s++) {
+          const dist = Math.abs(s - sweepPos);
+          const glow = Math.max(0.15, 4.4 - dist * 2.2);
+          (v.scannerLeds[s].material as THREE.MeshStandardMaterial).emissiveIntensity = glow;
+        }
       }
 
       if (v === this.activeVehicle) {

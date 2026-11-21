@@ -103,17 +103,19 @@ export function buildSafehouse(
   addBox(wallT, floorH - 3.2, 3.0, cx + 10, 0.18 + 3.2 + (floorH - 3.2) / 2, cz - 3.0, stuccoMat); // lounge door lintel
   addBox(wallT, floorH - 3.5, 6.2, cx + 10, 0.18 + 3.5 + (floorH - 3.5) / 2, cz + 5.7, stuccoMat); // garage lintel
 
-  // Rooftop Deck Slab split around the recessed Pool Basin (pool spans x: 38.5..46.5, z: -41.3..-36.3)
+  // Rooftop Deck Slab split cleanly around the recessed Pool Basin
+  // Pool opening spans x: 38.5 .. 46.5 (w=8.0, cx=42.5), z: -46.5 .. -41.5 (d=5.0, cz=-44.0)
+  // Completely north of the z = -37.5 interior partition wall so zero walls poke into the pool!
   const slabY = 0.18 + floorH + 0.18;
   const slabH = 0.36;
   // West deck strip (x: 29.7 .. 38.5 -> w=8.8, center=34.1)
   addBox(8.8, slabH, 18.6, 34.1, slabY, cz, stuccoMat);
   // East deck strip (x: 46.5 .. 50.3 -> w=3.8, center=48.4)
   addBox(3.8, slabH, 18.6, 48.4, slabY, cz, stuccoMat);
-  // North deck strip between x=38.5..46.5 (z: -49.3 .. -41.3 -> d=8.0, center=-45.3)
-  addBox(8.0, slabH, 8.0, 42.5, slabY, -45.3, stuccoMat);
-  // South deck strip between x=38.5..46.5 (z: -36.3 .. -30.7 -> d=5.6, center=-33.5)
-  addBox(8.0, slabH, 5.6, 42.5, slabY, -33.5, stuccoMat);
+  // North deck strip between x=38.5..46.5 (z: -49.3 .. -46.5 -> d=2.8, center=-47.9)
+  addBox(8.0, slabH, 2.8, 42.5, slabY, -47.9, stuccoMat);
+  // South deck strip between x=38.5..46.5 (z: -41.5 .. -30.7 -> d=10.8, center=-36.1)
+  addBox(8.0, slabH, 10.8, 42.5, slabY, -36.1, stuccoMat);
 
   // Glowing VICE SAFEHOUSE Marquee Sign facing Ocean Drive
   const signTex = createNeonSignTexture('VICE SAFEHOUSE', '#36f1e6');
@@ -128,16 +130,26 @@ export function buildSafehouse(
   sign.position.set(cx + 10.42, 0.18 + 4.4, cz + 5.6);
   scene.add(sign);
 
-  // Exterior Art-Deco neon trim band around the rooftop edge (subtle glow so terrace isn't blinding)
+  // Exterior Art-Deco neon perimeter edge strips (4 thin rim strips — NEVER covering the terrace!)
   const softTrimMat = new THREE.MeshStandardMaterial({
     color: '#36f1e6',
     emissive: '#36f1e6',
-    emissiveIntensity: 0.95,
+    emissiveIntensity: 1.25,
     roughness: 0.3,
   });
-  const roofTrim = new THREE.Mesh(new THREE.BoxGeometry(20.75, 0.12, 18.75), softTrimMat);
-  roofTrim.position.set(cx, 0.18 + floorH + 0.32, cz);
-  scene.add(roofTrim);
+  const trimY = 0.18 + floorH + 0.18;
+  const trimE = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.14, 18.8), softTrimMat);
+  trimE.position.set(cx + 10.35, trimY, cz);
+  scene.add(trimE);
+  const trimW = trimE.clone();
+  trimW.position.x = cx - 10.35;
+  scene.add(trimW);
+  const trimN = new THREE.Mesh(new THREE.BoxGeometry(20.8, 0.14, 0.12), softTrimMat);
+  trimN.position.set(cx, trimY, cz - 9.35);
+  scene.add(trimN);
+  const trimS = trimN.clone();
+  trimS.position.z = cz + 9.35;
+  scene.add(trimS);
 
   // Garage floor neon guide strips
   for (const gz of [cz + 4.2, cz + 7.2]) {
@@ -233,19 +245,40 @@ export function buildSafehouse(
   addBox(0.4, 0.9, 18.2, cx + 10.0, roofY + 0.45, cz, stuccoMat);
   addBox(20.0, 0.9, 0.4, cx, roofY + 0.45, cz + 9.0, stuccoMat);
 
-  // Recessed Pool Basin (x: 38.5..46.5, z: -41.3..-36.3, depth = 1.25m below deck!)
+  // Recessed Pool Basin (x: 38.5..46.5, z: -46.5..-41.5, depth = 1.25m below deck!)
   const poolCX = 42.5;
-  const poolCZ = -38.8;
+  const poolCZ = -44.0;
   const poolFloorY = roofY - 1.25;
-  const poolTileMat = new THREE.MeshStandardMaterial({ color: '#1b7a8c', roughness: 0.35, metalness: 0.1 });
+  const poolTileTex = createPoolTileTexture();
+  const poolTileMat = new THREE.MeshStandardMaterial({
+    map: poolTileTex,
+    roughness: 0.32,
+    metalness: 0.08,
+  });
 
-  // Solid recessed pool bottom (player can drop right in and wade/swim chest-deep!)
-  addBox(8.4, 0.25, 5.4, poolCX, poolFloorY - 0.125, poolCZ, poolTileMat, false, 'pool-floor');
-  // Recessed pool inner walls
+  // Solid recessed pool bottom (player drops cleanly into waist/chest-deep water!)
+  addBox(8.4, 0.24, 5.4, poolCX, poolFloorY - 0.12, poolCZ, poolTileMat, false, 'pool-floor');
+  // Recessed pool inner tiled walls
   addBox(0.24, 1.25, 5.2, 38.5, poolFloorY + 0.625, poolCZ, poolTileMat, false, 'pool-wall');
   addBox(0.24, 1.25, 5.2, 46.5, poolFloorY + 0.625, poolCZ, poolTileMat, false, 'pool-wall');
-  addBox(8.2, 1.25, 0.24, poolCX, poolFloorY + 0.625, -41.3, poolTileMat, false, 'pool-wall');
-  addBox(8.2, 1.25, 0.24, poolCX, poolFloorY + 0.625, -36.3, poolTileMat, false, 'pool-wall');
+  addBox(8.2, 1.25, 0.24, poolCX, poolFloorY + 0.625, -46.5, poolTileMat, false, 'pool-wall');
+  addBox(8.2, 1.25, 0.24, poolCX, poolFloorY + 0.625, -41.5, poolTileMat, false, 'pool-wall');
+
+  // Crisp white stone pool coping rim around the 4 edges
+  const copingMat = new THREE.MeshStandardMaterial({ color: '#faf3eb', roughness: 0.55 });
+  const cTop = roofY + 0.03;
+  const rimN = new THREE.Mesh(new THREE.BoxGeometry(8.6, 0.08, 0.36), copingMat);
+  rimN.position.set(poolCX, cTop, -46.6);
+  scene.add(rimN);
+  const rimS = rimN.clone();
+  rimS.position.z = -41.4;
+  scene.add(rimS);
+  const rimW = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.08, 5.5), copingMat);
+  rimW.position.set(38.4, cTop, poolCZ);
+  scene.add(rimW);
+  const rimE = rimW.clone();
+  rimE.position.x = 46.6;
+  scene.add(rimE);
 
   // Underwater walk-out steps along the west edge of the pool (0.24m risers -> smooth walk right out!)
   for (let s = 0; s < 5; s++) {
@@ -255,35 +288,35 @@ export function buildSafehouse(
 
   // Translucent turquoise water surface (NO collider -> player splashes right through it!)
   const poolMat = new THREE.MeshStandardMaterial({
-    color: '#22c7d4',
-    emissive: '#0c5c6b',
-    emissiveIntensity: 0.28, // stays well below bloom threshold (0.86) -> calm luxury glow, never blinding!
-    roughness: 0.08,
-    metalness: 0.1,
+    color: '#22b8cf',
+    emissive: '#0a4a59',
+    emissiveIntensity: 0.24,
+    roughness: 0.06,
+    metalness: 0.12,
     transparent: true,
-    opacity: 0.62,
+    opacity: 0.58,
     side: THREE.DoubleSide,
   });
   const poolWater = new THREE.Mesh(new THREE.PlaneGeometry(7.9, 4.9), poolMat);
   poolWater.rotation.x = -Math.PI / 2;
-  poolWater.position.set(poolCX, roofY - 0.14, poolCZ);
+  poolWater.position.set(poolCX, roofY - 0.16, poolCZ);
   scene.add(poolWater);
 
-  // Soft underwater accent light (gentle turquoise tint, no blinding glare)
-  const poolLight = new THREE.PointLight('#28c8d8', 7, 14, 1.8);
-  poolLight.position.set(poolCX, roofY + 0.9, poolCZ);
+  // Soft underwater turquoise tint light
+  const poolLight = new THREE.PointLight('#28c8d8', 6, 13, 1.8);
+  poolLight.position.set(poolCX, roofY + 0.6, poolCZ);
   scene.add(poolLight);
 
-  // 2 Rooftop Sun Loungers beside the pool (non-emissive matte coral pads)
+  // 2 Rooftop Sun Loungers on the sunny south terrace beside the pool
   const whiteMat = new THREE.MeshStandardMaterial({ color: '#f2eae2', roughness: 0.65 });
   const padCoralMat = new THREE.MeshStandardMaterial({ color: '#e66e8e', roughness: 0.8 });
-  for (const lz of [cz - 3.6, cz - 5.4]) {
-    const lounger = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.22, 0.85), whiteMat);
-    lounger.position.set(cx + 4.5, roofY + 0.15, lz);
+  for (const lx of [40.2, 43.4]) {
+    const lounger = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.22, 2.0), whiteMat);
+    lounger.position.set(lx, roofY + 0.15, -36.5);
     lounger.castShadow = true;
     scene.add(lounger);
-    const pad = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.06, 0.72), padCoralMat);
-    pad.position.set(cx + 4.5, roofY + 0.28, lz);
+    const pad = new THREE.Mesh(new THREE.BoxGeometry(0.76, 0.06, 1.6), padCoralMat);
+    pad.position.set(lx, roofY + 0.28, -36.5);
     scene.add(pad);
   }
 
@@ -311,8 +344,8 @@ export function buildSafehouse(
       Math.hypot(pos.x - (cx - 5.5), pos.z - (cz - 7.0)) < 2.4 && pos.y < 2.2,
     update: (elapsed: number) => {
       // Gentle water shimmer (calm, never blinding) & TV screen flicker
-      poolMat.emissiveIntensity = 0.22 + Math.sin(elapsed * 2.2) * 0.06;
-      poolWater.position.y = roofY - 0.14 + Math.sin(elapsed * 1.9) * 0.025;
+      poolMat.emissiveIntensity = 0.2 + Math.sin(elapsed * 2.2) * 0.05;
+      poolWater.position.y = roofY - 0.16 + Math.sin(elapsed * 1.9) * 0.025;
       (tvScreen.material as THREE.MeshBasicMaterial).color.setHSL(
         0.5 + Math.sin(elapsed * 1.4) * 0.16,
         0.85,
@@ -320,4 +353,31 @@ export function buildSafehouse(
       );
     },
   };
+}
+
+function createPoolTileTexture(): THREE.CanvasTexture {
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+
+  ctx.fillStyle = '#1b889c';
+  ctx.fillRect(0, 0, size, size);
+
+  const step = 16;
+  for (let y = 0; y < size; y += step) {
+    for (let x = 0; x < size; x += step) {
+      const shade = ((x + y) / step) % 2 === 0 ? '#2296ab' : '#197d91';
+      ctx.fillStyle = shade;
+      ctx.fillRect(x + 1, y + 1, step - 2, step - 2);
+    }
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(4, 3);
+  return tex;
 }

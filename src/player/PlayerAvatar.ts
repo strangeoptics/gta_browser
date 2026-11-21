@@ -1,13 +1,23 @@
 import * as THREE from 'three';
 import { getFaceTexture, getOutfitTexture } from '../entities/CharacterTextures';
 
+const PLAYER_OUTFITS = [
+  { name: 'MIAMI WHITE SUIT', primary: '#f2e8e1', accent: '#36f1e6', pants: '#272c42', variant: 2 },
+  { name: 'HAWAIIAN TOURIST', primary: '#ff7b7b', accent: '#36f1e6', pants: '#f0e2ce', variant: 1 },
+  { name: 'MIDNIGHT NEON', primary: '#1e172b', accent: '#ff4fa3', pants: '#171522', variant: 2 },
+  { name: 'VICE DETECTIVE', primary: '#9fe6d8', accent: '#ffd15c', pants: '#f4eee8', variant: 2 },
+];
+
 /**
  * Stylized 80s Miami protagonist avatar displayed when playing in 3rd-Person View on foot.
- * Features articulated limbs, sunglasses, pastel blazer over cyan tee, and a visible right-hand weapon.
+ * Supports live outfit switching at the Safehouse Wardrobe!
  */
 export class PlayerAvatar {
   public readonly group = new THREE.Group();
   private readonly bodyRoot = new THREE.Group();
+  private readonly torsoMat: THREE.MeshStandardMaterial;
+  private readonly sleeveMat: THREE.MeshStandardMaterial;
+  private readonly pantsMat: THREE.MeshStandardMaterial;
   private readonly leftLegPivot: THREE.Group;
   private readonly rightLegPivot: THREE.Group;
   private readonly leftArmPivot: THREE.Group;
@@ -15,6 +25,7 @@ export class PlayerAvatar {
   private readonly gunMesh: THREE.Mesh;
   private readonly katanaMesh: THREE.Mesh;
 
+  private outfitIndex = 0;
   private walkPhase = 0;
 
   constructor(scene: THREE.Scene) {
@@ -23,14 +34,17 @@ export class PlayerAvatar {
     const skinColor = '#e2b192';
     const skinMat = new THREE.MeshStandardMaterial({ color: skinColor, roughness: 0.7 });
     const hairMat = new THREE.MeshStandardMaterial({ color: '#2b1e1b', roughness: 0.8 });
-    const outfitTex = getOutfitTexture('civilian', '#f2e8e1', '#36f1e6', 2); // crisp Miami blazer + cyan stripe tee
-    const torsoMat = new THREE.MeshStandardMaterial({ map: outfitTex, roughness: 0.6 });
-    const sleeveMat = new THREE.MeshStandardMaterial({ color: '#f2e8e1', roughness: 0.6 });
-    const pantsMat = new THREE.MeshStandardMaterial({ color: '#272c42', roughness: 0.78 });
+    const def = PLAYER_OUTFITS[0];
+    this.torsoMat = new THREE.MeshStandardMaterial({
+      map: getOutfitTexture('civilian', def.primary, def.accent, def.variant),
+      roughness: 0.6,
+    });
+    this.sleeveMat = new THREE.MeshStandardMaterial({ color: def.primary, roughness: 0.6 });
+    this.pantsMat = new THREE.MeshStandardMaterial({ color: def.pants, roughness: 0.78 });
     const shoeMat = new THREE.MeshStandardMaterial({ color: '#f7f4f0', roughness: 0.5 });
 
     // Pelvis & belt
-    const pelvis = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.16, 0.26), pantsMat);
+    const pelvis = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.16, 0.26), this.pantsMat);
     pelvis.position.y = 0.78;
     this.bodyRoot.add(pelvis);
 
@@ -42,7 +56,7 @@ export class PlayerAvatar {
     this.bodyRoot.add(belt);
 
     // Torso
-    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.58, 0.27), torsoMat);
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.58, 0.27), this.torsoMat);
     torso.position.y = 1.16;
     torso.castShadow = true;
     this.bodyRoot.add(torso);
@@ -75,11 +89,11 @@ export class PlayerAvatar {
     const buildArm = (side: -1 | 1): THREE.Group => {
       const pivot = new THREE.Group();
       pivot.position.set(side * 0.32, 1.38, 0);
-      const upper = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.28, 0.14), sleeveMat);
+      const upper = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.28, 0.14), this.sleeveMat);
       upper.position.y = -0.12;
       upper.castShadow = true;
       pivot.add(upper);
-      const lower = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.26, 0.12), sleeveMat);
+      const lower = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.26, 0.12), this.sleeveMat);
       lower.position.y = -0.36;
       pivot.add(lower);
       const hand = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.1), skinMat);
@@ -119,7 +133,7 @@ export class PlayerAvatar {
     const buildLeg = (side: -1 | 1): THREE.Group => {
       const pivot = new THREE.Group();
       pivot.position.set(side * 0.13, 0.74, 0);
-      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.68, 0.18), pantsMat);
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.68, 0.18), this.pantsMat);
       leg.position.y = -0.34;
       leg.castShadow = true;
       pivot.add(leg);
@@ -135,6 +149,24 @@ export class PlayerAvatar {
 
     this.group.visible = false;
     scene.add(this.group);
+  }
+
+  public setOutfit(index: number): string {
+    this.outfitIndex = ((index % PLAYER_OUTFITS.length) + PLAYER_OUTFITS.length) % PLAYER_OUTFITS.length;
+    const o = PLAYER_OUTFITS[this.outfitIndex];
+    this.torsoMat.map = getOutfitTexture('civilian', o.primary, o.accent, o.variant);
+    this.torsoMat.needsUpdate = true;
+    this.sleeveMat.color.set(o.primary);
+    this.pantsMat.color.set(o.pants);
+    return o.name;
+  }
+
+  public nextOutfit(): string {
+    return this.setOutfit(this.outfitIndex + 1);
+  }
+
+  public getOutfitIndex(): number {
+    return this.outfitIndex;
   }
 
   public setVisible(visible: boolean): void {

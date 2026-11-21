@@ -189,6 +189,7 @@ const photoKeys = new Set<string>();
 
 objectives.cash = savedProgress.cash;
 objectives.completedCount = savedProgress.completedMissions;
+playerAvatar.setOutfit(savedProgress.outfitIndex);
 if (savedProgress.launcherUnlocked) {
   weapons.unlockLauncher();
   weapons.switchWeapon(1);
@@ -201,6 +202,7 @@ function persistProgress(): void {
     completedMissions: objectives.completedCount,
     launcherUnlocked: weapons.isLauncherUnlocked(),
     armor: Math.round(playerArmor),
+    outfitIndex: playerAvatar.getOutfitIndex(),
   });
   statCashEl.textContent = `$${objectives.cash.toLocaleString('en-US')}`;
   statMissionsEl.textContent = String(objectives.completedCount);
@@ -615,8 +617,31 @@ window.addEventListener('keydown', (e) => {
   }
 
   if (e.code === 'KeyF' && player.getIsActive() && !shopOpen && wastedTimer <= 0) {
-    if (vehicles.isInVehicle()) {
-      tryUsePayNSpray();
+    const car = vehicles.getActiveVehicle();
+    if (car) {
+      if (world.isInSafehouseGarage(car.position)) {
+        car.hp = car.maxHp;
+        car.destroyed = false;
+        audio.playPurchase();
+        showQuickToast(`PRIVATE GARAGE · ${car.name} REPARIERT (100%)`);
+      } else {
+        tryUsePayNSpray();
+      }
+    } else if (world.isNearSafehouseWardrobe(player.position)) {
+      const outfitName = playerAvatar.nextOutfit();
+      audio.playPurchase();
+      persistProgress();
+      showQuickToast(`OUTFIT · ${outfitName}`);
+    } else if (world.isNearSafehouseLounge(player.position)) {
+      playerHp = 100;
+      weapons.refillAllAmmo();
+      if (wanted.stars <= 2) {
+        wanted.reset();
+        npcs.clearPolice();
+      }
+      audio.playPurchase();
+      persistProgress();
+      showQuickToast('SAFEHOUSE · 100% HP, MUNITION VOLL & GESPEICHERT');
     } else if (world.isNearClubBar(player.position)) {
       if (playerHp >= 100) {
         showQuickToast('HP BEREITS VOLL');
@@ -780,7 +805,8 @@ function animate(now: number): void {
       npcs.clearPolice();
       heli.clear();
       if (heist.isActive()) heist.failHeist();
-      player.setSpawn(60, 0.2, 24, 0.12);
+      // Respawn right outside your personal VICE SAFEHOUSE entrance!
+      player.setSpawn(53.5, 0.25, -43.0, -Math.PI / 2);
     }
   }
 
@@ -876,7 +902,8 @@ function animate(now: number): void {
   roadblocks.update(dt, elapsed, wanted.stars);
   shop.update(elapsed);
   payNSpray.update(dt, elapsed);
-  wanted.update(dt);
+  const inSafehouse = world.isInsideSafehouse(player.position);
+  wanted.update(inSafehouse ? dt * 3.0 : dt);
 
   // Vice PD Radio Dispatch triggers on Wanted star escalation
   if (dispatchCooldown > 0) dispatchCooldown -= dt;
@@ -1040,7 +1067,10 @@ function animate(now: number): void {
     vehicleHpFillEl.classList.toggle('low', driveHud.hpPct < 35);
     vehicleCamHintEl.textContent = `[LMB] DRIVE-BY · [Q] ${audio.getRadioStation()} · [V] CAM · [E] AUS`;
     const car = vehicles.getActiveVehicle();
-    if (car && payNSpray.isCarInBay(car.position)) {
+    if (car && world.isInSafehouseGarage(car.position)) {
+      interactPromptEl.textContent = '[F] PRIVATE GARAGE · GRATIS REPARATUR (100%)';
+      interactPromptEl.classList.add('visible');
+    } else if (car && payNSpray.isCarInBay(car.position)) {
       interactPromptEl.textContent = `[F] PAY 'N' SPRAY · $${payNSpray.cost} (REPARATUR & STERNE WEG)`;
       interactPromptEl.classList.add('visible');
     } else {
@@ -1063,6 +1093,12 @@ function animate(now: number): void {
 
     if (shop.isPlayerNear(player.position) && !shopOpen) {
       interactPromptEl.textContent = '[B] AMMU-NEON SHOP ÖFFNEN ($)';
+      interactPromptEl.classList.add('visible');
+    } else if (world.isNearSafehouseWardrobe(player.position)) {
+      interactPromptEl.textContent = '[F] KLEIDERSCHRANK · OUTFIT WECHSELN';
+      interactPromptEl.classList.add('visible');
+    } else if (world.isNearSafehouseLounge(player.position)) {
+      interactPromptEl.textContent = '[F] SAFEHOUSE · HEILEN, MUNITION VOLL & SPEICHERN';
       interactPromptEl.classList.add('visible');
     } else if (world.isNearClubBar(player.position)) {
       interactPromptEl.textContent = '[F] MIAMI VICE COCKTAIL · $50 (+30 HP)';

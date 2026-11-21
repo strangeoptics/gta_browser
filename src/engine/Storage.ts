@@ -10,6 +10,7 @@ export interface SaveProgress {
   completedMissions: number;
   launcherUnlocked: boolean;
   armor: number;
+  outfitIndex: number;
 }
 
 const SETTINGS_KEY = 'vice_dusk_settings_v1';
@@ -27,6 +28,7 @@ export const DEFAULT_PROGRESS: SaveProgress = {
   completedMissions: 0,
   launcherUnlocked: false,
   armor: 0,
+  outfitIndex: 0,
 };
 
 export function loadSettings(): GameSettings {
@@ -73,6 +75,7 @@ export function loadProgress(): SaveProgress {
         typeof parsed.completedMissions === 'number' ? Math.max(0, Math.floor(parsed.completedMissions)) : 0,
       launcherUnlocked: Boolean(parsed.launcherUnlocked),
       armor: typeof parsed.armor === 'number' ? Math.max(0, Math.min(100, parsed.armor)) : 0,
+      outfitIndex: typeof parsed.outfitIndex === 'number' ? Math.max(0, Math.floor(parsed.outfitIndex)) % 4 : 0,
     };
   } catch {
     return { ...DEFAULT_PROGRESS };

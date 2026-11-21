@@ -723,7 +723,7 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
       oceanUniforms.uTime.value = elapsed;
       beachHighlights.update(elapsed);
       neonClub.update(elapsed);
-      safehouse.update(elapsed);
+      safehouse.update(elapsed, dt, playerPos);
       trafficLights.update(elapsed);
       palmGroup.children.forEach((palm, idx) => {
         const crown = palm.userData.crown as THREE.Object3D | undefined;

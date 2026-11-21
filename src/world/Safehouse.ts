@@ -8,7 +8,7 @@ export interface SafehouseHandle {
   isInGarage: (pos: THREE.Vector3) => boolean;
   isNearLounge: (pos: THREE.Vector3) => boolean;
   isNearWardrobe: (pos: THREE.Vector3) => boolean;
-  update: (elapsed: number) => void;
+  update: (elapsed: number, dt: number, playerPos?: THREE.Vector3) => void;
 }
 
 /**
@@ -96,12 +96,80 @@ export function buildSafehouse(
   addBox(2.4, floorH - 3.0, wallT, cx - 5.0, 0.18 + 3.0 + (floorH - 3.0) / 2, cz + 2.5, coralMat);
 
   // East Front Wall facing Ocean Drive (x = 50):
-  // - Open 5.6m Garage bay (z: -37 .. -31.4)
-  // - Open 3.0m Lounge doorway (z: -44.5 .. -41.5)
+  // - Open 5.6m Garage bay (z: -37.1 .. -31.5, center = -34.3)
+  // - Open 3.0m Lounge doorway (z: -44.5 .. -41.5, center = -43.0)
   addBox(wallT, floorH, 4.5, cx + 10, 0.18 + floorH / 2, cz - 6.75, stuccoMat); // north corner
   addBox(wallT, floorH, 4.0, cx + 10, 0.18 + floorH / 2, cz + 0.5, stuccoMat); // between lounge door & garage
   addBox(wallT, floorH - 3.2, 3.0, cx + 10, 0.18 + 3.2 + (floorH - 3.2) / 2, cz - 3.0, stuccoMat); // lounge door lintel
   addBox(wallT, floorH - 3.5, 6.2, cx + 10, 0.18 + 3.5 + (floorH - 3.5) / 2, cz + 5.7, stuccoMat); // garage lintel
+
+  // ---------------------------------------------------------------------------
+  // Animated Roll-Up Garage Door + Automatic Sliding Doors (Front & Inner)
+  // ---------------------------------------------------------------------------
+  // 1) Sectional Roll-Up Garage Door at x = 50, z = -34.3 (w = 5.6, h = 3.5)
+  const garageDoorGroup = new THREE.Group();
+  const garageDoorTopY = 0.18 + 3.5; // pivots/compresses upward into the lintel!
+  garageDoorGroup.position.set(cx + 10.0, garageDoorTopY, cz + 5.7);
+
+  const gDoorMat = new THREE.MeshStandardMaterial({ color: '#e5ddd5', roughness: 0.42, metalness: 0.35 });
+  const gStripeMat = new THREE.MeshStandardMaterial({ color: '#d49a8e', roughness: 0.45 });
+  const garagePanel = new THREE.Mesh(new THREE.BoxGeometry(0.18, 3.5, 5.8), gDoorMat);
+  garagePanel.position.y = -1.75;
+  garagePanel.castShadow = true;
+  garageDoorGroup.add(garagePanel);
+
+  // Horizontal sectional panel ribs
+  for (let r = 0; r < 5; r++) {
+    const rib = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.08, 5.75), r === 4 ? cyanNeon : gStripeMat);
+    rib.position.y = -0.35 - r * 0.72;
+    garageDoorGroup.add(rib);
+  }
+  scene.add(garageDoorGroup);
+
+  // 2) Automatic Double Art-Deco Glass Sliding Doors at Main Lounge Entrance (x = 50, z = -43.0)
+  const frameMat = new THREE.MeshStandardMaterial({ color: '#c8d2de', metalness: 0.88, roughness: 0.18 });
+  const glassDoorMat = new THREE.MeshStandardMaterial({
+    color: '#284a5e',
+    roughness: 0.08,
+    metalness: 0.65,
+    transparent: true,
+    opacity: 0.68,
+  });
+
+  const buildGlassLeaf = (zCenter: number): THREE.Group => {
+    const leaf = new THREE.Group();
+    leaf.position.set(cx + 10.0, 0.18 + 1.6, zCenter);
+    const glass = new THREE.Mesh(new THREE.BoxGeometry(0.1, 3.05, 1.44), glassDoorMat);
+    leaf.add(glass);
+    const frameTop = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.12, 1.5), frameMat);
+    frameTop.position.y = 1.54;
+    leaf.add(frameTop);
+    const frameBot = frameTop.clone();
+    frameBot.position.y = -1.54;
+    leaf.add(frameBot);
+    const handle = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.55, 0.06), goldNeon);
+    handle.position.set(0, -0.1, zCenter < cz - 3.0 ? 0.55 : -0.55);
+    leaf.add(handle);
+    scene.add(leaf);
+    return leaf;
+  };
+  const frontDoorN = buildGlassLeaf(cz - 3.75);
+  const frontDoorS = buildGlassLeaf(cz - 2.25);
+
+  // 3) Automatic Interior Sliding Door between Garage & Lounge (x = 35.0, z = -37.5, width = 2.4m)
+  const innerDoorMat = new THREE.MeshStandardMaterial({ color: '#6b4738', roughness: 0.55 });
+  const innerDoor = new THREE.Group();
+  innerDoor.position.set(cx - 5.0, 0.18 + 1.5, cz + 2.5);
+  const innerPanel = new THREE.Mesh(new THREE.BoxGeometry(2.38, 2.98, 0.14), innerDoorMat);
+  innerDoor.add(innerPanel);
+  const innerTrim = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.1, 0.18), goldNeon);
+  innerTrim.position.y = 0.0;
+  innerDoor.add(innerTrim);
+  scene.add(innerDoor);
+
+  let garageOpenT = 0;
+  let frontOpenT = 0;
+  let innerOpenT = 0;
 
   // Rooftop Deck Slab split cleanly around the recessed Pool Basin
   // Pool opening spans x: 38.5 .. 46.5 (w=8.0, cx=42.5), z: -46.5 .. -41.5 (d=5.0, cz=-44.0)
@@ -342,7 +410,32 @@ export function buildSafehouse(
       pos.y < 2.2,
     isNearWardrobe: (pos: THREE.Vector3) =>
       Math.hypot(pos.x - (cx - 5.5), pos.z - (cz - 7.0)) < 2.4 && pos.y < 2.2,
-    update: (elapsed: number) => {
+    update: (elapsed: number, dt: number, playerPos?: THREE.Vector3) => {
+      const blend = 1 - Math.exp(-6.5 * Math.min(dt, 0.05));
+
+      // Automatic Garage Door & Sliding Doors proximity sensors
+      const distGarage = playerPos ? Math.hypot(playerPos.x - (cx + 10.0), playerPos.z - (cz + 5.7)) : 99;
+      const distFront = playerPos ? Math.hypot(playerPos.x - (cx + 10.0), playerPos.z - (cz - 3.0)) : 99;
+      const distInner = playerPos ? Math.hypot(playerPos.x - (cx - 5.0), playerPos.z - (cz + 2.5)) : 99;
+
+      const wantGarage = distGarage < 11.5 && (playerPos?.y ?? 0) < 4.5 ? 1 : 0;
+      const wantFront = distFront < 4.5 && (playerPos?.y ?? 0) < 4.5 ? 1 : 0;
+      const wantInner = distInner < 4.0 && (playerPos?.y ?? 0) < 4.5 ? 1 : 0;
+
+      garageOpenT += (wantGarage - garageOpenT) * blend;
+      frontOpenT += (wantFront - frontOpenT) * blend;
+      innerOpenT += (wantInner - innerOpenT) * blend;
+
+      // Roll garage door cleanly upward into lintel
+      garageDoorGroup.scale.y = Math.max(0.06, 1 - garageOpenT * 0.94);
+
+      // Slide double glass front doors open
+      frontDoorN.position.z = cz - 3.75 - frontOpenT * 1.42;
+      frontDoorS.position.z = cz - 2.25 + frontOpenT * 1.42;
+
+      // Slide interior garage-to-lounge door into the right partition wall
+      innerDoor.position.x = cx - 5.0 + innerOpenT * 2.25;
+
       // Gentle water shimmer (calm, never blinding) & TV screen flicker
       poolMat.emissiveIntensity = 0.2 + Math.sin(elapsed * 2.2) * 0.05;
       poolWater.position.y = roofY - 0.16 + Math.sin(elapsed * 1.9) * 0.025;

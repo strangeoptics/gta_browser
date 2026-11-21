@@ -15,6 +15,7 @@ import {
   createSidewalkTexture,
   createWetAsphaltTextures,
 } from './Textures';
+import { buildBeachHighlights } from './BeachProps';
 
 export interface MiamiWorld {
   colliders: AABB[];
@@ -603,6 +604,9 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
   scene.add(beach);
   worldMeshes.push(beach);
 
+  // Iconic South Beach Highlights (Lifeguard Tower, Illuminated Pier to Speedboat, Loungers, Volleyball, Dune Grass)
+  const beachHighlights = buildBeachHighlights(scene, colliders, worldMeshes, getBeachHeight);
+
   // Animated Dusk Ocean Shader with translucent shallow wash & receding shoreline foam
   const oceanUniforms = {
     uTime: { value: 0 },
@@ -823,6 +827,7 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
     getGroundHeight: (x: number, z: number) => getBeachHeight(x, z),
     update: (elapsed: number, dt: number, playerPos?: THREE.Vector3) => {
       oceanUniforms.uTime.value = elapsed;
+      beachHighlights.update(elapsed);
 
       // Animate NEON CLUB pulsing dancefloor, sweeping spotlights & dancers
       for (const dtile of danceTiles) {

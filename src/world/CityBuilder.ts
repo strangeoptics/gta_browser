@@ -25,6 +25,7 @@ import { buildStuntRamps, type StuntRamp } from './StuntRamps';
 import { buildTrafficLights } from './TrafficLights';
 import { buildVicePort, type ImportExportSpec } from './VicePort';
 import { buildWestDistrict } from './WestDistrict';
+import { buildNorthPoint } from './NorthPoint';
 
 export interface MiamiWorld {
   colliders: AABB[];
@@ -47,6 +48,10 @@ export interface MiamiWorld {
   isNearBankVault: (pos: THREE.Vector3) => boolean;
   takeBankVault: () => void;
   isInsideWestInterior: (pos: THREE.Vector3) => boolean;
+  isNearMarinaLoot: (pos: THREE.Vector3) => boolean;
+  takeMarinaLoot: () => void;
+  isNearLighthouseSpot: (pos: THREE.Vector3) => boolean;
+  claimLighthouseBonus: () => boolean;
   cycleTimeOfDay: () => string;
   toggleRain: () => boolean;
   isInsideClub: (pos: THREE.Vector3) => boolean;
@@ -632,9 +637,12 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
   // 6c) West District: Little Havana, Starlight 80s Diner, Banco de Vice & Vice Customs Tuning Garage (x = -66..-124)
   const westDistrict = buildWestDistrict(scene, colliders, worldMeshes, roadMat, sidewalkMat, palmPositions);
 
+  // 6d) North Point: Coastal Highway, Vice Marina & Cape Vice 26m Lighthouse (z = -66..-128)
+  const northPoint = buildNorthPoint(scene, colliders, worldMeshes, roadMat, sidewalkMat, oceanMat, palmPositions);
+
   const palms = buildPalmTrees(scene, palmPositions);
 
-  // 6d) Vice Port Industrial Container Docks, 26m Gantry Cranes, Cargo Freighter & Import/Export (z = 66..140)
+  // 6e) Vice Port Industrial Container Docks, 26m Gantry Cranes, Cargo Freighter & Import/Export (z = 66..140)
   const vicePort = buildVicePort(scene, colliders, worldMeshes, oceanMat);
 
   // ---------------------------------------------------------------------------
@@ -642,7 +650,7 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
   // ---------------------------------------------------------------------------
   const streetLights = buildStreetlights(scene);
   const trafficLights = buildTrafficLights(scene);
-  const stuntRamps = [...buildStuntRamps(scene), ...vicePort.stuntRamps];
+  const stuntRamps = [...buildStuntRamps(scene), ...vicePort.stuntRamps, ...northPoint.stuntRamps];
 
   // ---------------------------------------------------------------------------
   // 8) Subtle Post-Rain Mist / Lingering Drizzle Motes
@@ -789,6 +797,10 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
     isNearBankVault: (pos: THREE.Vector3) => westDistrict.isNearBankVault(pos),
     takeBankVault: () => westDistrict.takeBankVault(),
     isInsideWestInterior: (pos: THREE.Vector3) => westDistrict.isInsideInterior(pos),
+    isNearMarinaLoot: (pos: THREE.Vector3) => northPoint.isNearMarinaLoot(pos),
+    takeMarinaLoot: () => northPoint.takeMarinaLoot(),
+    isNearLighthouseSpot: (pos: THREE.Vector3) => northPoint.isNearLighthouseSpot(pos),
+    claimLighthouseBonus: () => northPoint.claimLighthouseBonus(),
     cycleTimeOfDay: () => {
       timeIndex = (timeIndex + 1) % timePresets.length;
       return applyTimePreset(timeIndex);
@@ -833,6 +845,7 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
       beachHighlights.update(elapsed);
       starfish.update(elapsed, dt);
       westDistrict.update(elapsed);
+      northPoint.update(elapsed);
       vicePort.update(elapsed);
       neonClub.update(elapsed, playerPos);
       safehouse.update(elapsed, dt, playerPos, cash, wantedStars);

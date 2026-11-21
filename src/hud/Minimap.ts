@@ -55,13 +55,27 @@ export class Minimap {
     ctx.translate(half, half);
     ctx.rotate(headingYaw);
 
-    // Ocean & beach on East (+X) + Causeway Bridge, Starfish Island & Superyacht
+    // Ocean & beach on East (+X) + Northern Bay (z < -96) + Causeway Bridge, Starfish Island & Superyacht
     const beachX = (74 - playerX) * scale;
     const oceanX = (108 - playerX) * scale;
     ctx.fillStyle = 'rgba(201, 166, 132, 0.25)';
     ctx.fillRect(beachX, -240, 36 * scale, 480);
     ctx.fillStyle = 'rgba(34, 110, 145, 0.45)';
     ctx.fillRect(oceanX, -240, 220, 480);
+    // Northern Bay Ocean (z = -240..-96)
+    ctx.fillRect((-180 - playerX) * scale, (-240 - playerZ) * scale, 320 * scale, 144 * scale);
+
+    // North Point Coastal Highway (z = -88..-74, x = -124..+74) & Cape Vice Lighthouse Peninsula
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.14)';
+    ctx.fillRect((-124 - playerX) * scale, (-89 - playerZ) * scale, 198 * scale, 15 * scale);
+    // Vice Marina Wooden Piers (x = -36, -8, +20; z = -124..-98)
+    ctx.fillStyle = 'rgba(180, 142, 102, 0.65)';
+    for (const px of [-36, -8, 20]) {
+      ctx.fillRect((px - 1.8 - playerX) * scale, (-124 - playerZ) * scale, 3.6 * scale, 26 * scale);
+    }
+    // Cape Vice Lighthouse Peninsula (x = 49..95, z = -124..-96)
+    ctx.fillStyle = 'rgba(216, 186, 147, 0.45)';
+    ctx.fillRect((49 - playerX) * scale, (-124 - playerZ) * scale, 46 * scale, 28 * scale);
 
     // Causeway Bridge (x = 66..148, z = -60)
     ctx.fillStyle = 'rgba(255, 255, 255, 0.22)';
@@ -181,6 +195,12 @@ export class Minimap {
     ctx.fillText('D', (-88 - playerX) * scale, (-7 - playerZ) * scale);
     ctx.fillStyle = '#ffd15c';
     ctx.fillText('B', (-88 - playerX) * scale, (40 - playerZ) * scale);
+
+    // North Point markers: Vice Marina (⚓) & Cape Vice Lighthouse (L)
+    ctx.fillStyle = '#36f1e6';
+    ctx.fillText('⚓', (-8 - playerX) * scale, (-104 - playerZ) * scale);
+    ctx.fillStyle = '#ff9f43';
+    ctx.fillText('L', (76 - playerX) * scale, (-114 - playerZ) * scale);
 
     // Flyable Vice Maverick Helicopter marker (M)
     if (maverickPos) {

@@ -938,6 +938,26 @@ window.addEventListener('keydown', (e) => {
       persistProgress();
       showQuickToast('BANCO DE VICE TRESOR GEKNACKT · +$3.000 — 4★ GROẞFAHNDUNG!');
       sendPoliceDispatch('CODE 3! Bewaffneter Banküberfall in der Banco de Vice (Little Havana)!', true);
+    } else if (world.isNearMarinaLoot(player.position)) {
+      world.takeMarinaLoot();
+      objectives.cash += 2000;
+      wanted.addHeat(75);
+      audio.playMissionPassed();
+      persistProgress();
+      showQuickToast('VICE MARINA · SCHMUGGLER-KOFFER GEKLAUT (+$2.000 · ⚠ 2★)');
+      sendPoliceDispatch('Schmuggler-Alarm an der Vice Marina! Küstenwache & Streifen ausrücken!', true);
+    } else if (world.isNearLighthouseSpot(player.position)) {
+      const firstDiscovery = world.claimLighthouseBonus();
+      playerHp = 100;
+      if (firstDiscovery) {
+        objectives.cash += 1000;
+        audio.playMissionPassed();
+        persistProgress();
+        showQuickToast('CAPE VICE LEUCHTTURM ENTDECKT! · +$1.000 & 100% HP');
+      } else {
+        audio.playPurchase();
+        showQuickToast('CAPE VICE AUSSICHT · FRISCHE MEERESLUFT (100% HP)');
+      }
     } else if (world.isNearClubBar(player.position)) {
       if (objectives.cash >= 50) {
         objectives.cash -= 50;
@@ -1266,15 +1286,17 @@ function animate(now: number): void {
   if (wanted.stars > lastWantedStars) {
     const activeCar = vehicles.getActiveVehicle();
     const area =
-      player.position.x < -66
-        ? 'Little Havana'
-        : player.position.z > 66
-          ? 'Vice Port'
-          : player.position.x > 130
-            ? 'Starfish Island'
-            : player.position.x > 48
-              ? 'Ocean Drive'
-              : 'Downtown Vice';
+      player.position.z < -68
+        ? 'North Point'
+        : player.position.x < -66
+          ? 'Little Havana'
+          : player.position.z > 66
+            ? 'Vice Port'
+            : player.position.x > 130
+              ? 'Starfish Island'
+              : player.position.x > 48
+                ? 'Ocean Drive'
+                : 'Downtown Vice';
     if (wanted.stars === 1) {
       sendPoliceDispatch(`10-31 am ${area} — Verdächtiger gesichtet!`);
     } else if (wanted.stars === 2) {
@@ -1608,6 +1630,10 @@ function animate(now: number): void {
       nextPrompt = '[F] STARLIGHT DINER · CUBAN BURGER & MILKSHAKE ($40 · 100% HP)';
     } else if (world.isNearBankVault(player.position)) {
       nextPrompt = '[F] BANCO DE VICE · BANK-TRESOR AUSRAUBEN (+$3.000 · ⚠ 4★ ALARM)';
+    } else if (world.isNearMarinaLoot(player.position)) {
+      nextPrompt = '[F] VICE MARINA · SCHMUGGLER-KOFFER STEHLEN (+$2.000 · ⚠ 2★)';
+    } else if (world.isNearLighthouseSpot(player.position)) {
+      nextPrompt = '[F] CAPE VICE LEUCHTTURM · AUSSICHT & ENTDECKER-BONUS';
     } else if (heistHud.nearStartMarker && !heistHud.active) {
       nextPrompt = '[H] OCEAN CLUB HEIST STARTEN (+$3.500)';
     } else if (heliPlayerHud.nearbyHeli) {

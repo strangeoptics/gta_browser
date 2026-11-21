@@ -236,6 +236,14 @@ export class WeaponSystem {
     }
   }
 
+  public setViewmodelVisible(visible: boolean): void {
+    this.rig.visible = this.enabled && visible;
+  }
+
+  public isAdsActive(): boolean {
+    return this.ads;
+  }
+
   public unlockLauncher(): void {
     this.launcherUnlocked = true;
     this.ammo[4] = WEAPONS[4].magSize;

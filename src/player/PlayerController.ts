@@ -20,6 +20,8 @@ export class PlayerController {
   private lastMouseY = 0;
   private grounded = false;
   private crouching = false;
+  private thirdPerson = false;
+  private readonly camRaycaster = new THREE.Raycaster();
 
   // Tuning constants
   private readonly walkSpeed = 6.2;
@@ -94,6 +96,15 @@ export class PlayerController {
     this.sensitivityMult = THREE.MathUtils.clamp(mult, 0.4, 2.5);
   }
 
+  public toggleThirdPerson(): boolean {
+    this.thirdPerson = !this.thirdPerson;
+    return this.thirdPerson;
+  }
+
+  public isThirdPerson(): boolean {
+    return this.thirdPerson;
+  }
+
   public setWorldBounds(minX: number, maxX: number, minZ: number, maxZ: number): void {
     this.worldBounds = { minX, maxX, minZ, maxZ };
   }
@@ -154,6 +165,8 @@ export class PlayerController {
     colliders: AABB[],
     pad?: GamepadSnapshot,
     getGroundHeight?: (x: number, z: number) => number,
+    worldMeshes?: THREE.Object3D[],
+    isAds = false,
   ): PlayerStatus {
     const clampedDt = Math.min(dt, 0.05);
     const active = this.getIsActive();
@@ -277,13 +290,39 @@ export class PlayerController {
       this.bobTimer = 0;
     }
 
-    this.camera.position.set(
-      this.position.x + this.rightVec.x * bobOffsetX,
-      this.position.y + this.currentEyeHeight + bobOffsetY,
-      this.position.z + this.rightVec.z * bobOffsetX,
-    );
-    this.camera.rotation.y = this.yaw;
-    this.camera.rotation.x = this.pitch;
+    if (this.thirdPerson) {
+      // GTA Over-the-Shoulder 3rd-Person Camera with wall-clip avoidance
+      const pivot = new THREE.Vector3(
+        this.position.x + this.rightVec.x * 0.52,
+        this.position.y + this.currentEyeHeight + 0.08,
+        this.position.z + this.rightVec.z * 0.52,
+      );
+      const lookDir = new THREE.Vector3(0, 0, -1).applyEuler(new THREE.Euler(this.pitch, this.yaw, 0, 'YXZ'));
+      const desiredDist = isAds ? 2.15 : 3.55;
+      const backDir = lookDir.clone().negate();
+
+      let actualDist = desiredDist;
+      if (worldMeshes && worldMeshes.length > 0) {
+        this.camRaycaster.set(pivot, backDir);
+        this.camRaycaster.far = desiredDist + 0.3;
+        const hits = this.camRaycaster.intersectObjects(worldMeshes, false);
+        if (hits.length > 0) {
+          actualDist = Math.max(0.75, hits[0].distance - 0.28);
+        }
+      }
+
+      this.camera.position.copy(pivot).addScaledVector(backDir, actualDist);
+      this.camera.rotation.y = this.yaw;
+      this.camera.rotation.x = this.pitch;
+    } else {
+      this.camera.position.set(
+        this.position.x + this.rightVec.x * bobOffsetX,
+        this.position.y + this.currentEyeHeight + bobOffsetY,
+        this.position.z + this.rightVec.z * bobOffsetX,
+      );
+      this.camera.rotation.y = this.yaw;
+      this.camera.rotation.x = this.pitch;
+    }
 
     return {
       x: this.position.x,

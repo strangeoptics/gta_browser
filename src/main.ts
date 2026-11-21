@@ -5,6 +5,7 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import './style.css';
 import { PlayerController } from './player/PlayerController';
+import { PlayerAvatar } from './player/PlayerAvatar';
 import { buildMiamiCity } from './world/CityBuilder';
 import { WeaponSystem } from './combat/WeaponSystem';
 import { VehicleSystem } from './vehicles/VehicleSystem';
@@ -144,8 +145,9 @@ const touch = new TouchControls(touchControlsEl, canvas);
 let padConnectedToastShown = false;
 objectives.startNextObjective(npcs, wanted);
 
-// Player Controller — spawn on Ocean Drive near parked sports cars
+// Player Controller & 3rd-Person Avatar — spawn on Ocean Drive near parked sports cars
 const player = new PlayerController(camera, canvas);
+const playerAvatar = new PlayerAvatar(scene);
 const b = world.layout.playableBounds;
 player.setWorldBounds(b.minX, b.maxX, b.minZ, b.maxZ);
 player.setSpawn(60, 0.2, 24, 0.12);
@@ -573,6 +575,13 @@ window.addEventListener('keydown', (e) => {
 
   if (e.code === 'KeyE' && player.getIsActive() && !shopOpen && wastedTimer <= 0) {
     tryToggleVehicleOrBoat();
+    return;
+  }
+
+  if (e.code === 'KeyV' && player.getIsActive() && !shopOpen && !vehicles.isInVehicle() && !boat.isInBoat()) {
+    const is3p = player.toggleThirdPerson();
+    weapons.setViewmodelVisible(!is3p);
+    showQuickToast(is3p ? 'KAMERA · 3RD PERSON' : 'KAMERA · FIRST PERSON');
   }
 });
 
@@ -701,6 +710,11 @@ function animate(now: number): void {
 
   if (isPlaying && pad.connected) {
     if (pad.interactPressed) tryToggleVehicleOrBoat();
+    if (pad.camTogglePressed && !vehicles.isInVehicle() && !boat.isInBoat()) {
+      const is3p = player.toggleThirdPerson();
+      weapons.setViewmodelVisible(!is3p);
+      showQuickToast(is3p ? 'KAMERA · 3RD PERSON' : 'KAMERA · FIRST PERSON');
+    }
     if (pad.reloadOrSprayPressed && vehicles.isInVehicle()) tryUsePayNSpray();
     if (pad.prevWeaponPressed && (vehicles.isInVehicle() || boat.isInBoat())) {
       const station = audio.nextRadioStation();
@@ -718,13 +732,22 @@ function animate(now: number): void {
 
   let playerSpeed = 0;
   let playerGrounded = true;
+  let playerCrouching = false;
   let headingYaw = player.getYaw();
 
   if (!inAnyCraft) {
     const allColliders = [...world.colliders, ...vehicles.getVehicleColliders()];
-    const status = player.update(dt, allColliders, pad, world.getGroundHeight);
+    const status = player.update(
+      dt,
+      allColliders,
+      pad,
+      world.getGroundHeight,
+      world.worldMeshes,
+      weapons.isAdsActive(),
+    );
     playerSpeed = status.speed;
     playerGrounded = status.grounded;
+    playerCrouching = status.crouching;
   } else if (inVehicle) {
     const car = vehicles.getActiveVehicle();
     if (car) {
@@ -822,6 +845,18 @@ function animate(now: number): void {
     ...heli.getShootableTargets(),
   ];
   const wHud = weapons.update(dt, isPlaying && !inAnyCraft, playerSpeed, world.worldMeshes, shootables, pad);
+  weapons.setViewmodelVisible(!inAnyCraft && !player.isThirdPerson());
+  playerAvatar.setVisible(!inAnyCraft && player.isThirdPerson());
+  playerAvatar.update(
+    dt,
+    player.position,
+    player.getYaw(),
+    playerSpeed,
+    playerGrounded,
+    playerCrouching,
+    wHud.ads,
+    wHud.isMelee,
+  );
   if (inVehicle) {
     const car = vehicles.getActiveVehicle();
     if (car) {

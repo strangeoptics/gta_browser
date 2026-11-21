@@ -37,12 +37,15 @@ export interface MiamiWorld {
   getFoodItems: () => FoodItem[];
   consumeFood: (item: FoodItem) => void;
   getCabinetWeapons: () => CabinetWeapon[];
+  getTvMesh: () => THREE.Object3D;
+  toggleTv: (cash: number, wantedStars: number) => boolean;
+  isTvOn: () => boolean;
   isNearClubBar: (pos: THREE.Vector3) => boolean;
   getClubProximity: (pos: THREE.Vector3) => number;
   getGroundHeight: (x: number, z: number) => number;
   shouldTrafficStop: (x: number, z: number, yaw: number) => boolean;
   onThunder?: () => void;
-  update: (elapsed: number, dt: number, playerPos?: THREE.Vector3) => void;
+  update: (elapsed: number, dt: number, playerPos?: THREE.Vector3, cash?: number, wantedStars?: number) => void;
 }
 
 /**
@@ -723,15 +726,18 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
     getFoodItems: () => safehouse.getFoodItems(),
     consumeFood: (item: FoodItem) => safehouse.consumeFood(item),
     getCabinetWeapons: () => safehouse.getCabinetWeapons(),
+    getTvMesh: () => safehouse.getTvMesh(),
+    toggleTv: (cash: number, wantedStars: number) => safehouse.toggleTv(cash, wantedStars),
+    isTvOn: () => safehouse.isTvOn(),
     isNearClubBar: (pos: THREE.Vector3) => neonClub.isNearBar(pos),
     getClubProximity: (pos: THREE.Vector3) => neonClub.getProximity(pos),
     getGroundHeight: (x: number, z: number) => getBeachHeight(x, z),
     shouldTrafficStop: (x: number, z: number, yaw: number) => trafficLights.shouldAiStop(x, z, yaw),
-    update: (elapsed: number, dt: number, playerPos?: THREE.Vector3) => {
+    update: (elapsed: number, dt: number, playerPos?: THREE.Vector3, cash = 0, wantedStars = 0) => {
       oceanUniforms.uTime.value = elapsed;
       beachHighlights.update(elapsed);
       neonClub.update(elapsed);
-      safehouse.update(elapsed, dt, playerPos);
+      safehouse.update(elapsed, dt, playerPos, cash, wantedStars);
       trafficLights.update(elapsed);
       palmGroup.children.forEach((palm, idx) => {
         const crown = palm.userData.crown as THREE.Object3D | undefined;

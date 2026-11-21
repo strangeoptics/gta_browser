@@ -190,7 +190,18 @@ const photoKeys = new Set<string>();
 const foodRaycaster = new THREE.Raycaster();
 let lookedFood: FoodItem | null = null;
 let lookedCabinetWeapon: CabinetWeapon | null = null;
+let lookedAtTv = false;
 let handHoldTimer = 0;
+
+function toggleSafehouseTv(): void {
+  const isOn = world.toggleTv(objectives.cash, wanted.stars);
+  if (isOn) {
+    audio.playNewsJingle();
+    showQuickToast('VICE CHANNEL 6 · BREAKING NEWS LIVE');
+  } else {
+    showQuickToast('FERNSEHER AUSGESCHALTET');
+  }
+}
 
 function equipCabinetWeapon(): boolean {
   if (!lookedCabinetWeapon) return false;
@@ -589,6 +600,8 @@ window.addEventListener('mousedown', (e) => {
       eatLookedFood();
     } else if (lookedCabinetWeapon) {
       equipCabinetWeapon();
+    } else if (lookedAtTv) {
+      toggleSafehouseTv();
     }
   }
 });
@@ -677,6 +690,8 @@ window.addEventListener('keydown', (e) => {
       eatLookedFood();
     } else if (lookedCabinetWeapon) {
       equipCabinetWeapon();
+    } else if (lookedAtTv) {
+      toggleSafehouseTv();
     } else if (world.isNearSafehouseWardrobe(player.position)) {
       const outfitName = playerAvatar.nextOutfit();
       audio.playPurchase();
@@ -953,7 +968,7 @@ function animate(now: number): void {
   );
   const boatHud = boat.update(dt, elapsed, isPlaying, player.position, camera, pad);
 
-  world.update(elapsed, dt, player.position);
+  world.update(elapsed, dt, player.position, objectives.cash, wanted.stars);
   destructibles.update(dt);
   roadblocks.update(dt, elapsed, wanted.stars);
   shop.update(elapsed);
@@ -1028,16 +1043,17 @@ function animate(now: number): void {
     ...destructibles.getShootableTargets(),
     ...heli.getShootableTargets(),
   ];
-  // Crosshair raycast for Safehouse food items & gun cabinet weapons -> switches weapon to open Hand!
+  // Crosshair raycast for Safehouse food items, gun cabinet weapons & CRT TV -> switches weapon to open Hand!
   if (handHoldTimer > 0) handHoldTimer = Math.max(0, handHoldTimer - dt);
   lookedFood = null;
   lookedCabinetWeapon = null;
+  lookedAtTv = false;
   if (isPlaying && !inAnyCraft && world.isInsideSafehouse(player.position)) {
     const camOrigin = new THREE.Vector3();
     camera.getWorldPosition(camOrigin);
     const camDir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
     foodRaycaster.set(camOrigin, camDir);
-    foodRaycaster.far = 3.0;
+    foodRaycaster.far = 3.2;
 
     const foods = world.getFoodItems();
     if (foods.length > 0) {
@@ -1069,8 +1085,15 @@ function animate(now: number): void {
         }
       }
     }
+
+    if (!lookedFood && !lookedCabinetWeapon) {
+      const tvHits = foodRaycaster.intersectObject(world.getTvMesh(), true);
+      if (tvHits.length > 0) {
+        lookedAtTv = true;
+      }
+    }
   }
-  weapons.setHandMode(Boolean(lookedFood) || Boolean(lookedCabinetWeapon) || handHoldTimer > 0);
+  weapons.setHandMode(Boolean(lookedFood) || Boolean(lookedCabinetWeapon) || lookedAtTv || handHoldTimer > 0);
 
   const wHud = weapons.update(dt, isPlaying && !inAnyCraft, playerSpeed, world.worldMeshes, shootables, pad);
   weapons.setViewmodelVisible(!inAnyCraft && !player.isThirdPerson());
@@ -1196,6 +1219,11 @@ function animate(now: number): void {
       interactPromptEl.classList.add('visible');
     } else if (lookedCabinetWeapon) {
       interactPromptEl.textContent = `[LMB / F] ${lookedCabinetWeapon.name} AUS WAFFENSCHRANK NEHMEN`;
+      interactPromptEl.classList.add('visible');
+    } else if (lookedAtTv) {
+      interactPromptEl.textContent = world.isTvOn()
+        ? '[LMB / F] FERNSEHER AUSSCHALTEN'
+        : '[LMB / F] FERNSEHER ANSCHALTEN · VICE CHANNEL 6';
       interactPromptEl.classList.add('visible');
     } else if (shop.isPlayerNear(player.position) && !shopOpen) {
       interactPromptEl.textContent = '[B] AMMU-NEON SHOP ÖFFNEN ($)';

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { AABB } from '../types';
 import { createNeonSignTexture } from './Textures';
+import { ViceNewsTv } from './ViceNewsTv';
 
 export interface FoodItem {
   id: string;
@@ -27,7 +28,10 @@ export interface SafehouseHandle {
   getFoodItems: () => FoodItem[];
   consumeFood: (item: FoodItem) => void;
   getCabinetWeapons: () => CabinetWeapon[];
-  update: (elapsed: number, dt: number, playerPos?: THREE.Vector3) => void;
+  getTvMesh: () => THREE.Object3D;
+  toggleTv: (cash: number, wantedStars: number) => boolean;
+  isTvOn: () => boolean;
+  update: (elapsed: number, dt: number, playerPos?: THREE.Vector3, cash?: number, wantedStars?: number) => void;
 }
 
 /**
@@ -265,19 +269,26 @@ export function buildSafehouse(
   tableGlass.position.set(cx - 1.5, 0.68, cz - 4.8);
   scene.add(tableGlass);
 
-  // 80s Retro CRT TV on Credenza
+  // 80s Retro CRT TV on Credenza (toggleable VICE CHANNEL 6 Live News!)
+  const viceTv = new ViceNewsTv();
   const tvBody = new THREE.MeshStandardMaterial({ color: '#241d2e', roughness: 0.5 });
   addBox(2.2, 0.75, 0.75, cx - 1.5, 0.2 + 0.375, cz - 2.4, tvBody);
-  const crt = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.85, 0.65), tvBody);
-  crt.position.set(cx - 1.5, 1.38, cz - 2.4);
-  scene.add(crt);
+  const tvGroup = new THREE.Group();
+  tvGroup.position.set(cx - 1.5, 1.42, cz - 2.4);
+  const crt = new THREE.Mesh(new THREE.BoxGeometry(1.36, 1.0, 0.68), tvBody);
+  tvGroup.add(crt);
   const tvScreen = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.92, 0.68),
-    new THREE.MeshBasicMaterial({ color: '#36f1e6' }),
+    new THREE.PlaneGeometry(1.16, 0.84),
+    new THREE.MeshBasicMaterial({ map: viceTv.texture }),
   );
   tvScreen.rotation.y = Math.PI;
-  tvScreen.position.set(cx - 1.5, 1.4, cz - 2.74);
-  scene.add(tvScreen);
+  tvScreen.position.set(0, 0.02, -0.35);
+  tvGroup.add(tvScreen);
+  const tvLedMat = new THREE.MeshBasicMaterial({ color: '#ff2244' });
+  const tvLed = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.04, 0.02), tvLedMat);
+  tvLed.position.set(-0.54, -0.42, -0.35);
+  tvGroup.add(tvLed);
+  scene.add(tvGroup);
 
   // ---------------------------------------------------------------------------
   // Openable 80s Neon Gun Cabinet (Waffenschrank) along West Wall (x = 30.8, z = -44.2)
@@ -723,9 +734,24 @@ export function buildSafehouse(
       item.respawnTimer = 20.0;
     },
     getCabinetWeapons: () => cabinetWeapons,
-    update: (elapsed: number, dt: number, playerPos?: THREE.Vector3) => {
+    getTvMesh: () => tvGroup,
+    toggleTv: (cash: number, wantedStars: number) => {
+      const on = viceTv.toggle(cash, wantedStars);
+      tvLedMat.color.set(on ? '#38f28a' : '#ff2244');
+      return on;
+    },
+    isTvOn: () => viceTv.isOn,
+    update: (elapsed: number, dt: number, playerPos?: THREE.Vector3, cash = 0, wantedStars = 0) => {
       const clampedDt = Math.min(dt, 0.05);
       const blend = 1 - Math.exp(-6.5 * clampedDt);
+      const inside = playerPos
+        ? playerPos.x > cx - 10 &&
+          playerPos.x < cx + 10 &&
+          playerPos.z > cz - 9 &&
+          playerPos.z < cz + 9 &&
+          playerPos.y < floorH + 0.3
+        : false;
+      viceTv.update(clampedDt, elapsed, inside, cash, wantedStars);
 
       // Restock consumed food items after 20s
       for (const f of foodItems) {
@@ -739,19 +765,24 @@ export function buildSafehouse(
       }
 
       // Automatic Garage Door, Sliding Doors, Fridge Door & Gun Cabinet Doors proximity sensors
-      const distGarage = playerPos ? Math.hypot(playerPos.x - (cx + 10.0), playerPos.z - (cz + 5.7)) : 99;
+      const inGarageDoorZone = playerPos
+        ? Math.abs(playerPos.x - (cx + 10.0)) < 4.2 &&
+          Math.abs(playerPos.z - (cz + 5.7)) < 3.5 &&
+          playerPos.y < 4.5
+        : false;
       const distFront = playerPos ? Math.hypot(playerPos.x - (cx + 10.0), playerPos.z - (cz - 3.0)) : 99;
       const distInner = playerPos ? Math.hypot(playerPos.x - (cx - 5.0), playerPos.z - (cz + 2.5)) : 99;
       const distFridge = playerPos ? Math.hypot(playerPos.x - fridgeX, playerPos.z - (fridgeZ - 1.3)) : 99;
       const distCabinet = playerPos ? Math.hypot(playerPos.x - (cabDoorX + 1.1), playerPos.z - cabZ) : 99;
 
-      const wantGarage = distGarage < 11.5 && (playerPos?.y ?? 0) < 4.5 ? 1 : 0;
+      const wantGarage = inGarageDoorZone ? 1 : 0;
       const wantFront = distFront < 4.5 && (playerPos?.y ?? 0) < 4.5 ? 1 : 0;
       const wantInner = distInner < 4.0 && (playerPos?.y ?? 0) < 4.5 ? 1 : 0;
       const wantFridge = distFridge < 2.6 && (playerPos?.y ?? 0) < 2.2 ? 1 : 0;
       const wantCabinet = distCabinet < 2.8 && (playerPos?.y ?? 0) < 2.2 ? 1 : 0;
 
-      garageOpenT += (wantGarage - garageOpenT) * blend;
+      const garageBlend = 1 - Math.exp(-8.5 * clampedDt);
+      garageOpenT += (wantGarage - garageOpenT) * garageBlend;
       frontOpenT += (wantFront - frontOpenT) * blend;
       innerOpenT += (wantInner - innerOpenT) * blend;
       fridgeOpenT += (wantFridge - fridgeOpenT) * blend;
@@ -774,14 +805,9 @@ export function buildSafehouse(
       // Slide interior garage-to-lounge door into the right partition wall
       innerDoor.position.x = cx - 5.0 + innerOpenT * 2.25;
 
-      // Gentle water shimmer (calm, never blinding) & TV screen flicker
+      // Gentle water shimmer (calm, never blinding)
       poolMat.emissiveIntensity = 0.2 + Math.sin(elapsed * 2.2) * 0.05;
       poolWater.position.y = roofY - 0.16 + Math.sin(elapsed * 1.9) * 0.025;
-      (tvScreen.material as THREE.MeshBasicMaterial).color.setHSL(
-        0.5 + Math.sin(elapsed * 1.4) * 0.16,
-        0.85,
-        0.62,
-      );
     },
   };
 }

@@ -25,8 +25,12 @@ Gebaut mit **Three.js**, **TypeScript**, **Vite** und der **Web Audio API** — 
   - 9 Fahrzeuge inkl. **PCJ-86 Neon-Motorrad** (mit Kurven-Schräglage & 3D-Fahrer), Auto-zu-Auto-Kollisionen, geschwindigkeitsabhängigem Crash-Schaden, **Explosionen**, **Brems- & Rückfahrlichtern**, Drift-Rauch & Skidmarks, **Pay ’n’ Spray (`F`)** sowie dem **Stinger Speedboat** am Pier.
   - **1–5 Wanted-Sterne:** Personen-Kollisionen, verfolgende **Vice-PD-Streifenwagen** (ab 2★), **Polizei-Straßensperren** & abschießbarer **Vice-PD-Helikopter mit Suchscheinwerfer** (ab 3★) plus **Polizeifunk**.
 - **Eigene Basis — VICE SAFEHOUSE (`⌂` am Nord-Ocean-Drive):**
-  - Begehbare 2-Ebenen-Art-Deco-Villa mit **automatischem Rolltor** (private Garage), **automatischen Glasschiebe- & Innentüren**, Lounge (Sofa, 80s-CRT-TV, Waffenwand, Kleiderschrank, Tresor) und **Penthouse-Dachterrasse mit eingelassenem, begehbarem Pool** inkl. Unterwasser-Stufen.
-  - **Gameplay-Funktionen:** Kostenlos **Heilen, Munition auffüllen & Speichern (`F`)** in der Lounge, **4 wechselbare 80s-Outfits (`F`)** am Kleiderschrank (gespeichert in `localStorage`), **gratis Garagen-Reparatur (`F`)**, schnellerer Wanted-Abbau drinnen & Safehouse-Respawn.
+  - Begehbare 2-Ebenen-Art-Deco-Villa mit **automatischem Rolltor** (private Garage mit engem Nahbereichs-Sensor), **automatischen Glasschiebe- & Innentüren**, Lounge (Sofa, **einschaltbarer 80s-CRT-TV „VICE CHANNEL 6“**, **öffenbarer Waffenschrank** mit allen 5 3D-Waffen, Kleiderschrank, Tresor), **Küchenzeile mit selbstöffnendem Kühlschrank** und **Penthouse-Dachterrasse mit eingelassenem, begehbarem Pool** inkl. Unterwasser-Stufen.
+  - **Interaktive Gameplay-Funktionen:**
+    - **VICE CHANNEL 6 News-TV:** Fadenkreuz auf den Fernseher richten (wechselt zur **3D-Hand**) und per **`LMB` / `F`** ein- oder ausschalten — animierter 80s-Nachrichtensprecher, dynamischer Breaking-News-Ticker (reagiert auf Wanted-Sterne & Cash), Synth-Intro-Jingle & echte `en-US`-Sprachausgabe (`Web Speech API`).
+    - **Küche & Kühlschrank:** 10 essbare Snacks & Drinks im Kühlschrank und auf der Theke — beim Anvisieren erscheint die **3D-Hand** zum Nehmen & Essen (`LMB` / `F`, auch bei 100 % HP).
+    - **Waffenschrank:** Doppeltüren öffnen sich automatisch beim Herantreten; anvisierte Waffen können per **3D-Hand** (`LMB` / `F`) direkt ausgerüstet und aufgefüllt werden.
+    - **Basis-Services:** Kostenlos **Heilen, Munition auffüllen & Speichern (`F`)** in der Lounge, **4 wechselbare 80s-Outfits (`F`)** am Kleiderschrank (gespeichert in `localStorage`), **gratis Garagen-Reparatur (`F`)**, schnellerer Wanted-Abbau drinnen & Safehouse-Respawn.
 - **Story-Heist, Mini-Missionen, Fotomodus (`P`) & Komfort:**
   - **3-stufiger Story-Heist „Ocean Club Finale“ (`H`, `+$3.500`)**, 5 rotierende Mini-Missionen & **AMMU-NEON Shop (`B`)** (Medkits, Kevlar-Armor, Launcher).
   - **Fotomodus (`P`):** Welt einfrieren, freie Flugkamera (`WASD` + `E`/`Q`) und PNG-Screenshot per **`K`** speichern.
@@ -40,7 +44,7 @@ Gebaut mit **Three.js**, **TypeScript**, **Vite** und der **Web Audio API** — 
 | :--- | :--- |
 | `W` `A` `S` `D` | Bewegen / Fahren / Boot steuern |
 | `Maus` | Umsehen / Zielen |
-| `Linksklick` / `Rechtsklick` | Schießen (auch Drive-By) / Zielen (ADS) |
+| `Linksklick` / `Rechtsklick` | Schießen (auch Drive-By) · Interagieren (3D-Hand: Essen, Waffenschrank, TV) / Zielen (ADS) |
 | `0` `1` `2` `3` `4` / `Mausrad` | Waffe wechseln (Katana / 9mm / SMG / Shotgun / Launcher) |
 | `R` | Nachladen |
 | `H` | Ocean Club Story-Heist starten (`+$3.500`) |
@@ -49,7 +53,7 @@ Gebaut mit **Three.js**, **TypeScript**, **Vite** und der **Web Audio API** — 
 | `E` | Auto oder Speedboat ein- / aussteigen |
 | `V` | Kamera wechseln (zu Fuß: 1st/3rd-Person · im Auto: Chase/Cockpit) |
 | `Q` | 80s-Radio-Sender wechseln |
-| `F` | Pay ’n’ Spray / Safehouse (Heilen, Outfit, Garage) / Club-Cocktail |
+| `F` | Pay ’n’ Spray / Safehouse (Heilen, Outfit, Garage, Essen, Waffenschrank, TV) / Club-Cocktail |
 | `B` | AMMU-NEON Shop öffnen (am Central Plaza) |
 | `T` / `Y` | Tageszeit wechseln / Tropenschauer an & aus |
 | `P` / `K` | Fotomodus an & aus / PNG-Screenshot im Fotomodus |
@@ -92,7 +96,7 @@ src/
 ├── audio/
 │   └── AudioEngine.ts         # Prozedurale Web-Audio-SFX, Crash, Donner, Sirene & 80s-Radio
 ├── combat/
-│   └── WeaponSystem.ts        # 4 Waffen-Viewmodels, Hitscan/RPG-Explosionen & Drive-By
+│   └── WeaponSystem.ts        # 5 Waffen-Viewmodels, 3D-Hand-Interaktion, Hitscan/RPG & Drive-By
 ├── engine/
 │   ├── Physics.ts             # AABB-Kollision mit Wall-Sliding & Treppen/Bordstein-Step-Up
 │   └── Storage.ts             # localStorage-Speicherstand & Live-Einstellungen
@@ -120,10 +124,11 @@ src/
 │   ├── DestructibleProps.ts   # Zerstörbare Hydranten (Wasserfontäne), Cafés & Mülltonnen
 │   ├── NeonClub.ts            # Begehbarer NEON CLUB (Discokugel, Strahler, Bar, Barkeeper, DJ)
 │   ├── RoadblockSystem.ts     # Vice-PD-Straßensperren mit durchbrechbaren Barrikaden
-│   ├── Safehouse.ts           # Begehbare VICE SAFEHOUSE Villa (Rolltor, Türen & Dachpool)
+│   ├── Safehouse.ts           # Begehbare VICE SAFEHOUSE Villa (Garage, Küche, Waffenschrank, TV & Dachpool)
 │   ├── StuntRamps.ts          # Neon-Stunt-Rampen für Insane Stunt Bonuses
 │   ├── Textures.ts            # Prozedurale Pfützen-, Sand-, Fassaden- & Neon-Texturen
-│   └── TrafficLights.ts       # Funktionierende Ampeln an den 4 Hauptkreuzungen
+│   ├── TrafficLights.ts       # Funktionierende Ampeln an den 4 Hauptkreuzungen
+│   └── ViceNewsTv.ts          # Prozeduraler 80s-US-Nachrichtensender (Canvas-Studio, Ticker & Speech API)
 └── main.ts                    # Game-Loop, Post-Processing (Bloom) & HUD-Wiring
 ```
 

@@ -262,8 +262,17 @@ export class PlayerController {
       this.grounded = false;
     }
 
-    // Gravity
-    this.velocity.y -= this.gravity * clampedDt;
+    // Gravity vs. realistic ocean buoyancy when swimming in deep water
+    const WATER_SURFACE_Y = -0.2;
+    const SWIM_FLOAT_Y = WATER_SURFACE_Y - 1.28; // -1.48m -> shoulders & head float right at the ocean surface!
+    if (this.swimming) {
+      // Spring-damped buoyancy pulls the player smoothly to the water surface (even after diving off a pier or cliff!)
+      const depthBelowFloat = SWIM_FLOAT_Y - this.position.y;
+      this.velocity.y += depthBelowFloat * 14.0 * clampedDt;
+      this.velocity.y *= Math.exp(-5.5 * clampedDt);
+    } else {
+      this.velocity.y -= this.gravity * clampedDt;
+    }
 
     // Integrate tentative position
     const nextX = THREE.MathUtils.clamp(
@@ -295,10 +304,23 @@ export class PlayerController {
     this.position.set(resolved.x, resolved.y, resolved.z);
     this.velocity.y = resolved.vy;
     this.grounded = resolved.grounded;
-    this.swimming = baseGroundY < -0.32 && this.position.y < -0.26;
 
-    // Smooth eye height & subtle head-bob (or rhythmic freestyle swim bobbing in water!)
-    const targetEye = this.swimming ? 1.02 : this.crouching ? this.crouchEye : this.standEye;
+    // Enter swimming mode whenever seabed is deep enough (chest-deep / open ocean) and player is in the water
+    const inDeepWater = baseGroundY < WATER_SURFACE_Y - 0.85 && this.position.y < WATER_SURFACE_Y - 0.55;
+    if (inDeepWater) {
+      this.swimming = true;
+      this.grounded = false;
+      // Gently clamp max submerge depth so diving off the 11m cliff feels great without hitting the floor
+      if (this.position.y < baseGroundY + 0.1) {
+        this.position.y = baseGroundY + 0.1;
+        this.velocity.y = Math.max(0, this.velocity.y);
+      }
+    } else {
+      this.swimming = false;
+    }
+
+    // Smooth eye height & subtle head-bob (or rhythmic freestyle swim bobbing at water surface!)
+    const targetEye = this.swimming ? 1.52 : this.crouching ? this.crouchEye : this.standEye;
     this.currentEyeHeight += (targetEye - this.currentEyeHeight) * (1 - Math.exp(-10 * clampedDt));
 
     const horizSpeed = Math.hypot(this.velocity.x, this.velocity.z);

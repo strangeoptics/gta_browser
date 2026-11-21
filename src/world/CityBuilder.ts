@@ -510,18 +510,28 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
   // ---------------------------------------------------------------------------
   // 5b) Sloping Coastal Beach (Dry Dunes -> Mirror-Wet Shoreline) & Dusk Ocean
   // ---------------------------------------------------------------------------
-  // Shared continuous beach elevation function:
-  // Flush with boardwalk at x = 74 (+0.20m), gently sloping with subtle coastal dunes
-  // down into the shallow surf (-0.65m at x = 114).
+  // Shared continuous beach & seabed elevation function:
+  // Flush with boardwalk at x = 74 (+0.20m), sloping gently across the dry/wet beach
+  // to the surf line (-0.25m at x = 102), then dropping into deep ocean water (-2.4m)!
+  // Also returns deep seabed (-2.4m) in the North Marina Bay (z < -98.5) and South Port Sea (z > 126.2).
   const getBeachHeight = (x: number, z: number): number => {
-    if (x <= 74) return 0;
-    const t = THREE.MathUtils.clamp((x - 74) / 40, 0, 1);
-    const smoothSlope = t * t * (3 - 2 * t);
-    const baseY = THREE.MathUtils.lerp(0.2, -0.68, smoothSlope);
-    // Gentle natural dunes on the upper dry beach, flattening smoothly at the surf line
-    const dune =
-      (Math.sin(z * 0.085) * 0.12 + Math.cos(x * 0.16 + z * 0.04) * 0.05) * (1 - smoothSlope) * Math.min(1, (x - 74) / 5);
-    return baseY + dune;
+    if (x <= 74) {
+      if (z < -98.5 || z > 126.2) return -2.4;
+      return 0;
+    }
+    if (x <= 102) {
+      const t = (x - 74) / 28;
+      const smoothSlope = t * t * (3 - 2 * t);
+      const baseY = THREE.MathUtils.lerp(0.2, -0.25, smoothSlope);
+      const dune =
+        (Math.sin(z * 0.085) * 0.12 + Math.cos(x * 0.16 + z * 0.04) * 0.05) *
+        (1 - smoothSlope) *
+        Math.min(1, (x - 74) / 5);
+      return baseY + dune;
+    }
+    const deepT = THREE.MathUtils.clamp((x - 102) / 16, 0, 1);
+    const deepSmooth = deepT * deepT * (3 - 2 * deepT);
+    return THREE.MathUtils.lerp(-0.25, -2.4, deepSmooth);
   };
 
   // Boardwalk east of x = 66

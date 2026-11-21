@@ -206,9 +206,10 @@ export class PlayerAvatar {
       this.walkPhase += clampedDt * strokeRate;
 
       // Smoothly pitch torso prone for freestyle crawl when moving, or upright treading water when idle
-      const targetPitch = moving ? 1.18 : 0.22;
+      // With player floating at y = -1.48 (ocean surface at -0.20), these offsets keep head & shoulders right at the surface!
+      const targetPitch = moving ? 1.32 : 0.16;
       const targetRoll = moving ? Math.sin(this.walkPhase) * 0.22 : 0;
-      const targetLiftY = (moving ? 0.52 : 0.28) + Math.sin(this.walkPhase * (moving ? 1.0 : 1.5)) * 0.055;
+      const targetLiftY = (moving ? 0.94 : 0.04) + Math.sin(this.walkPhase * (moving ? 1.0 : 1.5)) * 0.055;
       this.bodyRoot.rotation.x += (targetPitch - this.bodyRoot.rotation.x) * blend;
       this.bodyRoot.rotation.z += (targetRoll - this.bodyRoot.rotation.z) * blend;
       this.bodyRoot.position.y += (targetLiftY - this.bodyRoot.position.y) * blend;

@@ -6,12 +6,28 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import './style.css';
 import { PlayerController } from './player/PlayerController';
 import { buildMiamiCity } from './world/CityBuilder';
+import { WeaponSystem } from './combat/WeaponSystem';
+import { createRangeProps } from './combat/RangeProps';
 
 const canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
 const overlay = document.getElementById('overlay') as HTMLDivElement;
 const playBtn = document.getElementById('play-btn') as HTMLButtonElement;
 const coordsEl = document.getElementById('coords') as HTMLDivElement;
 const stateLineEl = document.getElementById('state-line') as HTMLDivElement;
+
+// Weapon HUD elements
+const crosshairEl = document.getElementById('crosshair') as HTMLDivElement;
+const hitmarkerEl = document.getElementById('hitmarker') as HTMLDivElement;
+const weaponNameEl = document.getElementById('weapon-name') as HTMLDivElement;
+const ammoCurrentEl = document.getElementById('ammo-current') as HTMLSpanElement;
+const ammoMaxEl = document.getElementById('ammo-max') as HTMLSpanElement;
+const reloadBarEl = document.getElementById('reload-bar') as HTMLDivElement;
+const reloadFillEl = document.getElementById('reload-fill') as HTMLDivElement;
+const slotEls = [
+  document.getElementById('slot-1') as HTMLSpanElement,
+  document.getElementById('slot-2') as HTMLSpanElement,
+  document.getElementById('slot-3') as HTMLSpanElement,
+];
 
 // Renderer
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
@@ -24,16 +40,16 @@ renderer.toneMappingExposure = 1.06;
 
 // Scene & Camera
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 420);
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.08, 420);
 
 // Post-Processing (Neon & Sunset Bloom)
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
 const bloomPass = new UnrealBloomPass(
   new THREE.Vector2(window.innerWidth, window.innerHeight),
-  0.42, // subtle tasteful glow
+  0.42,
   0.48,
-  0.86, // threshold: mostly neon signs, tubes, streetlamps, sun glint
+  0.86,
 );
 composer.addPass(bloomPass);
 composer.addPass(new OutputPass());
@@ -41,11 +57,15 @@ composer.addPass(new OutputPass());
 // World (Phase 2: 3x3 Miami Coastal District + Ocean Drive)
 const world = buildMiamiCity(scene, renderer);
 
-// Player Controller — spawn on Ocean Drive looking down the wet neon avenue toward the sunset
+// Combat (Phase 3: Weapons & Shootable Range Targets)
+const weapons = new WeaponSystem(scene, camera);
+const rangeProps = createRangeProps(scene);
+
+// Player Controller — spawn on Ocean Drive
 const player = new PlayerController(camera, canvas);
 const b = world.layout.playableBounds;
 player.setWorldBounds(b.minX, b.maxX, b.minZ, b.maxZ);
-player.setSpawn(60, 0.2, 26, 0.45);
+player.setSpawn(60, 0.2, 26, 0.15);
 
 let pointerLockFallback = false;
 
@@ -126,13 +146,42 @@ function animate(now: number): void {
 
   const status = player.update(dt, world.colliders);
   world.update(elapsed, dt);
+  rangeProps.update(dt, elapsed);
 
+  const wHud = weapons.update(
+    dt,
+    player.getIsActive(),
+    status.speed,
+    world.worldMeshes,
+    rangeProps.getActiveTargets(),
+  );
+
+  // Update Weapon HUD
+  weaponNameEl.textContent = wHud.name;
+  ammoCurrentEl.textContent = wHud.reloading ? 'RLD' : String(wHud.ammo);
+  ammoMaxEl.textContent = `/ ${wHud.magSize}`;
+  reloadBarEl.classList.toggle('visible', wHud.reloading);
+  reloadFillEl.style.width = `${Math.round(wHud.reloadProgress * 100)}%`;
+
+  slotEls.forEach((el, idx) => {
+    el.classList.toggle('active', idx === wHud.slotIndex);
+  });
+
+  crosshairEl.style.width = `${wHud.spreadPx}px`;
+  crosshairEl.style.height = `${wHud.spreadPx}px`;
+  crosshairEl.style.opacity = wHud.ads ? '0.45' : '0.88';
+
+  hitmarkerEl.style.opacity = String(wHud.hitmarkerAlpha);
+  hitmarkerEl.classList.toggle('kill', wHud.hitmarkerKill && wHud.hitmarkerAlpha > 0.05);
+
+  // Update debug HUD
   coordsEl.textContent = `POS: ${status.x.toFixed(1)}, ${status.y.toFixed(1)}, ${status.z.toFixed(1)} | ${status.speed.toFixed(1)} m/s`;
   const flags: string[] = [];
   if (status.grounded) flags.push('GROUND');
   else flags.push('AIR');
   if (status.sprinting) flags.push('SPRINT');
   if (status.crouching) flags.push('CROUCH');
+  if (wHud.ads) flags.push('ADS');
   if (player.getIsActive() && !player.getIsLocked()) {
     flags.push('DRAG/ARROWS LOOK');
   }

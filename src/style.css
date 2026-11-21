@@ -118,6 +118,126 @@ body,
   color: #ff85c0;
 }
 
+/* Hitmarker */
+#hitmarker {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 22px;
+  height: 22px;
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.hm {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 18px;
+  height: 2px;
+  background: #36f1e6;
+  box-shadow: 0 0 8px #36f1e6;
+}
+
+#hitmarker.kill .hm {
+  background: #ff4fa3;
+  box-shadow: 0 0 10px #ff4fa3;
+}
+
+.hm-1 {
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.hm-2 {
+  transform: translate(-50%, -50%) rotate(-45deg);
+}
+
+/* Weapon Panel */
+#weapon-panel {
+  position: absolute;
+  right: 22px;
+  bottom: 20px;
+  min-width: 210px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: rgba(16, 10, 26, 0.72);
+  border: 1px solid rgba(54, 241, 230, 0.35);
+  backdrop-filter: blur(8px);
+  text-align: right;
+}
+
+.weapon-slots {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-bottom: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.slot {
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: rgba(255, 240, 245, 0.45);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.slot.active {
+  color: #140a1e;
+  background: #36f1e6;
+}
+
+#weapon-name {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: #ff9966;
+}
+
+.ammo-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+#ammo-current {
+  font-size: 32px;
+  font-weight: 900;
+  line-height: 1;
+  color: #fff6f0;
+  font-variant-numeric: tabular-nums;
+}
+
+#ammo-max {
+  font-size: 15px;
+  font-weight: 700;
+  color: rgba(255, 215, 196, 0.65);
+}
+
+#reload-bar {
+  height: 4px;
+  margin-top: 8px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+#reload-bar.visible {
+  opacity: 1;
+}
+
+#reload-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #36f1e6, #ff4fa3);
+}
+
 /* Pointer-Lock Overlay */
 #overlay {
   position: fixed;

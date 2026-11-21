@@ -17,6 +17,7 @@ import {
 
 export interface MiamiWorld {
   colliders: AABB[];
+  worldMeshes: THREE.Object3D[];
   layout: CityLayout;
   update: (elapsed: number, dt: number) => void;
 }
@@ -30,6 +31,7 @@ export interface MiamiWorld {
  */
 export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer): MiamiWorld {
   const colliders: AABB[] = [];
+  const worldMeshes: THREE.Object3D[] = [];
   const layout = generateCityLayout();
 
   // ---------------------------------------------------------------------------
@@ -141,6 +143,7 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
   roadBase.position.set(0, 0, 0);
   roadBase.receiveShadow = true;
   scene.add(roadBase);
+  worldMeshes.push(roadBase);
 
   // Dashed yellow centerlines & crosswalk stripes (merged via InstancedMesh for speed)
   const yellowLineMat = new THREE.MeshStandardMaterial({
@@ -238,6 +241,7 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
     mesh.castShadow = castShadow;
     mesh.receiveShadow = true;
     scene.add(mesh);
+    worldMeshes.push(mesh);
 
     colliders.push({
       minX: x - w / 2,
@@ -462,6 +466,7 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
 
   return {
     colliders,
+    worldMeshes,
     layout,
     update: (elapsed: number, dt: number) => {
       oceanUniforms.uTime.value = elapsed;

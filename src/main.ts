@@ -635,7 +635,7 @@ function tryToggleVehicleOrBoat(): void {
     camera.updateProjectionMatrix();
     weapons.setEnabled(true);
   } else if (vehicles.isInVehicle()) {
-    const exitPos = vehicles.exitVehicle();
+    const exitPos = vehicles.exitVehicle(world.layout.playableBounds);
     if (exitPos) {
       player.setSpawn(exitPos.x, exitPos.y, exitPos.z, exitPos.yaw);
       camera.fov = 75;

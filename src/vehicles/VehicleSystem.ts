@@ -324,18 +324,26 @@ export class VehicleSystem {
     this.camInitialized = false;
   }
 
-  public exitVehicle(): { x: number; y: number; z: number; yaw: number } | null {
+  public exitVehicle(
+    bounds: { minX: number; maxX: number; minZ: number; maxZ: number } = {
+      minX: -122,
+      maxX: 204,
+      minZ: -136,
+      maxZ: 141,
+    },
+  ): { x: number; y: number; z: number; yaw: number } | null {
     if (!this.activeVehicle) return null;
     const v = this.activeVehicle;
     if (v.riderMesh) v.riderMesh.visible = false;
     if (v.kickstand) v.kickstand.visible = true;
     v.mesh.rotation.z = v.isBike ? 0.09 : 0;
-    const sideX = Math.cos(v.yaw) * -2.2;
-    const sideZ = -Math.sin(v.yaw) * -2.2;
+    const exitDist = v.isBike ? 1.15 : 2.05;
+    const sideX = Math.cos(v.yaw) * -exitDist;
+    const sideZ = -Math.sin(v.yaw) * -exitDist;
     const out = {
-      x: THREE.MathUtils.clamp(v.position.x + sideX, -65, 200),
-      y: v.position.y + 0.25,
-      z: THREE.MathUtils.clamp(v.position.z + sideZ, -85, 124),
+      x: THREE.MathUtils.clamp(v.position.x + sideX, bounds.minX + 1, bounds.maxX - 1),
+      y: v.position.y + 0.15,
+      z: THREE.MathUtils.clamp(v.position.z + sideZ, bounds.minZ + 1, bounds.maxZ - 1),
       yaw: v.yaw + Math.PI,
     };
     this.activeVehicle = null;

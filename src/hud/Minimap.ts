@@ -123,6 +123,12 @@ export class Minimap {
     ctx.fillStyle = '#36f1e6';
     ctx.fillText('⌂', shX, shZ);
 
+    // VICE PD Police Station marker (PD) at West Downtown (-40, 0)
+    const pdX = (-40 - playerX) * scale;
+    const pdZ = (0 - playerZ) * scale;
+    ctx.fillStyle = '#33aaff';
+    ctx.fillText('PD', pdX, pdZ);
+
     // Ocean Club Heist Start marker (★) at (60, -26) when idle
     if (!heistTarget) {
       const hstX = (60 - playerX) * scale;

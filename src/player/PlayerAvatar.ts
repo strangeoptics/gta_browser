@@ -2,10 +2,11 @@ import * as THREE from 'three';
 import { getFaceTexture, getOutfitTexture } from '../entities/CharacterTextures';
 
 const PLAYER_OUTFITS = [
-  { name: 'MIAMI WHITE SUIT', primary: '#f2e8e1', accent: '#36f1e6', pants: '#272c42', variant: 2 },
-  { name: 'HAWAIIAN TOURIST', primary: '#ff7b7b', accent: '#36f1e6', pants: '#f0e2ce', variant: 1 },
-  { name: 'MIDNIGHT NEON', primary: '#1e172b', accent: '#ff4fa3', pants: '#171522', variant: 2 },
-  { name: 'VICE DETECTIVE', primary: '#9fe6d8', accent: '#ffd15c', pants: '#f4eee8', variant: 2 },
+  { name: 'MIAMI WHITE SUIT', primary: '#f2e8e1', accent: '#36f1e6', pants: '#272c42', variant: 2, role: 'civilian' as const },
+  { name: 'HAWAIIAN TOURIST', primary: '#ff7b7b', accent: '#36f1e6', pants: '#f0e2ce', variant: 1, role: 'civilian' as const },
+  { name: 'MIDNIGHT NEON', primary: '#1e172b', accent: '#ff4fa3', pants: '#171522', variant: 2, role: 'civilian' as const },
+  { name: 'VICE DETECTIVE', primary: '#9fe6d8', accent: '#ffd15c', pants: '#f4eee8', variant: 2, role: 'civilian' as const },
+  { name: 'VICE PD UNIFORM', primary: '#1e325c', accent: '#ffd15c', pants: '#141d33', variant: 0, role: 'police' as const },
 ];
 
 /**
@@ -154,7 +155,7 @@ export class PlayerAvatar {
   public setOutfit(index: number): string {
     this.outfitIndex = ((index % PLAYER_OUTFITS.length) + PLAYER_OUTFITS.length) % PLAYER_OUTFITS.length;
     const o = PLAYER_OUTFITS[this.outfitIndex];
-    this.torsoMat.map = getOutfitTexture('civilian', o.primary, o.accent, o.variant);
+    this.torsoMat.map = getOutfitTexture(o.role, o.primary, o.accent, o.variant);
     this.torsoMat.needsUpdate = true;
     this.sleeveMat.color.set(o.primary);
     this.pantsMat.color.set(o.pants);

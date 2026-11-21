@@ -713,6 +713,28 @@ window.addEventListener('keydown', (e) => {
       audio.playPurchase();
       persistProgress();
       showQuickToast('SAFEHOUSE · 100% HP, MUNITION VOLL & GESPEICHERT');
+    } else if (world.isNearPdKevlar(player.position)) {
+      world.takePdKevlar();
+      playerArmor = 100;
+      world.triggerPdAlarm();
+      wanted.addHeat(55);
+      audio.playPurchase();
+      persistProgress();
+      showQuickToast('ASSERVATENKAMMER · KEVLAR-WESTE (100%) — ALARM AUSGELÖST!');
+      sendPoliceDispatch('Code 2! Einbruch in die Asservatenkammer von Precinct 06!', true);
+    } else if (world.isNearPdArmory(player.position)) {
+      weapons.refillAllAmmo();
+      weapons.switchWeapon(3);
+      world.triggerPdAlarm();
+      wanted.addHeat(55);
+      audio.playPurchase();
+      showQuickToast('WAFFENKAMMER · SHOTGUN & MUNITION GEKLAUT — ALARM!');
+      sendPoliceDispatch('Waffenkammer-Alarm in Precinct 06! Alle Einheiten ausrücken!', true);
+    } else if (world.isNearPdUniform(player.position)) {
+      const outfitName = playerAvatar.setOutfit(4);
+      audio.playPurchase();
+      persistProgress();
+      showQuickToast(`SPIND · ${outfitName} ANGEZOGEN`);
     } else if (world.isNearClubBar(player.position)) {
       if (playerHp >= 100) {
         showQuickToast('HP BEREITS VOLL');
@@ -995,7 +1017,10 @@ function animate(now: number): void {
     }
   }
   lastWantedStars = wanted.stars;
-  const indoors = world.isInsideClub(player.position) || world.isInsideSafehouse(player.position);
+  const indoors =
+    world.isInsideClub(player.position) ||
+    world.isInsideSafehouse(player.position) ||
+    world.isInsidePoliceStation(player.position);
   npcs.update(dt, player.position, wanted.stars, [
     ...world.colliders,
     ...vehicles.getVehicleColliders(),
@@ -1052,7 +1077,8 @@ function animate(now: number): void {
   lookedFood = null;
   lookedCabinetWeapon = null;
   lookedAtTv = false;
-  if (isPlaying && !inAnyCraft && world.isInsideSafehouse(player.position)) {
+  const inSafehouseOrPd = world.isInsideSafehouse(player.position) || world.isInsidePoliceStation(player.position);
+  if (isPlaying && !inAnyCraft && inSafehouseOrPd) {
     const camOrigin = new THREE.Vector3();
     camera.getWorldPosition(camOrigin);
     const camDir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
@@ -1240,6 +1266,15 @@ function animate(now: number): void {
       interactPromptEl.classList.add('visible');
     } else if (world.isNearSafehouseLounge(player.position)) {
       interactPromptEl.textContent = '[F] SAFEHOUSE · HEILEN, MUNITION VOLL & SPEICHERN';
+      interactPromptEl.classList.add('visible');
+    } else if (world.isNearPdKevlar(player.position)) {
+      interactPromptEl.textContent = '[F] KEVLAR-WESTE STEHLEN (100% ARMOR · ⚠ ALARM)';
+      interactPromptEl.classList.add('visible');
+    } else if (world.isNearPdArmory(player.position)) {
+      interactPromptEl.textContent = '[F] POLIZEI-SHOTGUN & MUNITION STEHLEN (⚠ ALARM)';
+      interactPromptEl.classList.add('visible');
+    } else if (world.isNearPdUniform(player.position)) {
+      interactPromptEl.textContent = '[F] SPIND · VICE PD UNIFORM ANZIEHEN';
       interactPromptEl.classList.add('visible');
     } else if (world.isNearClubBar(player.position)) {
       interactPromptEl.textContent = '[F] MIAMI VICE COCKTAIL · $50 (+30 HP)';

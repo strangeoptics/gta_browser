@@ -17,6 +17,7 @@ import {
 } from './Textures';
 import { buildBeachHighlights } from './BeachProps';
 import { buildNeonClub } from './NeonClub';
+import { buildPoliceStation } from './PoliceStation';
 import { buildSafehouse, type CabinetWeapon, type FoodItem } from './Safehouse';
 import { buildStuntRamps, type StuntRamp } from './StuntRamps';
 import { buildTrafficLights } from './TrafficLights';
@@ -30,6 +31,12 @@ export interface MiamiWorld {
   toggleRain: () => boolean;
   isInsideClub: (pos: THREE.Vector3) => boolean;
   isInsideSafehouse: (pos: THREE.Vector3) => boolean;
+  isInsidePoliceStation: (pos: THREE.Vector3) => boolean;
+  isNearPdKevlar: (pos: THREE.Vector3) => boolean;
+  isNearPdArmory: (pos: THREE.Vector3) => boolean;
+  isNearPdUniform: (pos: THREE.Vector3) => boolean;
+  takePdKevlar: () => void;
+  triggerPdAlarm: () => void;
   isInSafehouseGarage: (pos: THREE.Vector3) => boolean;
   isNearSafehouseLounge: (pos: THREE.Vector3) => boolean;
   isNearSafehouseWardrobe: (pos: THREE.Vector3) => boolean;
@@ -372,10 +379,11 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
   });
 
   // ---------------------------------------------------------------------------
-  // 4b) Walk-In Interiors: NEON CLUB (40, 0) & VICE SAFEHOUSE Villa (40, -40)
+  // 4b) Walk-In Interiors: NEON CLUB (40, 0), VICE SAFEHOUSE (40, -40) & VICE PD PRECINCT (-40, 0)
   // ---------------------------------------------------------------------------
   const neonClub = buildNeonClub(scene, colliders, worldMeshes);
   const safehouse = buildSafehouse(scene, colliders, worldMeshes);
+  const policeStation = buildPoliceStation(scene, colliders, worldMeshes);
 
   // ---------------------------------------------------------------------------
   // 5) Verticality: Walkable Exterior Art-Deco Rooftop Stairs & Neon Terraces
@@ -719,12 +727,21 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
     },
     isInsideClub: (pos: THREE.Vector3) => neonClub.isInside(pos),
     isInsideSafehouse: (pos: THREE.Vector3) => safehouse.isInside(pos),
+    isInsidePoliceStation: (pos: THREE.Vector3) => policeStation.isInside(pos),
+    isNearPdKevlar: (pos: THREE.Vector3) => policeStation.isNearKevlar(pos),
+    isNearPdArmory: (pos: THREE.Vector3) => policeStation.isNearArmory(pos),
+    isNearPdUniform: (pos: THREE.Vector3) => policeStation.isNearUniform(pos),
+    takePdKevlar: () => policeStation.takeKevlar(),
+    triggerPdAlarm: () => policeStation.triggerAlarm(),
     isInSafehouseGarage: (pos: THREE.Vector3) => safehouse.isInGarage(pos),
     isNearSafehouseLounge: (pos: THREE.Vector3) => safehouse.isNearLounge(pos),
     isNearSafehouseWardrobe: (pos: THREE.Vector3) => safehouse.isNearWardrobe(pos),
     isNearSafehouseFridge: (pos: THREE.Vector3) => safehouse.isNearFridge(pos),
-    getFoodItems: () => safehouse.getFoodItems(),
-    consumeFood: (item: FoodItem) => safehouse.consumeFood(item),
+    getFoodItems: () => [...safehouse.getFoodItems(), ...policeStation.getDonuts()],
+    consumeFood: (item: FoodItem) => {
+      safehouse.consumeFood(item);
+      policeStation.consumeDonut(item);
+    },
     getCabinetWeapons: () => safehouse.getCabinetWeapons(),
     getTvMesh: () => safehouse.getTvMesh(),
     toggleTv: (cash: number, wantedStars: number) => safehouse.toggleTv(cash, wantedStars),
@@ -738,6 +755,7 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
       beachHighlights.update(elapsed);
       neonClub.update(elapsed);
       safehouse.update(elapsed, dt, playerPos, cash, wantedStars);
+      policeStation.update(elapsed, dt, playerPos, cash, wantedStars);
       trafficLights.update(elapsed);
       palmGroup.children.forEach((palm, idx) => {
         const crown = palm.userData.crown as THREE.Object3D | undefined;

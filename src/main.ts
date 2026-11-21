@@ -1,7 +1,11 @@
 import * as THREE from 'three';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import './style.css';
 import { PlayerController } from './player/PlayerController';
-import { buildPhase1TestWorld } from './world/TestBlock';
+import { buildMiamiCity } from './world/CityBuilder';
 
 const canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
 const overlay = document.getElementById('overlay') as HTMLDivElement;
@@ -16,18 +20,32 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.08;
+renderer.toneMappingExposure = 1.06;
 
 // Scene & Camera
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 350);
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 420);
 
-// World (Phase 1 Test Street)
-const world = buildPhase1TestWorld(scene);
+// Post-Processing (Neon & Sunset Bloom)
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  0.42, // subtle tasteful glow
+  0.48,
+  0.86, // threshold: mostly neon signs, tubes, streetlamps, sun glint
+);
+composer.addPass(bloomPass);
+composer.addPass(new OutputPass());
 
-// Player Controller
+// World (Phase 2: 3x3 Miami Coastal District + Ocean Drive)
+const world = buildMiamiCity(scene, renderer);
+
+// Player Controller — spawn on Ocean Drive looking down the wet neon avenue toward the sunset
 const player = new PlayerController(camera, canvas);
-player.setSpawn(0, 0.2, 22, 0);
+const b = world.layout.playableBounds;
+player.setWorldBounds(b.minX, b.maxX, b.minZ, b.maxZ);
+player.setSpawn(60, 0.2, 26, 0.45);
 
 let pointerLockFallback = false;
 
@@ -60,7 +78,6 @@ playBtn.addEventListener('click', (e) => {
   startGame();
 });
 
-// Clicking the canvas in fallback mode retries pointer lock
 canvas.addEventListener('click', () => {
   if (player.getIsActive() && !player.getIsLocked()) {
     requestLockSafely();
@@ -93,17 +110,22 @@ window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setSize(window.innerWidth, window.innerHeight);
+  bloomPass.setSize(window.innerWidth, window.innerHeight);
 });
 
 // Main Loop
 let lastTime = performance.now();
+const startTime = lastTime;
 
 function animate(now: number): void {
   requestAnimationFrame(animate);
   const dt = (now - lastTime) / 1000;
+  const elapsed = (now - startTime) / 1000;
   lastTime = now;
 
   const status = player.update(dt, world.colliders);
+  world.update(elapsed, dt);
 
   coordsEl.textContent = `POS: ${status.x.toFixed(1)}, ${status.y.toFixed(1)}, ${status.z.toFixed(1)} | ${status.speed.toFixed(1)} m/s`;
   const flags: string[] = [];
@@ -116,7 +138,7 @@ function animate(now: number): void {
   }
   stateLineEl.textContent = flags.join(' · ');
 
-  renderer.render(scene, camera);
+  composer.render();
 }
 
 requestAnimationFrame(animate);

@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>VICE DUSK — Coastal FPS</title>
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="game-canvas"></canvas>
+
+      <!-- Minimal Phase 1 HUD -->
+      <div id="hud">
+        <div id="crosshair">
+          <span class="ch-line ch-top"></span>
+          <span class="ch-line ch-bottom"></span>
+          <span class="ch-line ch-left"></span>
+          <span class="ch-line ch-right"></span>
+          <span class="ch-dot"></span>
+        </div>
+        <div id="debug-info">
+          <div class="phase-badge">PHASE 1 · FPS CONTROLLER</div>
+          <div id="coords">POS: 0.0, 0.0, 0.0</div>
+          <div id="state-line">READY</div>
+        </div>
+      </div>
+
+      <!-- Pointer Lock / Pause Overlay -->
+      <div id="overlay">
+        <div class="overlay-card">
+          <div class="title-eyebrow">MIAMI COASTAL DISTRICT · GOLDEN HOUR</div>
+          <h1 class="game-title">VICE DUSK</h1>
+          <p class="subtitle">Phase 1: Fundament, Pointer-Lock &amp; FPS-Bewegung</p>
+          <button id="play-btn" type="button">KLICKEN ZUM STARTEN</button>
+          <div class="controls-grid">
+            <div><kbd>W A S D</kbd> Bewegen</div>
+            <div><kbd>Maus</kbd> Umsehen</div>
+            <div><kbd>Shift</kbd> Sprinten</div>
+            <div><kbd>Space</kbd> Springen</div>
+            <div><kbd>C</kbd> / <kbd>Ctrl</kbd> Ducken</div>
+            <div><kbd>ESC</kbd> Pause</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

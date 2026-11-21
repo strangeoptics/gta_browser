@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { AABB } from '../types';
 import type { ShootableTarget } from '../combat/WeaponSystem';
 import type { GamepadSnapshot } from '../engine/GamepadInput';
+import type { StuntRamp } from '../world/StuntRamps';
 import { ROAD_COORDS } from '../world/CityLayout';
 
 export interface Vehicle {
@@ -18,6 +19,10 @@ export interface Vehicle {
   spawnYaw: number;
   yaw: number;
   speed: number;
+  vy: number;
+  airborne: boolean;
+  jumpStartX: number;
+  jumpStartZ: number;
   hp: number;
   maxHp: number;
   destroyed: boolean;
@@ -96,6 +101,7 @@ export class VehicleSystem {
   public onCarCrash?: (intensity: number, playerInvolved: boolean) => void;
   public onActiveVehicleDestroyed?: () => void;
   public onDriftMark?: (x: number, z: number, yaw: number) => void;
+  public onStuntLanded?: (distanceM: number, reward: number) => void;
   private ramCooldown = 0;
   private crashSoundCooldown = 0;
 
@@ -128,6 +134,10 @@ export class VehicleSystem {
         spawnYaw: spec.yaw,
         yaw: spec.yaw,
         speed: 0,
+        vy: 0,
+        airborne: false,
+        jumpStartX: spec.x,
+        jumpStartZ: spec.z,
         hp: 140,
         maxHp: 140,
         destroyed: false,
@@ -495,6 +505,8 @@ export class VehicleSystem {
     worldColliders: AABB[],
     bounds: { minX: number; maxX: number; minZ: number; maxZ: number },
     pad?: GamepadSnapshot,
+    stuntRamps?: StuntRamp[],
+    shouldTrafficStop?: (x: number, z: number, yaw: number) => boolean,
   ): DrivingHudState {
     const clampedDt = Math.min(dt, 0.05);
     this.ramCooldown = Math.max(0, this.ramCooldown - clampedDt);
@@ -507,7 +519,9 @@ export class VehicleSystem {
     const solidColliders = worldColliders.filter((c) => c.maxY > 0.45);
 
     for (const v of this.vehicles) {
-      v.mesh.position.y += (0 - v.mesh.position.y) * (1 - Math.exp(-12 * clampedDt));
+      if (!v.airborne && v.position.y <= 0.05) {
+        v.mesh.position.y += (v.position.y - v.mesh.position.y) * (1 - Math.exp(-12 * clampedDt));
+      }
 
       // Respawn destroyed cars cleanly after cooldown
       if (v.destroyed) {
@@ -549,12 +563,12 @@ export class VehicleSystem {
       }
 
       if (v === this.activeVehicle) {
-        this.updatePlayerDrivenCar(v, clampedDt, isActive, solidColliders, bounds, pad);
+        this.updatePlayerDrivenCar(v, clampedDt, isActive, solidColliders, bounds, pad, stuntRamps);
       } else if (v.isPursuitUnit && wantedStars >= 2) {
         // Active Vice PD Cruiser chase!
         this.updatePolicePursuitCar(v, clampedDt, playerPos, solidColliders, bounds);
       } else if (v.isAiControlled) {
-        this.updateAiCar(v, clampedDt, playerPos);
+        this.updateAiCar(v, clampedDt, playerPos, shouldTrafficStop);
       } else {
         v.speed *= Math.exp(-3.2 * clampedDt);
         if (Math.abs(v.speed) > 0.05) {
@@ -747,6 +761,7 @@ export class VehicleSystem {
     solidColliders: AABB[],
     bounds: { minX: number; maxX: number; minZ: number; maxZ: number },
     pad?: GamepadSnapshot,
+    stuntRamps?: StuntRamp[],
   ): void {
     const kbAccel = (this.keys.has('KeyW') ? 1 : 0) - (this.keys.has('KeyS') ? 1 : 0);
     const kbSteer = (this.keys.has('KeyA') ? 1 : 0) - (this.keys.has('KeyD') ? 1 : 0);
@@ -814,6 +829,59 @@ export class VehicleSystem {
 
     this.moveVehicleWithCollision(v, dt, solidColliders, bounds);
 
+    // Stunt Ramp elevation & airborne jump physics!
+    let onRampHeight = 0;
+    let rampLaunchVy = 0;
+    if (stuntRamps) {
+      for (const r of stuntRamps) {
+        const relX = v.position.x - r.x;
+        const relZ = v.position.z - r.z;
+        // Project into ramp local space (along = forward up ramp, side = lateral)
+        const along = relX * r.dirX + relZ * r.dirZ;
+        const side = Math.abs(relX * r.dirZ - relZ * r.dirX);
+        if (side < r.width * 0.55 && along > -r.length * 0.5 && along < r.length * 0.52) {
+          const frac = (along + r.length * 0.5) / r.length;
+          onRampHeight = Math.max(onRampHeight, frac * r.height);
+          // Launching off the upper lip at speed!
+          const alignedSpeed = v.speed * (Math.sin(v.yaw) * r.dirX + Math.cos(v.yaw) * r.dirZ);
+          if (frac > 0.72 && alignedSpeed > 7.5) {
+            rampLaunchVy = Math.min(11.5, alignedSpeed * 0.42);
+          }
+        }
+      }
+    }
+
+    if (onRampHeight > 0.05 && !v.airborne) {
+      v.position.y = onRampHeight;
+      v.mesh.rotation.x = -0.24;
+      if (rampLaunchVy > 0) {
+        v.vy = rampLaunchVy;
+        v.airborne = true;
+        v.jumpStartX = v.position.x;
+        v.jumpStartZ = v.position.z;
+      }
+    } else if (v.airborne || v.position.y > 0.02) {
+      v.vy -= 17.5 * dt;
+      v.position.y += v.vy * dt;
+      v.mesh.rotation.x = THREE.MathUtils.clamp(-v.vy * 0.035, -0.35, 0.28);
+      if (v.position.y <= 0) {
+        v.position.y = 0;
+        v.vy = 0;
+        v.mesh.rotation.x = 0;
+        if (v.airborne) {
+          v.airborne = false;
+          const jumpDist = Math.hypot(v.position.x - v.jumpStartX, v.position.z - v.jumpStartZ);
+          if (jumpDist >= 10) {
+            const reward = jumpDist >= 22 ? 600 : 400;
+            this.onStuntLanded?.(Math.round(jumpDist), reward);
+          }
+        }
+      }
+    } else {
+      v.mesh.rotation.x *= 0.82;
+    }
+    v.mesh.position.y = v.position.y;
+
     if (Math.abs(v.speed) > 4.0) {
       this.onVehicleHitNpc?.(v.position, Math.abs(v.speed));
     }
@@ -875,9 +943,15 @@ export class VehicleSystem {
     v.mesh.rotation.y = v.yaw;
   }
 
-  private updateAiCar(v: Vehicle, dt: number, playerPos: THREE.Vector3): void {
+  private updateAiCar(
+    v: Vehicle,
+    dt: number,
+    playerPos: THREE.Vector3,
+    shouldTrafficStop?: (x: number, z: number, yaw: number) => boolean,
+  ): void {
     const distToPlayer = v.position.distanceTo(playerPos);
-    const targetSpeed = distToPlayer < 8.0 ? 0 : v.aiSpeed;
+    const redLight = shouldTrafficStop ? shouldTrafficStop(v.position.x, v.position.z, v.yaw) : false;
+    const targetSpeed = distToPlayer < 8.0 || redLight ? 0 : v.aiSpeed;
     v.speed += (targetSpeed - v.speed) * (1 - Math.exp(-3.5 * dt));
 
     const toX = v.aiTargetX - v.position.x;

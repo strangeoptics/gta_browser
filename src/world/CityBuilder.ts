@@ -17,16 +17,21 @@ import {
 } from './Textures';
 import { buildBeachHighlights } from './BeachProps';
 import { buildNeonClub } from './NeonClub';
+import { buildStuntRamps, type StuntRamp } from './StuntRamps';
+import { buildTrafficLights } from './TrafficLights';
 
 export interface MiamiWorld {
   colliders: AABB[];
   worldMeshes: THREE.Object3D[];
+  stuntRamps: StuntRamp[];
   layout: CityLayout;
   cycleTimeOfDay: () => string;
   toggleRain: () => boolean;
   isInsideClub: (pos: THREE.Vector3) => boolean;
+  isNearClubBar: (pos: THREE.Vector3) => boolean;
   getClubProximity: (pos: THREE.Vector3) => number;
   getGroundHeight: (x: number, z: number) => number;
+  shouldTrafficStop: (x: number, z: number, yaw: number) => boolean;
   onThunder?: () => void;
   update: (elapsed: number, dt: number, playerPos?: THREE.Vector3) => void;
 }
@@ -575,9 +580,11 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
   scene.add(palmGroup);
 
   // ---------------------------------------------------------------------------
-  // 7) Coastal Streetlights (Warm Amber Glow + Selective PointLights)
+  // 7) Coastal Streetlights, Working Traffic Lights & Neon Stunt Ramps
   // ---------------------------------------------------------------------------
   buildStreetlights(scene);
+  const trafficLights = buildTrafficLights(scene);
+  const stuntRamps = buildStuntRamps(scene);
 
   // ---------------------------------------------------------------------------
   // 8) Subtle Post-Rain Mist / Lingering Drizzle Motes
@@ -685,6 +692,7 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
   const worldHandle: MiamiWorld = {
     colliders,
     worldMeshes,
+    stuntRamps,
     layout,
     cycleTimeOfDay: () => {
       timeIndex = (timeIndex + 1) % timePresets.length;
@@ -697,12 +705,15 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
       return rainActive;
     },
     isInsideClub: (pos: THREE.Vector3) => neonClub.isInside(pos),
+    isNearClubBar: (pos: THREE.Vector3) => neonClub.isNearBar(pos),
     getClubProximity: (pos: THREE.Vector3) => neonClub.getProximity(pos),
     getGroundHeight: (x: number, z: number) => getBeachHeight(x, z),
+    shouldTrafficStop: (x: number, z: number, yaw: number) => trafficLights.shouldAiStop(x, z, yaw),
     update: (elapsed: number, dt: number, playerPos?: THREE.Vector3) => {
       oceanUniforms.uTime.value = elapsed;
       beachHighlights.update(elapsed);
       neonClub.update(elapsed);
+      trafficLights.update(elapsed);
       palmGroup.children.forEach((palm, idx) => {
         const crown = palm.userData.crown as THREE.Object3D | undefined;
         if (crown) {

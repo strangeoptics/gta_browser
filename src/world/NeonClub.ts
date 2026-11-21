@@ -5,6 +5,7 @@ import { getFaceTexture } from '../entities/CharacterTextures';
 
 export interface NeonClubHandle {
   isInside: (pos: THREE.Vector3) => boolean;
+  isNearBar: (pos: THREE.Vector3) => boolean;
   getProximity: (pos: THREE.Vector3) => number; // 0 = far, 0.35 = outside door, 1.0 = inside club
   update: (elapsed: number) => void;
 }
@@ -175,16 +176,25 @@ export function buildNeonClub(
   }
   scene.add(discoGroup);
 
-  // 4 Sweeping Volumetric Effect-Spotlight Cones mounted well inside the ceiling above the dancefloor
+  // 4 Sweeping Volumetric Effect-Spotlight Cones aimed inward onto the dancefloor
+  // Pivots sit well inside the ceiling; cone length (6.6m) reaches cleanly down onto the floor (y = 0.22)
+  // while inward tilt keeps every beam far away from outer walls!
   const beamConfigs: { x: number; z: number; baseRx: number; baseRz: number; color: string; phase: number }[] = [
-    { x: clubX - 2.6, z: clubZ - 3.6, baseRx: 0.22, baseRz: 0.22, color: '#ff4fa3', phase: 0 },
-    { x: clubX + 4.4, z: clubZ - 3.6, baseRx: 0.22, baseRz: -0.22, color: '#36f1e6', phase: 1.5 },
-    { x: clubX - 2.6, z: clubZ + 3.6, baseRx: -0.22, baseRz: 0.22, color: '#a86bff', phase: 3.1 },
-    { x: clubX + 4.4, z: clubZ + 3.6, baseRx: -0.22, baseRz: -0.22, color: '#ffd15c', phase: 4.7 },
+    { x: clubX - 2.4, z: clubZ - 3.4, baseRx: 0.28, baseRz: 0.26, color: '#ff4fa3', phase: 0 },
+    { x: clubX + 4.2, z: clubZ - 3.4, baseRx: 0.28, baseRz: -0.26, color: '#36f1e6', phase: 1.5 },
+    { x: clubX - 2.4, z: clubZ + 3.4, baseRx: -0.28, baseRz: 0.26, color: '#a86bff', phase: 3.1 },
+    { x: clubX + 4.2, z: clubZ + 3.4, baseRx: -0.28, baseRz: -0.26, color: '#ffd15c', phase: 4.7 },
   ];
-  const effectBeams: { pivot: THREE.Group; baseRx: number; baseRz: number; phase: number }[] = [];
-  const beamConeGeo = new THREE.ConeGeometry(1.15, 5.4, 16, 1, true);
-  beamConeGeo.translate(0, -2.7, 0); // apex at pivot, stays 100% inside the club walls!
+  const effectBeams: {
+    pivot: THREE.Group;
+    floorPool: THREE.Mesh;
+    baseRx: number;
+    baseRz: number;
+    phase: number;
+  }[] = [];
+  const beamConeGeo = new THREE.ConeGeometry(1.1, 6.6, 16, 1, true);
+  beamConeGeo.translate(0, -3.3, 0); // apex at pivot -> reaches all the way to the dancefloor!
+  const poolGeo = new THREE.CircleGeometry(1.15, 16);
 
   for (const cfg of beamConfigs) {
     const pivot = new THREE.Group();
@@ -200,7 +210,7 @@ export function buildNeonClub(
     const beamMat = new THREE.MeshBasicMaterial({
       color: cfg.color,
       transparent: true,
-      opacity: 0.16,
+      opacity: 0.14,
       blending: THREE.AdditiveBlending,
       side: THREE.DoubleSide,
       depthWrite: false,
@@ -208,8 +218,23 @@ export function buildNeonClub(
     const cone = new THREE.Mesh(beamConeGeo, beamMat);
     pivot.add(cone);
 
+    // Matching glowing light pool on the dancefloor where the cone lands
+    const floorPool = new THREE.Mesh(
+      poolGeo,
+      new THREE.MeshBasicMaterial({
+        color: cfg.color,
+        transparent: true,
+        opacity: 0.28,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      }),
+    );
+    floorPool.rotation.x = -Math.PI / 2;
+    floorPool.position.set(cfg.x, 0.255, cfg.z);
+    scene.add(floorPool);
+
     scene.add(pivot);
-    effectBeams.push({ pivot, baseRx: cfg.baseRx, baseRz: cfg.baseRz, phase: cfg.phase });
+    effectBeams.push({ pivot, floorPool, baseRx: cfg.baseRx, baseRz: cfg.baseRz, phase: cfg.phase });
   }
 
   // Orbiting dynamic club point lights
@@ -377,6 +402,11 @@ export function buildNeonClub(
       pos.z > clubZ - clubD / 2 &&
       pos.z < clubZ + clubD / 2 &&
       pos.y < clubH,
+    isNearBar: (pos: THREE.Vector3) =>
+      pos.x > barX + 0.3 &&
+      pos.x < barX + 3.4 &&
+      Math.abs(pos.z - clubZ) < 4.4 &&
+      pos.y < 2.2,
     getProximity: (pos: THREE.Vector3) => {
       if (
         pos.x > clubX - clubW / 2 &&
@@ -397,10 +427,16 @@ export function buildNeonClub(
       // Rotate mirror Disco Ball
       discoGroup.rotation.y = elapsed * 0.95;
 
-      // Sweep the 4 volumetric Effect-Spotlights inward across the dancefloor (never clipping walls)
+      // Sweep the 4 volumetric Effect-Spotlights inward across the dancefloor + track floor pools
+      const dropH = 5.7;
       for (const b of effectBeams) {
-        b.pivot.rotation.x = b.baseRx + Math.sin(elapsed * 1.15 + b.phase) * 0.24;
-        b.pivot.rotation.z = b.baseRz + Math.cos(elapsed * 0.9 + b.phase) * 0.24;
+        const rx = b.baseRx + Math.sin(elapsed * 1.15 + b.phase) * 0.18;
+        const rz = b.baseRz + Math.cos(elapsed * 0.9 + b.phase) * 0.18;
+        b.pivot.rotation.x = rx;
+        b.pivot.rotation.z = rz;
+        // Project cone axis (0, -1, 0) onto the dancefloor plane (y = 0.255)
+        b.floorPool.position.x = b.pivot.position.x + Math.sin(rz) * dropH;
+        b.floorPool.position.z = b.pivot.position.z - Math.sin(rx) * dropH;
       }
 
       // Orbiting disco lights

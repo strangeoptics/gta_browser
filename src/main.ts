@@ -322,6 +322,14 @@ vehicles.onDriftMark = (x, z, yaw) => {
   decals.addSkidmark(x, z, yaw);
 };
 
+vehicles.onStuntLanded = (distM, reward) => {
+  objectives.cash += reward;
+  audio.playMissionPassed();
+  addCameraShake(0.32);
+  persistProgress();
+  showQuickToast(`INSANE STUNT BONUS · ${distM}m · +$${reward}`);
+};
+
 vehicles.onPoliceRamPlayer = (dmg) => {
   applyPlayerDamage(dmg);
 };
@@ -555,7 +563,21 @@ window.addEventListener('keydown', (e) => {
   }
 
   if (e.code === 'KeyF' && player.getIsActive() && !shopOpen && wastedTimer <= 0) {
-    tryUsePayNSpray();
+    if (vehicles.isInVehicle()) {
+      tryUsePayNSpray();
+    } else if (world.isNearClubBar(player.position)) {
+      if (playerHp >= 100) {
+        showQuickToast('HP BEREITS VOLL');
+      } else if (objectives.cash >= 50) {
+        objectives.cash -= 50;
+        playerHp = Math.min(100, playerHp + 30);
+        audio.playPurchase();
+        persistProgress();
+        showQuickToast('MIAMI VICE COCKTAIL · +30 HP');
+      } else {
+        showQuickToast('ZU WENIG CASH · COCKTAIL KOSTET $50');
+      }
+    }
     return;
   }
 
@@ -773,6 +795,8 @@ function animate(now: number): void {
     world.colliders,
     world.layout.playableBounds,
     pad,
+    world.stuntRamps,
+    world.shouldTrafficStop,
   );
   const boatHud = boat.update(dt, elapsed, isPlaying, player.position, camera, pad);
 
@@ -967,6 +991,9 @@ function animate(now: number): void {
 
     if (shop.isPlayerNear(player.position) && !shopOpen) {
       interactPromptEl.textContent = '[B] AMMU-NEON SHOP ÖFFNEN ($)';
+      interactPromptEl.classList.add('visible');
+    } else if (world.isNearClubBar(player.position)) {
+      interactPromptEl.textContent = '[F] MIAMI VICE COCKTAIL · $50 (+30 HP)';
       interactPromptEl.classList.add('visible');
     } else if (heistHud.nearStartMarker && !heistHud.active) {
       interactPromptEl.textContent = '[H] OCEAN CLUB HEIST STARTEN (+$3.500)';

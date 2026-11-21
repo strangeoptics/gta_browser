@@ -17,7 +17,7 @@ import {
 } from './Textures';
 import { buildBeachHighlights } from './BeachProps';
 import { buildNeonClub } from './NeonClub';
-import { buildSafehouse, type FoodItem } from './Safehouse';
+import { buildSafehouse, type CabinetWeapon, type FoodItem } from './Safehouse';
 import { buildStuntRamps, type StuntRamp } from './StuntRamps';
 import { buildTrafficLights } from './TrafficLights';
 
@@ -36,6 +36,7 @@ export interface MiamiWorld {
   isNearSafehouseFridge: (pos: THREE.Vector3) => boolean;
   getFoodItems: () => FoodItem[];
   consumeFood: (item: FoodItem) => void;
+  getCabinetWeapons: () => CabinetWeapon[];
   isNearClubBar: (pos: THREE.Vector3) => boolean;
   getClubProximity: (pos: THREE.Vector3) => number;
   getGroundHeight: (x: number, z: number) => number;
@@ -721,6 +722,7 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
     isNearSafehouseFridge: (pos: THREE.Vector3) => safehouse.isNearFridge(pos),
     getFoodItems: () => safehouse.getFoodItems(),
     consumeFood: (item: FoodItem) => safehouse.consumeFood(item),
+    getCabinetWeapons: () => safehouse.getCabinetWeapons(),
     isNearClubBar: (pos: THREE.Vector3) => neonClub.isNearBar(pos),
     getClubProximity: (pos: THREE.Vector3) => neonClub.getProximity(pos),
     getGroundHeight: (x: number, z: number) => getBeachHeight(x, z),

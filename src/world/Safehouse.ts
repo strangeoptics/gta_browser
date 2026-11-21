@@ -11,6 +11,12 @@ export interface FoodItem {
   respawnTimer: number;
 }
 
+export interface CabinetWeapon {
+  slotIndex: number;
+  name: string;
+  mesh: THREE.Object3D;
+}
+
 export interface SafehouseHandle {
   position: THREE.Vector3;
   isInside: (pos: THREE.Vector3) => boolean;
@@ -20,6 +26,7 @@ export interface SafehouseHandle {
   isNearFridge: (pos: THREE.Vector3) => boolean;
   getFoodItems: () => FoodItem[];
   consumeFood: (item: FoodItem) => void;
+  getCabinetWeapons: () => CabinetWeapon[];
   update: (elapsed: number, dt: number, playerPos?: THREE.Vector3) => void;
 }
 
@@ -272,19 +279,153 @@ export function buildSafehouse(
   tvScreen.position.set(cx - 1.5, 1.4, cz - 2.74);
   scene.add(tvScreen);
 
-  // Personal Weapon Wall along West Wall (x = 30.5, z = -44)
-  const rackMat = new THREE.MeshStandardMaterial({ color: '#1a1224', roughness: 0.4, metalness: 0.6 });
-  addBox(0.35, 2.4, 3.8, cx - 9.4, 0.2 + 1.4, cz - 4.2, rackMat);
-  const rackFrame = new THREE.Mesh(new THREE.BoxGeometry(0.38, 2.5, 3.9), pinkNeon);
-  rackFrame.position.set(cx - 9.45, 0.2 + 1.4, cz - 4.2);
-  scene.add(rackFrame);
-  // Mounted weapon silhouettes
-  const gunSilMat = new THREE.MeshStandardMaterial({ color: '#d8e4f0', metalness: 0.85, roughness: 0.2 });
-  for (let i = 0; i < 3; i++) {
-    const gunSil = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.16, 1.15 - i * 0.18), gunSilMat);
-    gunSil.position.set(cx - 9.18, 1.2 + i * 0.52, cz - 4.2);
-    scene.add(gunSil);
-  }
+  // ---------------------------------------------------------------------------
+  // Openable 80s Neon Gun Cabinet (Waffenschrank) along West Wall (x = 30.8, z = -44.2)
+  // Hollow steel shell, backlit pegboard, 5 detailed 3D weapons & hinged double doors!
+  // ---------------------------------------------------------------------------
+  const cabX = cx - 9.2; // 30.8
+  const cabZ = cz - 4.2; // -44.2
+  const cabW = 0.88; // depth along X (30.36 .. 31.24)
+  const cabH = 2.45;
+  const cabD = 3.2; // width along Z (-45.8 .. -42.6)
+
+  const steelMat = new THREE.MeshStandardMaterial({ color: '#1b1726', roughness: 0.38, metalness: 0.72 });
+  const pegboardMat = new THREE.MeshStandardMaterial({
+    color: '#281a38',
+    emissive: '#3a1a52',
+    emissiveIntensity: 0.4,
+    roughness: 0.65,
+  });
+
+  // Hollow cabinet shell (back, north, south, top, bottom — open toward +X into the lounge)
+  addBox(0.14, cabH, cabD, cabX - cabW / 2 + 0.07, 0.2 + cabH / 2, cabZ, steelMat); // back
+  addBox(cabW, cabH, 0.14, cabX, 0.2 + cabH / 2, cabZ - cabD / 2 + 0.07, steelMat); // north side
+  addBox(cabW, cabH, 0.14, cabX, 0.2 + cabH / 2, cabZ + cabD / 2 - 0.07, steelMat); // south side
+  addBox(cabW, 0.14, cabD, cabX, 0.2 + cabH - 0.07, cabZ, steelMat); // top
+  addBox(cabW, 0.14, cabD, cabX, 0.2 + 0.07, cabZ, steelMat); // bottom
+
+  // Backlit interior pegboard + subtle top LED strip
+  const pegboard = new THREE.Mesh(new THREE.PlaneGeometry(cabD - 0.3, cabH - 0.3), pegboardMat);
+  pegboard.rotation.y = Math.PI / 2;
+  pegboard.position.set(cabX - cabW / 2 + 0.16, 0.2 + cabH / 2, cabZ);
+  scene.add(pegboard);
+
+  const cabLed = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.06, cabD - 0.36), cyanNeon);
+  cabLed.position.set(cabX + 0.12, 0.2 + cabH - 0.18, cabZ);
+  scene.add(cabLed);
+
+  // 5 Detailed 3D Weapons mounted inside the Gun Cabinet!
+  const cabinetWeapons: CabinetWeapon[] = [];
+  const wChrome = new THREE.MeshStandardMaterial({ color: '#dce4f0', metalness: 0.9, roughness: 0.2 });
+  const wDark = new THREE.MeshStandardMaterial({ color: '#241f2e', metalness: 0.7, roughness: 0.4 });
+  const wWood = new THREE.MeshStandardMaterial({ color: '#8f5538', roughness: 0.7 });
+
+  // 0) NEON KATANA (mounted horizontally at top)
+  const kGroup = new THREE.Group();
+  kGroup.position.set(cabX - 0.18, 2.22, cabZ);
+  const kBlade = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.055, 1.35), cyanNeon);
+  kBlade.position.z = 0.16;
+  kGroup.add(kBlade);
+  const kGuard = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.12, 0.03), goldNeon);
+  kGuard.position.z = -0.52;
+  kGroup.add(kGuard);
+  const kGrip = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.05, 0.36), wDark);
+  kGrip.position.z = -0.7;
+  kGroup.add(kGrip);
+  scene.add(kGroup);
+  cabinetWeapons.push({ slotIndex: 0, name: 'NEON KATANA', mesh: kGroup });
+
+  // 1) VICE 9MM Pistol (middle-north)
+  const pGroup = new THREE.Group();
+  pGroup.position.set(cabX - 0.18, 1.65, cabZ - 0.85);
+  const pSlide = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.1, 0.44), wChrome);
+  pGroup.add(pSlide);
+  const pGrip = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.22, 0.12), wDark);
+  pGrip.position.set(0, -0.14, -0.12);
+  pGrip.rotation.x = 0.2;
+  pGroup.add(pGrip);
+  scene.add(pGroup);
+  cabinetWeapons.push({ slotIndex: 1, name: 'VICE 9MM', mesh: pGroup });
+
+  // 2) NEON MAC-10 SMG (middle-south)
+  const sGroup = new THREE.Group();
+  sGroup.position.set(cabX - 0.18, 1.65, cabZ + 0.55);
+  const sBody = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.18, 0.56), wDark);
+  sGroup.add(sBody);
+  const sStrip = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.03, 0.42), pinkNeon);
+  sStrip.position.y = 0.04;
+  sGroup.add(sStrip);
+  const sMag = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.34, 0.09), wDark);
+  sMag.position.set(0, -0.22, -0.06);
+  sGroup.add(sMag);
+  scene.add(sGroup);
+  cabinetWeapons.push({ slotIndex: 2, name: 'NEON MAC-10', mesh: sGroup });
+
+  // 3) PALM 12G Shotgun (lower-middle)
+  const shGroup = new THREE.Group();
+  shGroup.position.set(cabX - 0.18, 1.1, cabZ - 0.05);
+  const shBarrel = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.09, 1.25), wDark);
+  shGroup.add(shBarrel);
+  const shPump = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.36), wWood);
+  shPump.position.set(0, -0.06, 0.22);
+  shGroup.add(shPump);
+  const shStock = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.15, 0.42), wWood);
+  shStock.position.set(0, -0.08, -0.72);
+  shStock.rotation.x = -0.16;
+  shGroup.add(shStock);
+  scene.add(shGroup);
+  cabinetWeapons.push({ slotIndex: 3, name: 'PALM 12G', mesh: shGroup });
+
+  // 4) NEON LAUNCHER RPG (bottom shelf)
+  const lGroup = new THREE.Group();
+  lGroup.position.set(cabX - 0.16, 0.62, cabZ);
+  const lTube = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 1.38, 10), wDark);
+  lTube.rotation.x = Math.PI / 2;
+  lGroup.add(lTube);
+  const lRing = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.022, 8, 14), pinkNeon);
+  lRing.position.z = 0.68;
+  lGroup.add(lRing);
+  const lSight = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.09, 0.16), cyanNeon);
+  lSight.position.set(0.1, 0.1, 0.1);
+  lGroup.add(lSight);
+  scene.add(lGroup);
+  cabinetWeapons.push({ slotIndex: 4, name: 'NEON LAUNCHER', mesh: lGroup });
+
+  // Hinged Double Steel & Tinted-Glass Cabinet Doors (swing smoothly outward when approaching!)
+  const cabGlassMat = new THREE.MeshStandardMaterial({
+    color: '#1b384a',
+    roughness: 0.08,
+    metalness: 0.7,
+    transparent: true,
+    opacity: 0.52,
+  });
+  const cabDoorX = cabX + cabW / 2; // east face (31.24)
+
+  const buildCabDoor = (hingeZ: number, dirSign: 1 | -1): THREE.Group => {
+    const pivot = new THREE.Group();
+    pivot.position.set(cabDoorX, 0.2 + cabH / 2, hingeZ);
+    const leafW = (cabD - 0.3) / 2;
+    const glass = new THREE.Mesh(new THREE.BoxGeometry(0.06, cabH - 0.34, leafW - 0.06), cabGlassMat);
+    glass.position.z = dirSign * (leafW / 2);
+    pivot.add(glass);
+
+    const borderTop = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.1, leafW), steelMat);
+    borderTop.position.set(0, (cabH - 0.3) / 2, dirSign * (leafW / 2));
+    pivot.add(borderTop);
+    const borderBot = borderTop.clone();
+    borderBot.position.y = -(cabH - 0.3) / 2;
+    pivot.add(borderBot);
+
+    const handle = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.42, 0.05), pinkNeon);
+    handle.position.set(0.05, 0, dirSign * (leafW - 0.14));
+    pivot.add(handle);
+
+    scene.add(pivot);
+    return pivot;
+  };
+  const cabDoorNorth = buildCabDoor(cabZ - cabD / 2 + 0.15, 1);
+  const cabDoorSouth = buildCabDoor(cabZ + cabD / 2 - 0.15, -1);
+  let cabOpenT = 0;
 
   // Wardrobe Closet (x = 34.5, z = -48.1)
   const woodMat = new THREE.MeshStandardMaterial({ color: '#8a5a44', roughness: 0.65 });
@@ -581,6 +722,7 @@ export function buildSafehouse(
       item.mesh.visible = false;
       item.respawnTimer = 20.0;
     },
+    getCabinetWeapons: () => cabinetWeapons,
     update: (elapsed: number, dt: number, playerPos?: THREE.Vector3) => {
       const clampedDt = Math.min(dt, 0.05);
       const blend = 1 - Math.exp(-6.5 * clampedDt);
@@ -596,24 +738,31 @@ export function buildSafehouse(
         }
       }
 
-      // Automatic Garage Door, Sliding Doors & Fridge Door proximity sensors
+      // Automatic Garage Door, Sliding Doors, Fridge Door & Gun Cabinet Doors proximity sensors
       const distGarage = playerPos ? Math.hypot(playerPos.x - (cx + 10.0), playerPos.z - (cz + 5.7)) : 99;
       const distFront = playerPos ? Math.hypot(playerPos.x - (cx + 10.0), playerPos.z - (cz - 3.0)) : 99;
       const distInner = playerPos ? Math.hypot(playerPos.x - (cx - 5.0), playerPos.z - (cz + 2.5)) : 99;
       const distFridge = playerPos ? Math.hypot(playerPos.x - fridgeX, playerPos.z - (fridgeZ - 1.3)) : 99;
+      const distCabinet = playerPos ? Math.hypot(playerPos.x - (cabDoorX + 1.1), playerPos.z - cabZ) : 99;
 
       const wantGarage = distGarage < 11.5 && (playerPos?.y ?? 0) < 4.5 ? 1 : 0;
       const wantFront = distFront < 4.5 && (playerPos?.y ?? 0) < 4.5 ? 1 : 0;
       const wantInner = distInner < 4.0 && (playerPos?.y ?? 0) < 4.5 ? 1 : 0;
       const wantFridge = distFridge < 2.6 && (playerPos?.y ?? 0) < 2.2 ? 1 : 0;
+      const wantCabinet = distCabinet < 2.8 && (playerPos?.y ?? 0) < 2.2 ? 1 : 0;
 
       garageOpenT += (wantGarage - garageOpenT) * blend;
       frontOpenT += (wantFront - frontOpenT) * blend;
       innerOpenT += (wantInner - innerOpenT) * blend;
       fridgeOpenT += (wantFridge - fridgeOpenT) * blend;
+      cabOpenT += (wantCabinet - cabOpenT) * blend;
 
       // Swing fridge door smoothly open to reveal the lit food shelves!
       fridgeDoorPivot.rotation.y = -fridgeOpenT * 1.85;
+
+      // Swing double gun cabinet doors outward to showcase the 5 mounted weapons!
+      cabDoorNorth.rotation.y = -cabOpenT * 1.95;
+      cabDoorSouth.rotation.y = cabOpenT * 1.95;
 
       // Roll garage door cleanly upward into lintel
       garageDoorGroup.scale.y = Math.max(0.06, 1 - garageOpenT * 0.94);

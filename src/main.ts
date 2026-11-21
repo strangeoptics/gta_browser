@@ -7,7 +7,7 @@ import './style.css';
 import { PlayerController } from './player/PlayerController';
 import { PlayerAvatar } from './player/PlayerAvatar';
 import { buildMiamiCity } from './world/CityBuilder';
-import type { FoodItem } from './world/Safehouse';
+import type { CabinetWeapon, FoodItem } from './world/Safehouse';
 import { WeaponSystem } from './combat/WeaponSystem';
 import { VehicleSystem } from './vehicles/VehicleSystem';
 import { BoatSystem } from './vehicles/BoatSystem';
@@ -189,7 +189,22 @@ let photoPitch = 0;
 const photoKeys = new Set<string>();
 const foodRaycaster = new THREE.Raycaster();
 let lookedFood: FoodItem | null = null;
+let lookedCabinetWeapon: CabinetWeapon | null = null;
 let handHoldTimer = 0;
+
+function equipCabinetWeapon(): boolean {
+  if (!lookedCabinetWeapon) return false;
+  const cw = lookedCabinetWeapon;
+  if (cw.slotIndex === 4 && !weapons.isLauncherUnlocked()) {
+    showQuickToast('NEON LAUNCHER · ERST IM AMMU-NEON SHOP ($) FREISCHALTEN');
+    return true;
+  }
+  weapons.refillAllAmmo();
+  weapons.switchWeapon(cw.slotIndex);
+  audio.playPurchase();
+  showQuickToast(`WAFFENSCHRANK · ${cw.name} AUSGERÜSTET & GELADEN`);
+  return true;
+}
 
 function eatLookedFood(): boolean {
   if (!lookedFood || !lookedFood.available) return false;
@@ -572,6 +587,8 @@ window.addEventListener('mousedown', (e) => {
   if (e.button === 0 && player.getIsActive() && !shopOpen && !photoMode && !vehicles.isInVehicle() && !boat.isInBoat()) {
     if (lookedFood && lookedFood.available) {
       eatLookedFood();
+    } else if (lookedCabinetWeapon) {
+      equipCabinetWeapon();
     }
   }
 });
@@ -658,6 +675,8 @@ window.addEventListener('keydown', (e) => {
       }
     } else if (lookedFood && lookedFood.available) {
       eatLookedFood();
+    } else if (lookedCabinetWeapon) {
+      equipCabinetWeapon();
     } else if (world.isNearSafehouseWardrobe(player.position)) {
       const outfitName = playerAvatar.nextOutfit();
       audio.playPurchase();
@@ -1009,17 +1028,19 @@ function animate(now: number): void {
     ...destructibles.getShootableTargets(),
     ...heli.getShootableTargets(),
   ];
-  // Crosshair raycast for Safehouse food items -> switches weapon viewmodel to open Hand!
+  // Crosshair raycast for Safehouse food items & gun cabinet weapons -> switches weapon to open Hand!
   if (handHoldTimer > 0) handHoldTimer = Math.max(0, handHoldTimer - dt);
   lookedFood = null;
+  lookedCabinetWeapon = null;
   if (isPlaying && !inAnyCraft && world.isInsideSafehouse(player.position)) {
+    const camOrigin = new THREE.Vector3();
+    camera.getWorldPosition(camOrigin);
+    const camDir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+    foodRaycaster.set(camOrigin, camDir);
+    foodRaycaster.far = 3.0;
+
     const foods = world.getFoodItems();
     if (foods.length > 0) {
-      const camOrigin = new THREE.Vector3();
-      camera.getWorldPosition(camOrigin);
-      const camDir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-      foodRaycaster.set(camOrigin, camDir);
-      foodRaycaster.far = 3.0;
       const foodHits = foodRaycaster.intersectObjects(
         foods.map((f) => f.mesh),
         true,
@@ -1029,8 +1050,27 @@ function animate(now: number): void {
         lookedFood = foods.find((f) => f.mesh === hitObj || f.mesh.children.includes(hitObj)) ?? null;
       }
     }
+
+    if (!lookedFood) {
+      const cabWeapons = world.getCabinetWeapons();
+      const cabHits = foodRaycaster.intersectObjects(
+        cabWeapons.map((w) => w.mesh),
+        true,
+      );
+      if (cabHits.length > 0) {
+        let obj: THREE.Object3D | null = cabHits[0].object;
+        while (obj) {
+          const found = cabWeapons.find((w) => w.mesh === obj);
+          if (found) {
+            lookedCabinetWeapon = found;
+            break;
+          }
+          obj = obj.parent;
+        }
+      }
+    }
   }
-  weapons.setHandMode(Boolean(lookedFood) || handHoldTimer > 0);
+  weapons.setHandMode(Boolean(lookedFood) || Boolean(lookedCabinetWeapon) || handHoldTimer > 0);
 
   const wHud = weapons.update(dt, isPlaying && !inAnyCraft, playerSpeed, world.worldMeshes, shootables, pad);
   weapons.setViewmodelVisible(!inAnyCraft && !player.isThirdPerson());
@@ -1153,6 +1193,9 @@ function animate(now: number): void {
 
     if (lookedFood) {
       interactPromptEl.textContent = `[LMB / F] ${lookedFood.name} NEHMEN & ESSEN (+${lookedFood.heal} HP)`;
+      interactPromptEl.classList.add('visible');
+    } else if (lookedCabinetWeapon) {
+      interactPromptEl.textContent = `[LMB / F] ${lookedCabinetWeapon.name} AUS WAFFENSCHRANK NEHMEN`;
       interactPromptEl.classList.add('visible');
     } else if (shop.isPlayerNear(player.position) && !shopOpen) {
       interactPromptEl.textContent = '[B] AMMU-NEON SHOP ÖFFNEN ($)';

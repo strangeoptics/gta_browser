@@ -471,12 +471,14 @@ export function buildNeonClub(
       return THREE.MathUtils.clamp(1 - distDoor / 22, 0, 0.45);
     },
     update: (elapsed: number, playerPos?: THREE.Vector3) => {
-      // Distance-cull expensive club PointLights & interior animations when far away
+      // Modulate intensity (NEVER light.visible!) to avoid WebGL shader recompilation stalls
       const distSq = playerPos ? (playerPos.x - clubX) ** 2 + (playerPos.z - clubZ) ** 2 : 0;
       const nearClub = distSq < 42 * 42;
-      clubLightPink.visible = nearClub;
-      clubLightCyan.visible = nearClub;
-      if (!nearClub) return;
+      if (!nearClub) {
+        clubLightPink.intensity = 0;
+        clubLightCyan.intensity = 0;
+        return;
+      }
       const beatPulse = Math.pow(0.5 + 0.5 * Math.sin(elapsed * beatRadPerSec), 3);
 
       // Rotate mirror Disco Ball

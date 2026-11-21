@@ -248,15 +248,12 @@ export function buildSafehouse(
     strip.position.set(cx + 1.2, 0.22, gz);
     scene.add(strip);
   }
-  const garageLight = new THREE.PointLight('#fff0d4', 22, 20, 1.6);
-  garageLight.position.set(cx + 1, 4.4, cz + 5.7);
-  scene.add(garageLight);
 
   // ---------------------------------------------------------------------------
   // Safehouse Lounge Furnishings (z: -49 .. -37.5)
   // ---------------------------------------------------------------------------
-  const loungeLight = new THREE.PointLight('#ffb8d9', 26, 22, 1.5);
-  loungeLight.position.set(cx, 4.5, cz - 3.2);
+  const loungeLight = new THREE.PointLight('#ffd8ec', 26, 26, 1.5);
+  loungeLight.position.set(cx, 4.5, cz - 1.0);
   scene.add(loungeLight);
 
   // Pastel Art-Deco Sofa & Coffee Table (center-north)
@@ -684,11 +681,6 @@ export function buildSafehouse(
   poolWater.position.set(poolCX, roofY - 0.16, poolCZ);
   scene.add(poolWater);
 
-  // Soft underwater turquoise tint light
-  const poolLight = new THREE.PointLight('#28c8d8', 6, 13, 1.8);
-  poolLight.position.set(poolCX, roofY + 0.6, poolCZ);
-  scene.add(poolLight);
-
   // --- Inflatable Unicorn Swim Ring floating in the Rooftop Pool ---
   const unicornFloat = new THREE.Group();
   const floatBaseX = poolCX + 1.1;
@@ -858,10 +850,8 @@ export function buildSafehouse(
       const clampedDt = Math.min(dt, 0.05);
       const blend = 1 - Math.exp(-6.5 * clampedDt);
       const shDistSq = playerPos ? (playerPos.x - cx) ** 2 + (playerPos.z - cz) ** 2 : 0;
-      const nearSafehouse = shDistSq < 38 * 38;
-      garageLight.visible = nearSafehouse;
-      loungeLight.visible = nearSafehouse;
-      poolLight.visible = nearSafehouse;
+      // Modulate intensity (NEVER light.visible!) so NUM_POINT_LIGHTS stays constant
+      loungeLight.intensity = shDistSq < 38 * 38 ? 26 : 0;
       const inside = playerPos
         ? playerPos.x > cx - 10 &&
           playerPos.x < cx + 10 &&

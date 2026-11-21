@@ -172,9 +172,6 @@ export function buildPoliceStation(
     globe.position.set(cx + 10.75, floorY + 1.92, cz + lz);
     scene.add(globe);
   }
-  const entryLight = new THREE.PointLight('#33aaff', 14, 16, 1.8);
-  entryLight.position.set(cx + 11.4, floorY + 3.2, cz);
-  scene.add(entryLight);
 
   // --- Automatic Front Glass Sliding Doors ---
   const frontDoorN = new THREE.Mesh(new THREE.BoxGeometry(0.12, 3.35, 2.15), glassMat);
@@ -495,14 +492,10 @@ export function buildPoliceStation(
   lockerBadge.position.set(uniformPos.x, floorY + 1.75, uniformPos.z - 0.02);
   scene.add(lockerBadge);
 
-  // Interior Lighting + Red Alarm Beacon
-  const lobbyLight = new THREE.PointLight('#d8eeff', 14, 22, 1.6);
-  lobbyLight.position.set(cx + 4.8, roofY - 0.6, cz);
+  // Interior Lighting + Red Alarm Beacon (always visible, modulated via intensity -> zero shader recompiles!)
+  const lobbyLight = new THREE.PointLight('#d8eeff', 16, 26, 1.5);
+  lobbyLight.position.set(cx + 1.0, roofY - 0.6, cz);
   scene.add(lobbyLight);
-
-  const backLight = new THREE.PointLight('#c0dcff', 10, 18, 1.6);
-  backLight.position.set(cx - 4.8, roofY - 0.6, cz - 2.0);
-  scene.add(backLight);
 
   const alarmBeacon = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, 0.24, 10), alarmRedMat);
   alarmBeacon.position.set(cx - 3.0, roofY - 0.18, cz + 5.5);
@@ -562,10 +555,7 @@ export function buildPoliceStation(
       const clampedDt = Math.min(dt, 0.05);
       const blend = 1 - Math.exp(-7.0 * clampedDt);
       const pdDistSq = playerPos ? (playerPos.x - cx) ** 2 + (playerPos.z - cz) ** 2 : 0;
-      const nearPd = pdDistSq < 40 * 40;
-      entryLight.visible = nearPd;
-      lobbyLight.visible = nearPd;
-      backLight.visible = nearPd;
+      lobbyLight.intensity = pdDistSq < 40 * 40 ? 16 : 0;
 
       redrawWantedBoard(cash, wantedStars);
 

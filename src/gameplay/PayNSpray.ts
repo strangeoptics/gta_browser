@@ -75,10 +75,6 @@ export class PayNSpray {
     signBack.rotation.y = Math.PI;
     g.add(signBack);
 
-    const bayLight = new THREE.PointLight('#ff9f43', 20, 18, 1.6);
-    bayLight.position.set(0, 3.5, 0);
-    g.add(bayLight);
-
     this.ring = new THREE.Mesh(
       new THREE.RingGeometry(2.8, 3.2, 28),
       new THREE.MeshBasicMaterial({ color: '#ff9f43', side: THREE.DoubleSide }),

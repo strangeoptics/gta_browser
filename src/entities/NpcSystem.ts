@@ -243,13 +243,8 @@ export class NpcSystem {
   public update(dt: number, playerPos: THREE.Vector3, wantedStars: number, worldColliders: AABB[] = []): void {
     const clampedDt = Math.min(dt, 0.05);
 
-    // Filter to solid vertical obstacles at NPC torso height + private Safehouse exclusion box
-    const blockers: AABB[] = [SAFEHOUSE_NO_ENTRY];
-    for (const c of worldColliders) {
-      if (c.maxY > 0.45 && c.minY < 1.85) {
-        blockers.push(c);
-      }
-    }
+    // worldColliders passed from main.ts are already pre-filtered to solid NPC blockers
+    const blockers: AABB[] = [SAFEHOUSE_NO_ENTRY, ...worldColliders];
 
     const desiredPolice = wantedStars === 0 ? 0 : Math.min(7, wantedStars + 1);
     if (this.getAlivePoliceCount() < desiredPolice && Math.random() < clampedDt * 0.9) {

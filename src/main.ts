@@ -159,6 +159,9 @@ const b = world.layout.playableBounds;
 player.setWorldBounds(b.minX, b.maxX, b.minZ, b.maxZ);
 player.setSpawn(60, 0.2, 24, 0.12);
 
+// Pre-compile all WebGL shaders up front while light counts are fixed -> eliminates mid-game shader stalls!
+renderer.compile(scene, camera);
+
 // Player Health, Armor & Shop State (restored from localStorage)
 const savedProgress = loadProgress();
 let settings: GameSettings = loadSettings();
@@ -196,10 +199,28 @@ let photoYaw = 0;
 let photoPitch = 0;
 const photoKeys = new Set<string>();
 const foodRaycaster = new THREE.Raycaster();
+const camOriginScratch = new THREE.Vector3();
+const camDirScratch = new THREE.Vector3();
 let lookedFood: FoodItem | null = null;
 let lookedCabinetWeapon: CabinetWeapon | null = null;
 let lookedAtTv = false;
 let handHoldTimer = 0;
+
+// Dirty-checked DOM write helpers to eliminate redundant style/layout work at 60-144 FPS
+const domCache = new WeakMap<Element, string>();
+function setText(el: HTMLElement, text: string): void {
+  if (domCache.get(el) !== text) {
+    domCache.set(el, text);
+    el.textContent = text;
+  }
+}
+const widthCache = new WeakMap<HTMLElement, string>();
+function setWidth(el: HTMLElement, w: string): void {
+  if (widthCache.get(el) !== w) {
+    widthCache.set(el, w);
+    el.style.width = w;
+  }
+}
 
 function toggleSafehouseTv(): void {
   const isOn = world.toggleTv(objectives.cash, wanted.stars);
@@ -1088,6 +1109,9 @@ function animate(now: number): void {
     headingYaw = boat.yaw + Math.PI;
   }
 
+  const rbColliders = roadblocks.getActiveColliders();
+  const vehicleWorldColliders =
+    rbColliders.length > 0 ? [...world.solidVehicleColliders, ...rbColliders] : world.solidVehicleColliders;
   const driveHud = vehicles.update(
     dt,
     elapsed,
@@ -1095,7 +1119,7 @@ function animate(now: number): void {
     player.position,
     wanted.stars,
     camera,
-    [...world.colliders, ...roadblocks.getActiveColliders()],
+    vehicleWorldColliders,
     world.layout.playableBounds,
     pad,
     world.stuntRamps,
@@ -1136,9 +1160,9 @@ function animate(now: number): void {
     world.isInsideSafehouse(player.position) ||
     world.isInsidePoliceStation(player.position);
   npcs.update(dt, player.position, wanted.stars, [
-    ...world.colliders,
+    ...world.solidNpcColliders,
     ...vehicles.getVehicleColliders(),
-    ...roadblocks.getActiveColliders(),
+    ...rbColliders,
   ]);
 
   // GTA-style close-range arrest ("BUSTED") when cornered by Vice PD at 2+ stars
@@ -1225,10 +1249,9 @@ function animate(now: number): void {
   lookedAtTv = false;
   const inSafehouseOrPd = world.isInsideSafehouse(player.position) || world.isInsidePoliceStation(player.position);
   if (isPlaying && !inAnyCraft && inSafehouseOrPd) {
-    const camOrigin = new THREE.Vector3();
-    camera.getWorldPosition(camOrigin);
-    const camDir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-    foodRaycaster.set(camOrigin, camDir);
+    camera.getWorldPosition(camOriginScratch);
+    camDirScratch.set(0, 0, -1).applyQuaternion(camera.quaternion);
+    foodRaycaster.set(camOriginScratch, camDirScratch);
     foodRaycaster.far = 3.2;
 
     const foods = world.getFoodItems();
@@ -1304,53 +1327,53 @@ function animate(now: number): void {
     vigilanteHud.targetPos ?? heistHud.targetPos,
   );
 
-  // --- HUD Updates ---
+  // --- HUD Updates (Dirty-checked DOM mutations) ---
   damageFlash = Math.max(0, damageFlash - dt * 2.2);
-  damageVignetteEl.style.opacity = String(damageFlash);
+  damageVignetteEl.style.opacity = damageFlash > 0.004 ? damageFlash.toFixed(2) : '0';
   const hpPct = Math.round(playerHp);
-  hpFillEl.style.width = `${hpPct}%`;
-  hpTextEl.textContent = `${hpPct}`;
+  setWidth(hpFillEl, `${hpPct}%`);
+  setText(hpTextEl, `${hpPct}`);
 
   const armorPct = Math.round(playerArmor);
-  armorFillEl.style.width = `${armorPct}%`;
-  armorTextEl.textContent = `${armorPct}`;
+  setWidth(armorFillEl, `${armorPct}%`);
+  setText(armorTextEl, `${armorPct}`);
 
   const starStr = '★'.repeat(wanted.stars) + '☆'.repeat(5 - wanted.stars);
-  starsEl.textContent = starStr;
+  setText(starsEl, starStr);
   starsEl.classList.toggle('cooling', wanted.isCoolingDown());
   starsEl.classList.toggle('active', wanted.stars > 0);
-  cashEl.textContent = `$${objHud.cash.toLocaleString('en-US')}`;
+  setText(cashEl, `$${objHud.cash.toLocaleString('en-US')}`);
 
   if (vigilanteHud.active) {
-    objTagEl.textContent = '★ VIGILANTE';
+    setText(objTagEl, '★ VIGILANTE');
     objTagEl.classList.add('heist');
-    objTitleEl.textContent = vigilanteHud.title;
-    objDescEl.textContent = vigilanteHud.description;
-    objDistEl.textContent = `${vigilanteHud.timerText} · ${vigilanteHud.distanceM} m`;
+    setText(objTitleEl, vigilanteHud.title);
+    setText(objDescEl, vigilanteHud.description);
+    setText(objDistEl, `${vigilanteHud.timerText} · ${vigilanteHud.distanceM} m`);
   } else if (heistHud.active) {
-    objTagEl.textContent = '★ HEIST';
+    setText(objTagEl, '★ HEIST');
     objTagEl.classList.add('heist');
-    objTitleEl.textContent = heistHud.title;
-    objDescEl.textContent = heistHud.description;
-    objDistEl.textContent = `${heistHud.distanceM} m`;
+    setText(objTitleEl, heistHud.title);
+    setText(objDescEl, heistHud.description);
+    setText(objDistEl, `${heistHud.distanceM} m`);
   } else {
-    objTagEl.textContent = 'ZIEL · [H] HEIST';
+    setText(objTagEl, 'ZIEL · [H] HEIST');
     objTagEl.classList.remove('heist');
-    objTitleEl.textContent = objHud.title;
-    objDescEl.textContent = objHud.description;
+    setText(objTitleEl, objHud.title);
+    setText(objDescEl, objHud.description);
     if (objHud.timerText && objHud.distanceM > 0) {
-      objDistEl.textContent = `${objHud.timerText} · ${objHud.distanceM} m`;
+      setText(objDistEl, `${objHud.timerText} · ${objHud.distanceM} m`);
     } else if (objHud.timerText) {
-      objDistEl.textContent = objHud.timerText;
+      setText(objDistEl, objHud.timerText);
     } else {
-      objDistEl.textContent = objHud.distanceM > 0 ? `${objHud.distanceM} m` : '';
+      setText(objDistEl, objHud.distanceM > 0 ? `${objHud.distanceM} m` : '');
     }
   }
 
   if (quickToastTimer > 0) quickToastTimer = Math.max(0, quickToastTimer - dt);
   const activeToast = quickToastTimer > 0 ? quickToastText : objHud.toastText;
   if (activeToast) {
-    toastBannerEl.textContent = activeToast;
+    setText(toastBannerEl, activeToast);
     toastBannerEl.classList.add('visible');
   } else {
     toastBannerEl.classList.remove('visible');
@@ -1360,98 +1383,87 @@ function animate(now: number): void {
   crosshairEl.style.display = inAnyCraft ? 'none' : 'block';
   vehiclePanelEl.classList.toggle('visible', inAnyCraft);
 
+  let nextPrompt: string | null = null;
+
   if (boatHud.inBoat) {
-    vehicleNameEl.textContent = boatHud.boatName;
-    vehicleSpeedEl.textContent = `${boatHud.speedKmh}`;
-    vehicleHpFillEl.style.width = '100%';
+    setText(vehicleNameEl, boatHud.boatName);
+    setText(vehicleSpeedEl, `${boatHud.speedKmh}`);
+    setWidth(vehicleHpFillEl, '100%');
     vehicleHpFillEl.classList.remove('low');
-    vehicleCamHintEl.textContent = `[Q] ${audio.getRadioStation()} · [E] AN LAND`;
-    interactPromptEl.classList.remove('visible');
+    setText(vehicleCamHintEl, `[Q] ${audio.getRadioStation()} · [E] AN LAND`);
   } else if (driveHud.inVehicle) {
-    vehicleNameEl.textContent = driveHud.vehicleName;
-    vehicleSpeedEl.textContent = `${driveHud.speedKmh}`;
-    vehicleHpFillEl.style.width = `${driveHud.hpPct}%`;
+    setText(vehicleNameEl, driveHud.vehicleName);
+    setText(vehicleSpeedEl, `${driveHud.speedKmh}`);
+    setWidth(vehicleHpFillEl, `${driveHud.hpPct}%`);
     vehicleHpFillEl.classList.toggle('low', driveHud.hpPct < 35);
     const car = vehicles.getActiveVehicle();
     const vigHint = car?.isPolice ? ` · [G] ${vigilante.isActive() ? 'VIGILANTE AUS' : 'VIGILANTE'}` : '';
-    vehicleCamHintEl.textContent = `[LMB] DRIVE-BY · [Q] ${audio.getRadioStation()}${vigHint} · [V] CAM · [E] AUS`;
+    setText(vehicleCamHintEl, `[LMB] DRIVE-BY · [Q] ${audio.getRadioStation()}${vigHint} · [V] CAM · [E] AUS`);
     if (car && world.isInSafehouseGarage(car.position)) {
-      interactPromptEl.textContent = '[F] PRIVATE GARAGE · GRATIS REPARATUR (100%)';
-      interactPromptEl.classList.add('visible');
+      nextPrompt = '[F] PRIVATE GARAGE · GRATIS REPARATUR (100%)';
     } else if (car && payNSpray.isCarInBay(car.position)) {
-      interactPromptEl.textContent = `[F] PAY 'N' SPRAY · $${payNSpray.cost} (REPARATUR & STERNE WEG)`;
-      interactPromptEl.classList.add('visible');
-    } else {
-      interactPromptEl.classList.remove('visible');
+      nextPrompt = `[F] PAY 'N' SPRAY · $${payNSpray.cost} (REPARATUR & STERNE WEG)`;
     }
   } else {
-    weaponNameEl.textContent = wHud.name;
-    ammoCurrentEl.textContent = wHud.isMelee ? '∞' : wHud.reloading ? 'RLD' : String(wHud.ammo);
-    ammoMaxEl.textContent = wHud.isMelee ? 'MELEE' : `/ ${wHud.magSize}`;
+    setText(weaponNameEl, wHud.name);
+    setText(ammoCurrentEl, wHud.isMelee ? '∞' : wHud.reloading ? 'RLD' : String(wHud.ammo));
+    setText(ammoMaxEl, wHud.isMelee ? 'MELEE' : `/ ${wHud.magSize}`);
     reloadBarEl.classList.toggle('visible', wHud.reloading);
-    reloadFillEl.style.width = `${Math.round(wHud.reloadProgress * 100)}%`;
+    setWidth(reloadFillEl, `${Math.round(wHud.reloadProgress * 100)}%`);
     slotEls.forEach((el, idx) => el.classList.toggle('active', idx === wHud.slotIndex));
 
-    crosshairEl.style.width = `${wHud.spreadPx}px`;
-    crosshairEl.style.height = `${wHud.spreadPx}px`;
+    const spreadStr = `${wHud.spreadPx}px`;
+    if (crosshairEl.style.width !== spreadStr) {
+      crosshairEl.style.width = spreadStr;
+      crosshairEl.style.height = spreadStr;
+    }
     crosshairEl.style.opacity = wHud.ads ? '0.45' : '0.88';
 
-    hitmarkerEl.style.opacity = String(wHud.hitmarkerAlpha);
+    hitmarkerEl.style.opacity = wHud.hitmarkerAlpha > 0.01 ? wHud.hitmarkerAlpha.toFixed(2) : '0';
     hitmarkerEl.classList.toggle('kill', wHud.hitmarkerKill && wHud.hitmarkerAlpha > 0.05);
 
     if (lookedFood) {
-      interactPromptEl.textContent = `[LMB / F] ${lookedFood.name} NEHMEN & ESSEN (+${lookedFood.heal} HP)`;
-      interactPromptEl.classList.add('visible');
+      nextPrompt = `[LMB / F] ${lookedFood.name} NEHMEN & ESSEN (+${lookedFood.heal} HP)`;
     } else if (lookedCabinetWeapon) {
-      interactPromptEl.textContent = `[LMB / F] ${lookedCabinetWeapon.name} AUS WAFFENSCHRANK NEHMEN`;
-      interactPromptEl.classList.add('visible');
+      nextPrompt = `[LMB / F] ${lookedCabinetWeapon.name} AUS WAFFENSCHRANK NEHMEN`;
     } else if (lookedAtTv) {
-      interactPromptEl.textContent = world.isTvOn()
+      nextPrompt = world.isTvOn()
         ? '[LMB / F] FERNSEHER AUSSCHALTEN'
         : '[LMB / F] FERNSEHER ANSCHALTEN · VICE CHANNEL 6';
-      interactPromptEl.classList.add('visible');
     } else if (shop.isPlayerNear(player.position) && !shopOpen) {
-      interactPromptEl.textContent = '[B] AMMU-NEON SHOP ÖFFNEN ($)';
-      interactPromptEl.classList.add('visible');
+      nextPrompt = '[B] AMMU-NEON SHOP ÖFFNEN ($)';
     } else if (world.isNearSafehouseWardrobe(player.position)) {
-      interactPromptEl.textContent = '[F] KLEIDERSCHRANK · OUTFIT WECHSELN';
-      interactPromptEl.classList.add('visible');
+      nextPrompt = '[F] KLEIDERSCHRANK · OUTFIT WECHSELN';
     } else if (world.isNearSafehouseFridge(player.position)) {
-      interactPromptEl.textContent = '[F] KÜHLSCHRANK · SNACK ESSEN (+25 HP)';
-      interactPromptEl.classList.add('visible');
+      nextPrompt = '[F] KÜHLSCHRANK · SNACK ESSEN (+25 HP)';
     } else if (world.isNearSafehouseLounge(player.position)) {
-      interactPromptEl.textContent = '[F] SAFEHOUSE · HEILEN, MUNITION VOLL & SPEICHERN';
-      interactPromptEl.classList.add('visible');
+      nextPrompt = '[F] SAFEHOUSE · HEILEN, MUNITION VOLL & SPEICHERN';
     } else if (world.isNearPdDesk(player.position) && wanted.stars >= 1) {
-      interactPromptEl.textContent = `[F] KAUTION / BESTECHUNG · $${wanted.stars * 200} (STERNE LÖSCHEN)`;
-      interactPromptEl.classList.add('visible');
+      nextPrompt = `[F] KAUTION / BESTECHUNG · $${wanted.stars * 200} (STERNE LÖSCHEN)`;
     } else if (world.isNearPdEvidenceCash(player.position)) {
-      interactPromptEl.textContent = '[F] SYNDIKAT-GELDKOFFER STEHLEN (+$1.500 · ⚠ 3★ ALARM)';
-      interactPromptEl.classList.add('visible');
+      nextPrompt = '[F] SYNDIKAT-GELDKOFFER STEHLEN (+$1.500 · ⚠ 3★ ALARM)';
     } else if (world.isNearPdKevlar(player.position)) {
-      interactPromptEl.textContent = '[F] KEVLAR-WESTE STEHLEN (100% ARMOR · ⚠ ALARM)';
-      interactPromptEl.classList.add('visible');
+      nextPrompt = '[F] KEVLAR-WESTE STEHLEN (100% ARMOR · ⚠ ALARM)';
     } else if (world.isNearPdArmory(player.position)) {
-      interactPromptEl.textContent = '[F] POLIZEI-SHOTGUN & MUNITION STEHLEN (⚠ ALARM)';
-      interactPromptEl.classList.add('visible');
+      nextPrompt = '[F] POLIZEI-SHOTGUN & MUNITION STEHLEN (⚠ ALARM)';
     } else if (world.isNearPdUniform(player.position)) {
-      interactPromptEl.textContent = '[F] SPIND · VICE PD UNIFORM ANZIEHEN';
-      interactPromptEl.classList.add('visible');
+      nextPrompt = '[F] SPIND · VICE PD UNIFORM ANZIEHEN';
     } else if (world.isNearClubBar(player.position)) {
-      interactPromptEl.textContent = '[F] MIAMI VICE COCKTAIL TRINKEN · $50';
-      interactPromptEl.classList.add('visible');
+      nextPrompt = '[F] MIAMI VICE COCKTAIL TRINKEN · $50';
     } else if (heistHud.nearStartMarker && !heistHud.active) {
-      interactPromptEl.textContent = '[H] OCEAN CLUB HEIST STARTEN (+$3.500)';
-      interactPromptEl.classList.add('visible');
+      nextPrompt = '[H] OCEAN CLUB HEIST STARTEN (+$3.500)';
     } else if (boatHud.nearbyBoat) {
-      interactPromptEl.textContent = '[E] EINSTEIGEN · STINGER SPEEDBOAT';
-      interactPromptEl.classList.add('visible');
+      nextPrompt = '[E] EINSTEIGEN · STINGER SPEEDBOAT';
     } else if (driveHud.nearbyVehicleName) {
-      interactPromptEl.textContent = `[E] EINSTEIGEN · ${driveHud.nearbyVehicleName}`;
-      interactPromptEl.classList.add('visible');
-    } else {
-      interactPromptEl.classList.remove('visible');
+      nextPrompt = `[E] EINSTEIGEN · ${driveHud.nearbyVehicleName}`;
     }
+  }
+
+  if (nextPrompt) {
+    setText(interactPromptEl, nextPrompt);
+    interactPromptEl.classList.add('visible');
+  } else {
+    interactPromptEl.classList.remove('visible');
   }
 
   // Apply decaying Camera-Shake & progressive Drunk camera sway/vision effects right before rendering

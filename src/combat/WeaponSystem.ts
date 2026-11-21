@@ -186,6 +186,7 @@ export class WeaponSystem {
   // Effects pools
   private readonly tracers: TracerEffect[] = [];
   private readonly sparks: SparkParticle[] = [];
+  private readonly sparkPool: THREE.Mesh[] = [];
   private readonly sparkGeo = new THREE.BoxGeometry(0.05, 0.05, 0.05);
   private readonly raycaster = new THREE.Raycaster();
 
@@ -231,8 +232,10 @@ export class WeaponSystem {
     this.muzzleFlash.visible = false;
     this.rig.add(this.muzzleFlash);
 
+    // Attach muzzleLight directly to always-visible camera (NOT rig!) so hiding rig never alters WebGL light count
     this.muzzleLight = new THREE.PointLight(0xffaa44, 0, 10, 2);
-    this.rig.add(this.muzzleLight);
+    this.muzzleLight.position.set(0.22, -0.18, -0.65);
+    this.camera.add(this.muzzleLight);
 
     this.bindInputs();
   }
@@ -612,7 +615,6 @@ export class WeaponSystem {
     this.muzzleFlash.rotation.set(Math.random() * 6, Math.random() * 6, Math.random() * 6);
     this.muzzleFlash.scale.setScalar(0.85 + Math.random() * 0.55);
     this.muzzleFlash.visible = true;
-    this.muzzleLight.position.copy(tipLocal);
     this.muzzleLight.intensity = 6.5;
     this.flashTimer = 0.045;
 
@@ -703,10 +705,18 @@ export class WeaponSystem {
     count: number,
   ): void {
     for (let i = 0; i < count; i++) {
-      const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 1 });
-      const mesh = new THREE.Mesh(this.sparkGeo, mat);
+      let mesh = this.sparkPool.pop();
+      if (mesh) {
+        const mat = mesh.material as THREE.MeshBasicMaterial;
+        mat.color.setHex(color);
+        mat.opacity = 1;
+        mesh.visible = true;
+      } else {
+        const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 1 });
+        mesh = new THREE.Mesh(this.sparkGeo, mat);
+        this.scene.add(mesh);
+      }
       mesh.position.copy(origin);
-      this.scene.add(mesh);
 
       const vel = normal
         .clone()
@@ -740,8 +750,8 @@ export class WeaponSystem {
       const s = this.sparks[i];
       s.life -= dt;
       if (s.life <= 0) {
-        this.scene.remove(s.mesh);
-        (s.mesh.material as THREE.Material).dispose();
+        s.mesh.visible = false;
+        this.sparkPool.push(s.mesh);
         this.sparks.splice(i, 1);
       } else {
         s.vel.y -= 14 * dt;

@@ -60,7 +60,6 @@ export interface DrivingHudState {
 
 interface ExplosionFlash {
   sphere: THREE.Mesh;
-  light: THREE.PointLight;
   life: number;
   maxLife: number;
 }
@@ -112,12 +111,31 @@ export class VehicleSystem {
 
   private readonly explosions: ExplosionFlash[] = [];
   private readonly smokeParticles: SmokeParticle[] = [];
+  private readonly smokePool: THREE.Mesh[] = [];
   private readonly smokeGeo = new THREE.BoxGeometry(0.28, 0.28, 0.28);
   private readonly hitboxMat = new THREE.MeshBasicMaterial({ visible: false });
 
-  // Dynamic headlight SpotLight for the player-driven car (illuminates wet asphalt & facades!)
+  private acquireSmokeMesh(color: string | number, opacity: number, scale: number): THREE.Mesh {
+    const existing = this.smokePool.pop();
+    if (existing) {
+      const mat = existing.material as THREE.MeshBasicMaterial;
+      mat.color.set(color);
+      mat.opacity = opacity;
+      existing.scale.setScalar(scale);
+      existing.visible = true;
+      return existing;
+    }
+    const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity });
+    const mesh = new THREE.Mesh(this.smokeGeo, mat);
+    mesh.scale.setScalar(scale);
+    this.scene.add(mesh);
+    return mesh;
+  }
+
+  // Dynamic headlight SpotLight + permanent explosion PointLight (zero runtime light add/remove -> zero shader recompiles!)
   private readonly headlightSpot: THREE.SpotLight;
   private readonly headlightTarget = new THREE.Object3D();
+  private readonly explosionLight: THREE.PointLight;
   private isDrifting = false;
   private driftSmokeTimer = 0;
 
@@ -139,6 +157,9 @@ export class VehicleSystem {
     this.headlightSpot.target = this.headlightTarget;
     this.scene.add(this.headlightSpot);
     this.scene.add(this.headlightTarget);
+
+    this.explosionLight = new THREE.PointLight('#ff6a22', 0, 32, 1.5);
+    this.scene.add(this.explosionLight);
 
     CAR_SPECS.forEach((spec, idx) => {
       const built = spec.bike
@@ -339,24 +360,17 @@ export class VehicleSystem {
     sphere.position.set(origin.x, origin.y + 0.9, origin.z);
     this.scene.add(sphere);
 
-    const light = new THREE.PointLight('#ff6a22', 60, 32, 1.5);
-    light.position.copy(sphere.position);
-    this.scene.add(light);
+    this.explosionLight.position.copy(sphere.position);
+    this.explosionLight.intensity = 60;
 
-    this.explosions.push({ sphere, light, life: 0.48, maxLife: 0.48 });
+    this.explosions.push({ sphere, life: 0.48, maxLife: 0.48 });
 
-    // Burst of fiery + smoke particles
+    // Burst of fiery + smoke particles (pooled meshes -> zero material allocations!)
     for (let i = 0; i < 20; i++) {
       const isFire = i < 12;
-      const mat = new THREE.MeshBasicMaterial({
-        color: isFire ? (i % 2 === 0 ? '#ffaa33' : '#ff4422') : '#2a222b',
-        transparent: true,
-        opacity: 0.95,
-      });
-      const mesh = new THREE.Mesh(this.smokeGeo, mat);
+      const col = isFire ? (i % 2 === 0 ? '#ffaa33' : '#ff4422') : '#2a222b';
+      const mesh = this.acquireSmokeMesh(col, 0.95, isFire ? 1.1 : 1.5);
       mesh.position.set(origin.x, origin.y + 0.8, origin.z);
-      mesh.scale.setScalar(isFire ? 1.1 : 1.5);
-      this.scene.add(mesh);
 
       const angle = Math.random() * Math.PI * 2;
       const spd = 3 + Math.random() * 7;
@@ -388,15 +402,8 @@ export class VehicleSystem {
 
   private spawnCrashSparks(origin: THREE.Vector3, count: number): void {
     for (let i = 0; i < count; i++) {
-      const mat = new THREE.MeshBasicMaterial({
-        color: i % 2 === 0 ? '#ffd27d' : '#ff7b33',
-        transparent: true,
-        opacity: 0.95,
-      });
-      const mesh = new THREE.Mesh(this.smokeGeo, mat);
-      mesh.scale.setScalar(0.32);
+      const mesh = this.acquireSmokeMesh(i % 2 === 0 ? '#ffd27d' : '#ff7b33', 0.95, 0.32);
       mesh.position.set(origin.x, 0.72, origin.z);
-      this.scene.add(mesh);
 
       const angle = Math.random() * Math.PI * 2;
       const spd = 2.5 + Math.random() * 5.5;
@@ -573,7 +580,8 @@ export class VehicleSystem {
       this.firstPersonCam = !this.firstPersonCam;
     }
 
-    const solidColliders = worldColliders.filter((c) => c.maxY > 0.45);
+    // solidColliders passed from main.ts is already pre-filtered to maxY > 0.45
+    const solidColliders = worldColliders;
 
     for (const v of this.vehicles) {
       if (!v.airborne && v.position.y <= 0.05) {
@@ -742,16 +750,11 @@ export class VehicleSystem {
     if (v.smokeTimer > 0) return;
     v.smokeTimer = fiery ? 0.08 : 0.16;
 
-    const mat = new THREE.MeshBasicMaterial({
-      color: fiery && Math.random() > 0.45 ? '#ff7722' : '#2e2633',
-      transparent: true,
-      opacity: 0.78,
-    });
-    const mesh = new THREE.Mesh(this.smokeGeo, mat);
+    const col = fiery && Math.random() > 0.45 ? '#ff7722' : '#2e2633';
+    const mesh = this.acquireSmokeMesh(col, 0.78, 1.0);
     const hoodX = v.position.x + Math.sin(v.yaw) * 1.3;
     const hoodZ = v.position.z + Math.cos(v.yaw) * 1.3;
     mesh.position.set(hoodX + (Math.random() - 0.5) * 0.4, 0.95, hoodZ + (Math.random() - 0.5) * 0.4);
-    this.scene.add(mesh);
 
     this.smokeParticles.push({
       mesh,
@@ -762,12 +765,12 @@ export class VehicleSystem {
   }
 
   private updateExplosionVfx(dt: number): void {
+    let maxBlastGlow = 0;
     for (let i = this.explosions.length - 1; i >= 0; i--) {
       const ex = this.explosions[i];
       ex.life -= dt;
       if (ex.life <= 0) {
         this.scene.remove(ex.sphere);
-        this.scene.remove(ex.light);
         ex.sphere.geometry.dispose();
         (ex.sphere.material as THREE.Material).dispose();
         this.explosions.splice(i, 1);
@@ -776,16 +779,17 @@ export class VehicleSystem {
         const scale = 1 + t * 5.2;
         ex.sphere.scale.setScalar(scale);
         (ex.sphere.material as THREE.MeshBasicMaterial).opacity = (1 - t) * 0.88;
-        ex.light.intensity = (1 - t) * 65;
+        maxBlastGlow = Math.max(maxBlastGlow, (1 - t) * 65);
       }
     }
+    this.explosionLight.intensity = maxBlastGlow;
 
     for (let i = this.smokeParticles.length - 1; i >= 0; i--) {
       const p = this.smokeParticles[i];
       p.life -= dt;
       if (p.life <= 0) {
-        this.scene.remove(p.mesh);
-        (p.mesh.material as THREE.Material).dispose();
+        p.mesh.visible = false;
+        this.smokePool.push(p.mesh);
         this.smokeParticles.splice(i, 1);
       } else {
         p.mesh.position.addScaledVector(p.vel, dt);
@@ -898,15 +902,8 @@ export class VehicleSystem {
           const wx = v.position.x - fwdX * rearOffset + rightX * side;
           const wz = v.position.z - fwdZ * rearOffset + rightZ * side;
           this.onDriftMark?.(wx, wz, v.yaw);
-          const mat = new THREE.MeshBasicMaterial({
-            color: '#d8e8f2',
-            transparent: true,
-            opacity: 0.52,
-          });
-          const puff = new THREE.Mesh(this.smokeGeo, mat);
-          puff.scale.setScalar(1.2);
+          const puff = this.acquireSmokeMesh('#d8e8f2', 0.52, 1.2);
           puff.position.set(wx, 0.24, wz);
-          this.scene.add(puff);
           this.smokeParticles.push({
             mesh: puff,
             vel: new THREE.Vector3((Math.random() - 0.5) * 1.2, 0.9 + Math.random() * 0.7, (Math.random() - 0.5) * 1.2),

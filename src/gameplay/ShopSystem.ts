@@ -41,10 +41,6 @@ export class ShopSystem {
     sign.position.set(0, 3.25, 0.96);
     group.add(sign);
 
-    const light = new THREE.PointLight('#52f29c', 16, 16, 1.8);
-    light.position.set(0, 2.6, 1.6);
-    group.add(light);
-
     this.ring = new THREE.Mesh(
       new THREE.RingGeometry(1.75, 2.05, 24),
       new THREE.MeshBasicMaterial({ color: '#52f29c', side: THREE.DoubleSide }),

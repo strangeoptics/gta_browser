@@ -8,6 +8,7 @@ export class Minimap {
   private readonly size: number;
   private readonly half: number;
   private readonly scale = 1.05; // pixels per world meter
+  private lastRenderElapsed = -1;
 
   constructor(canvas: HTMLCanvasElement) {
     this.ctx = canvas.getContext('2d')!;
@@ -27,6 +28,10 @@ export class Minimap {
     heliPos?: { x: number; z: number } | null,
     heistTarget?: { x: number; z: number } | null,
   ): void {
+    // Throttle 2D radar redraws to ~30 Hz (saves ~50% 2D canvas CPU work on 60-144Hz monitors!)
+    if (elapsed - this.lastRenderElapsed < 0.032) return;
+    this.lastRenderElapsed = elapsed;
+
     const ctx = this.ctx;
     const half = this.half;
     const scale = this.scale;
@@ -193,9 +198,13 @@ export class Minimap {
       const pulse = 4.5 + Math.sin(elapsed * 6) * 1.4;
       ctx.save();
       ctx.translate(half + rx, half + rz);
+      // Fast concentric glow circle instead of expensive 2D-canvas shadowBlur!
       ctx.fillStyle = color;
-      ctx.shadowColor = color;
-      ctx.shadowBlur = 10;
+      ctx.globalAlpha = 0.28;
+      ctx.beginPath();
+      ctx.arc(0, 0, pulse + 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1.0;
       ctx.beginPath();
       ctx.moveTo(0, -pulse);
       ctx.lineTo(pulse, 0);
@@ -216,12 +225,14 @@ export class Minimap {
     ctx.textBaseline = 'middle';
     ctx.fillText('N', nx, ny);
 
-    // Player center chevron
+    // Player center chevron (zero shadowBlur!)
     ctx.save();
     ctx.translate(half, half);
+    ctx.fillStyle = 'rgba(54, 241, 230, 0.25)';
+    ctx.beginPath();
+    ctx.arc(0, 0, 8.5, 0, Math.PI * 2);
+    ctx.fill();
     ctx.fillStyle = '#ffffff';
-    ctx.shadowColor = '#36f1e6';
-    ctx.shadowBlur = 6;
     ctx.beginPath();
     ctx.moveTo(0, -7);
     ctx.lineTo(5, 5);

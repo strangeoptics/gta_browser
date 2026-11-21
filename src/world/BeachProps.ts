@@ -140,9 +140,6 @@ export function buildBeachHighlights(
       }
     }
   }
-  const pierLight = new THREE.PointLight('#ff9d47', 22, 22, 1.6);
-  pierLight.position.set(106, pierY + 1.8, pierZ);
-  scene.add(pierLight);
 
   // ---------------------------------------------------------------------------
   // 3) Beach Loungers, Pastel Towels & Beach Volleyball Net

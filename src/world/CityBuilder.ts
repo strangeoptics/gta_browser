@@ -25,6 +25,8 @@ import { buildTrafficLights } from './TrafficLights';
 
 export interface MiamiWorld {
   colliders: AABB[];
+  solidVehicleColliders: AABB[];
+  solidNpcColliders: AABB[];
   worldMeshes: THREE.Object3D[];
   cameraMeshes: THREE.Object3D[];
   stuntRamps: StuntRamp[];
@@ -606,7 +608,7 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
   const palms = buildPalmTrees(scene, palmPositions);
 
   // ---------------------------------------------------------------------------
-  // 7) Coastal Streetlights, Working Traffic Lights & Neon Stunt Ramps
+  // 7) Coastal Streetlights (Fixed 4-Light Nearest Pool -> Zero Shader Recompiles!), Traffic Lights & Stunt Ramps
   // ---------------------------------------------------------------------------
   const streetLights = buildStreetlights(scene);
   const trafficLights = buildTrafficLights(scene);
@@ -732,8 +734,14 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
     obj.matrixAutoUpdate = false;
   }
 
+  // Pre-filter static world colliders once at startup so VehicleSystem & NpcSystem never re-filter every frame!
+  const solidVehicleColliders = colliders.filter((c) => c.maxY > 0.45);
+  const solidNpcColliders = colliders.filter((c) => c.maxY > 0.45 && c.minY < 1.85);
+
   const worldHandle: MiamiWorld = {
     colliders,
+    solidVehicleColliders,
+    solidNpcColliders,
     worldMeshes,
     cameraMeshes,
     stuntRamps,
@@ -786,15 +794,10 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
       trafficLights.update(elapsed);
       palms.update(elapsed, rainActive ? 2.1 : 1.0);
 
-      // Distance-cull streetlamp PointLights so distant blocks cost zero PBR shader loops
+      // Move fixed pool of 4 always-visible streetlamp PointLights to the 4 closest lamps
+      // (NEVER toggle light.visible -> keeps WebGL NUM_POINT_LIGHTS 100% constant, zero shader recompiles!)
       if (playerPos) {
-        const px = playerPos.x;
-        const pz = playerPos.z;
-        for (const sl of streetLights) {
-          const dx = sl.position.x - px;
-          const dz = sl.position.z - pz;
-          sl.visible = dx * dx + dz * dz < 54 * 54;
-        }
+        streetLights.updateNearest(playerPos.x, playerPos.z);
       }
 
       const posAttr = mistGeo.getAttribute('position') as THREE.BufferAttribute;
@@ -952,8 +955,7 @@ function buildPalmTrees(
   };
 }
 
-function buildStreetlights(scene: THREE.Scene): THREE.PointLight[] {
-  const streetLights: THREE.PointLight[] = [];
+function buildStreetlights(scene: THREE.Scene): { updateNearest: (px: number, pz: number) => void } {
   const poleMat = new THREE.MeshStandardMaterial({ color: '#2b2433', roughness: 0.4, metalness: 0.7 });
   const bulbMat = new THREE.MeshStandardMaterial({
     color: '#ffdf9e',
@@ -993,29 +995,61 @@ function buildStreetlights(scene: THREE.Scene): THREE.PointLight[] {
     { x: -53.6, z: 0, dirX: -1, withLight: false },
   ];
 
+  const litCoords: { x: number; y: number; z: number; dSq: number }[] = [];
+
   for (const spot of lampSpots) {
     const pole = new THREE.Mesh(poleGeo, poleMat);
     pole.position.set(spot.x, 3.25, spot.z);
+    pole.updateMatrix();
+    pole.matrixAutoUpdate = false;
     scene.add(pole);
 
     const arm = new THREE.Mesh(armGeo, poleMat);
     arm.position.set(spot.x + spot.dirX * 0.55, 6.25, spot.z);
+    arm.updateMatrix();
+    arm.matrixAutoUpdate = false;
     scene.add(arm);
 
     const globe = new THREE.Mesh(globeGeo, bulbMat);
     globe.position.set(spot.x + spot.dirX * 1.15, 6.1, spot.z);
+    globe.updateMatrix();
+    globe.matrixAutoUpdate = false;
     scene.add(globe);
 
     const hazeCone = new THREE.Mesh(hazeConeGeo, hazeConeMat);
     hazeCone.position.set(spot.x + spot.dirX * 1.15, 3.15, spot.z);
+    hazeCone.updateMatrix();
+    hazeCone.matrixAutoUpdate = false;
     scene.add(hazeCone);
 
     if (spot.withLight) {
-      const pt = new THREE.PointLight('#ff9e4a', 24, 26, 1.7);
-      pt.position.set(spot.x + spot.dirX * 1.15, 5.7, spot.z);
-      scene.add(pt);
-      streetLights.push(pt);
+      litCoords.push({ x: spot.x + spot.dirX * 1.15, y: 5.7, z: spot.z, dSq: 0 });
     }
   }
-  return streetLights;
+
+  // Fixed pool of 3 always-visible PointLights repositioned to the 3 closest streetlamps
+  const poolSize = 3;
+  const lightPool: THREE.PointLight[] = [];
+  for (let i = 0; i < poolSize; i++) {
+    const pt = new THREE.PointLight('#ff9e4a', 24, 26, 1.7);
+    pt.position.set(litCoords[i].x, litCoords[i].y, litCoords[i].z);
+    scene.add(pt);
+    lightPool.push(pt);
+  }
+
+  return {
+    updateNearest: (px: number, pz: number) => {
+      for (let i = 0; i < litCoords.length; i++) {
+        const c = litCoords[i];
+        const dx = c.x - px;
+        const dz = c.z - pz;
+        c.dSq = dx * dx + dz * dz;
+      }
+      litCoords.sort((a, b) => a.dSq - b.dSq);
+      for (let i = 0; i < poolSize; i++) {
+        const c = litCoords[i];
+        lightPool[i].position.set(c.x, c.y, c.z);
+      }
+    },
+  };
 }

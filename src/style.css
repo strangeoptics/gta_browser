@@ -546,6 +546,121 @@ body,
   color: #ff7ea8;
 }
 
+/* Armor Bar & Locked Weapon Slot */
+.armor-row {
+  margin-top: 5px;
+}
+
+.armor-label {
+  color: #36f1e6;
+}
+
+#armor-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #36f1e6, #4b8bff);
+  transition: width 0.12s ease;
+}
+
+#armor-text {
+  min-width: 26px;
+  color: #bdf9f5;
+  font-variant-numeric: tabular-nums;
+}
+
+.slot.locked {
+  opacity: 0.25;
+  text-decoration: line-through;
+}
+
+/* AMMU-NEON Shop Modal */
+#shop-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 22;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(12, 6, 22, 0.78);
+  backdrop-filter: blur(6px);
+}
+
+#shop-overlay.visible {
+  display: flex;
+}
+
+.shop-card {
+  width: min(420px, 90vw);
+  padding: 28px 26px;
+  border-radius: 14px;
+  background: rgba(20, 12, 34, 0.94);
+  border: 1px solid rgba(82, 242, 156, 0.55);
+  box-shadow: 0 20px 55px rgba(0, 0, 0, 0.65), 0 0 32px rgba(82, 242, 156, 0.16);
+  text-align: center;
+}
+
+.shop-title {
+  font-size: 30px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  color: #52f29c;
+  margin-bottom: 6px;
+}
+
+.shop-balance {
+  font-size: 14px;
+  color: #e4d8ec;
+  margin-bottom: 18px;
+}
+
+#shop-cash {
+  color: #52f29c;
+  font-weight: 900;
+}
+
+.shop-items {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.shop-btn {
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(54, 241, 230, 0.45);
+  background: rgba(54, 241, 230, 0.12);
+  color: #fff6f0;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition: background 0.12s ease, transform 0.1s ease;
+}
+
+.shop-btn:hover:not(:disabled) {
+  background: rgba(82, 242, 156, 0.28);
+  transform: translateY(-1px);
+}
+
+.shop-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.shop-close-btn {
+  width: 100%;
+  padding: 10px;
+  border-radius: 8px;
+  border: none;
+  background: linear-gradient(90deg, #36f1e6, #ff4fa3);
+  color: #160a22;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+}
+
 /* Pointer-Lock Overlay */
 #overlay {
   position: fixed;

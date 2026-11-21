@@ -11,6 +11,7 @@ import { VehicleSystem } from './vehicles/VehicleSystem';
 import { NpcSystem } from './entities/NpcSystem';
 import { WantedSystem } from './gameplay/WantedSystem';
 import { ObjectiveSystem } from './gameplay/ObjectiveSystem';
+import { ShopSystem } from './gameplay/ShopSystem';
 import { Minimap } from './hud/Minimap';
 import { AudioEngine } from './audio/AudioEngine';
 
@@ -31,12 +32,15 @@ const slotEls = [
   document.getElementById('slot-1') as HTMLSpanElement,
   document.getElementById('slot-2') as HTMLSpanElement,
   document.getElementById('slot-3') as HTMLSpanElement,
+  document.getElementById('slot-4') as HTMLSpanElement,
 ];
 
 const starsEl = document.getElementById('wanted-stars') as HTMLDivElement;
 const cashEl = document.getElementById('cash-display') as HTMLDivElement;
 const hpFillEl = document.getElementById('hp-fill') as HTMLDivElement;
 const hpTextEl = document.getElementById('hp-text') as HTMLSpanElement;
+const armorFillEl = document.getElementById('armor-fill') as HTMLDivElement;
+const armorTextEl = document.getElementById('armor-text') as HTMLSpanElement;
 const objTitleEl = document.getElementById('obj-title') as HTMLDivElement;
 const objDescEl = document.getElementById('obj-desc') as HTMLDivElement;
 const objDistEl = document.getElementById('obj-dist') as HTMLSpanElement;
@@ -50,6 +54,14 @@ const damageVignetteEl = document.getElementById('damage-vignette') as HTMLDivEl
 const wastedOverlayEl = document.getElementById('wasted-overlay') as HTMLDivElement;
 const audioStatusEl = document.getElementById('audio-status') as HTMLDivElement;
 const minimapCanvas = document.getElementById('minimap-canvas') as HTMLCanvasElement;
+
+// AMMU-NEON Shop Modal
+const shopOverlayEl = document.getElementById('shop-overlay') as HTMLDivElement;
+const shopCashEl = document.getElementById('shop-cash') as HTMLSpanElement;
+const buyMedkitBtn = document.getElementById('buy-medkit') as HTMLButtonElement;
+const buyArmorBtn = document.getElementById('buy-armor') as HTMLButtonElement;
+const buyLauncherBtn = document.getElementById('buy-launcher') as HTMLButtonElement;
+const shopCloseBtn = document.getElementById('shop-close') as HTMLButtonElement;
 
 // Renderer
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
@@ -83,9 +95,10 @@ const vehicles = new VehicleSystem(scene);
 const npcs = new NpcSystem(scene);
 const wanted = new WantedSystem();
 const objectives = new ObjectiveSystem(scene);
+const shop = new ShopSystem(scene);
 const minimap = new Minimap(minimapCanvas);
 const audio = new AudioEngine();
-objectives.startNextObjective(npcs);
+objectives.startNextObjective(npcs, wanted);
 
 // Player Controller — spawn on Ocean Drive near parked sports cars
 const player = new PlayerController(camera, canvas);
@@ -93,16 +106,26 @@ const b = world.layout.playableBounds;
 player.setWorldBounds(b.minX, b.maxX, b.minZ, b.maxZ);
 player.setSpawn(60, 0.2, 24, 0.12);
 
-// Player Health & Wasted State
+// Player Health, Armor & Shop State
 let playerHp = 100;
+let playerArmor = 0;
 let damageFlash = 0;
 let wastedTimer = 0;
 let lastCompletedCount = 0;
+let shopOpen = false;
 
 function applyPlayerDamage(amount: number): void {
   if (wastedTimer > 0) return;
-  const mitigated = vehicles.isInVehicle() ? amount * 0.55 : amount;
-  playerHp = Math.max(0, playerHp - mitigated);
+  let dmg = vehicles.isInVehicle() ? amount * 0.55 : amount;
+
+  // Armor absorbs 75% of incoming damage
+  if (playerArmor > 0) {
+    const absorbed = Math.min(playerArmor, dmg * 0.75);
+    playerArmor = Math.max(0, playerArmor - absorbed);
+    dmg -= absorbed;
+  }
+
+  playerHp = Math.max(0, playerHp - dmg);
   damageFlash = 0.85;
   audio.playDamage();
 
@@ -117,10 +140,43 @@ function applyPlayerDamage(amount: number): void {
   }
 }
 
+function triggerWorldExplosion(origin: THREE.Vector3, radius: number, maxDamage: number): void {
+  audio.playExplosion();
+  vehicles.spawnExplosionVfx(origin);
+  npcs.applyBlastDamage(origin, radius, maxDamage);
+  vehicles.applyBlastDamage(origin, radius, maxDamage * 0.85);
+  wanted.addHeat(45);
+
+  const distToPlayer = player.position.distanceTo(origin);
+  if (distToPlayer < radius) {
+    const playerDmg = maxDamage * 0.65 * (1 - distToPlayer / radius);
+    applyPlayerDamage(playerDmg);
+  }
+}
+
 // Wire system callbacks
 weapons.onShotFired = (weaponId, origin) => {
   audio.playShot(weaponId);
   npcs.alertNearbyCivilians(origin, 28);
+};
+
+weapons.onExplosion = (origin, radius, damage) => {
+  triggerWorldExplosion(origin, radius, damage);
+};
+
+vehicles.onVehicleExploded = (origin, radius, maxDamage) => {
+  audio.playExplosion();
+  npcs.applyBlastDamage(origin, radius, maxDamage);
+  vehicles.applyBlastDamage(origin, radius, maxDamage * 0.8);
+  wanted.addHeat(55);
+  const distToPlayer = player.position.distanceTo(origin);
+  if (distToPlayer < radius) {
+    applyPlayerDamage(maxDamage * 0.6 * (1 - distToPlayer / radius));
+  }
+};
+
+vehicles.onPoliceRamPlayer = (dmg) => {
+  applyPlayerDamage(dmg);
 };
 
 npcs.onPlayerDamaged = (dmg) => {
@@ -142,7 +198,80 @@ vehicles.onVehicleHitNpc = (vPos, speed) => {
   npcs.handleVehicleImpact(vPos, speed);
 };
 
-// Enter / Exit Vehicle on [E], Mute Audio on [M]
+objectives.onCheckpointReached = () => {
+  audio.playCheckpoint();
+};
+
+// AMMU-NEON Shop UI Flow
+function refreshShopUi(): void {
+  shopCashEl.textContent = `$${objectives.cash.toLocaleString('en-US')}`;
+  buyMedkitBtn.disabled = objectives.cash < 250 || playerHp >= 100;
+  buyArmorBtn.disabled = objectives.cash < 400 || playerArmor >= 100;
+  if (weapons.isLauncherUnlocked()) {
+    buyLauncherBtn.textContent = 'FREIGESCHALTET [4] · MUNITION VOLL ($200)';
+    buyLauncherBtn.disabled = objectives.cash < 200;
+  } else {
+    buyLauncherBtn.textContent = 'NEON LAUNCHER [4] · $900';
+    buyLauncherBtn.disabled = objectives.cash < 900;
+  }
+}
+
+function openShop(): void {
+  shopOpen = true;
+  player.setActive(false);
+  if (document.pointerLockElement === canvas) {
+    document.exitPointerLock?.();
+  }
+  refreshShopUi();
+  shopOverlayEl.classList.add('visible');
+}
+
+function closeShop(): void {
+  shopOpen = false;
+  shopOverlayEl.classList.remove('visible');
+  overlay.classList.add('hidden');
+  player.setActive(true);
+  requestLockSafely();
+}
+
+buyMedkitBtn.addEventListener('click', () => {
+  if (objectives.cash < 250 || playerHp >= 100) return;
+  objectives.cash -= 250;
+  playerHp = Math.min(100, playerHp + 50);
+  audio.playPurchase();
+  refreshShopUi();
+});
+
+buyArmorBtn.addEventListener('click', () => {
+  if (objectives.cash < 400 || playerArmor >= 100) return;
+  objectives.cash -= 400;
+  playerArmor = 100;
+  audio.playPurchase();
+  refreshShopUi();
+});
+
+buyLauncherBtn.addEventListener('click', () => {
+  if (!weapons.isLauncherUnlocked()) {
+    if (objectives.cash < 900) return;
+    objectives.cash -= 900;
+    weapons.unlockLauncher();
+    slotEls[3].classList.remove('locked');
+    audio.playPurchase();
+    refreshShopUi();
+  } else {
+    if (objectives.cash < 200) return;
+    objectives.cash -= 200;
+    weapons.refillAllAmmo();
+    audio.playPurchase();
+    refreshShopUi();
+  }
+});
+
+shopCloseBtn.addEventListener('click', () => {
+  closeShop();
+});
+
+// Enter / Exit Vehicle on [E], Shop on [B], Mute Audio on [M]
 window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyM') {
     const muted = audio.toggleMute();
@@ -151,7 +280,21 @@ window.addEventListener('keydown', (e) => {
     return;
   }
 
-  if (e.code === 'KeyE' && player.getIsActive() && wastedTimer <= 0) {
+  if (e.code === 'KeyB' && wastedTimer <= 0) {
+    if (shopOpen) {
+      closeShop();
+    } else if (player.getIsActive() && !vehicles.isInVehicle() && shop.isPlayerNear(player.position)) {
+      openShop();
+    }
+    return;
+  }
+
+  if (e.code === 'Escape' && shopOpen) {
+    closeShop();
+    return;
+  }
+
+  if (e.code === 'KeyE' && player.getIsActive() && !shopOpen && wastedTimer <= 0) {
     if (vehicles.isInVehicle()) {
       const exitPos = vehicles.exitVehicle();
       if (exitPos) {
@@ -197,6 +340,7 @@ function startGame(): void {
 }
 
 function pauseGame(): void {
+  if (shopOpen) return;
   player.setActive(false);
   overlay.classList.remove('hidden');
 }
@@ -208,7 +352,7 @@ playBtn.addEventListener('click', (e) => {
 
 canvas.addEventListener('click', () => {
   audio.unlock();
-  if (player.getIsActive() && !player.getIsLocked()) {
+  if (player.getIsActive() && !player.getIsLocked() && !shopOpen) {
     requestLockSafely();
   }
 });
@@ -219,7 +363,7 @@ document.addEventListener('pointerlockchange', () => {
     pointerLockFallback = false;
     overlay.classList.add('hidden');
     player.setActive(true);
-  } else if (!pointerLockFallback) {
+  } else if (!pointerLockFallback && !shopOpen) {
     pauseGame();
   }
 });
@@ -229,7 +373,7 @@ document.addEventListener('pointerlockerror', () => {
 });
 
 window.addEventListener('keydown', (e) => {
-  if (e.code === 'Escape' && player.getIsActive() && !player.getIsLocked()) {
+  if (e.code === 'Escape' && player.getIsActive() && !player.getIsLocked() && !shopOpen) {
     pauseGame();
   }
 });
@@ -265,10 +409,9 @@ function animate(now: number): void {
     }
   }
 
-  const isPlaying = player.getIsActive() && wastedTimer <= 0;
+  const isPlaying = player.getIsActive() && !shopOpen && wastedTimer <= 0;
   const inVehicle = vehicles.isInVehicle();
 
-  // Update player or vehicle
   let playerSpeed = 0;
   let playerGrounded = true;
   let headingYaw = player.getYaw();
@@ -290,13 +433,14 @@ function animate(now: number): void {
     elapsed,
     isPlaying,
     player.position,
+    wanted.stars,
     camera,
     world.colliders,
     world.layout.playableBounds,
   );
 
-  // Update world, wanted, NPCs & objectives
   world.update(elapsed, dt);
+  shop.update(elapsed);
   wanted.update(dt);
   npcs.update(dt, player.position, wanted.stars);
   const objHud = objectives.update(dt, elapsed, player.position, vehicles, npcs, wanted);
@@ -306,7 +450,6 @@ function animate(now: number): void {
     audio.playMissionPassed();
   }
 
-  // Update procedural audio (engine, siren, footsteps, synthwave pulse)
   audio.update(
     dt,
     elapsed,
@@ -318,11 +461,9 @@ function animate(now: number): void {
     wanted.stars,
   );
 
-  // Update weapons when on foot
   const shootables = [...npcs.getShootableTargets(), ...vehicles.getShootableTargets()];
   const wHud = weapons.update(dt, isPlaying && !inVehicle, playerSpeed, world.worldMeshes, shootables);
 
-  // Render Miami Radar / Minimap
   minimap.render(
     player.position.x,
     player.position.z,
@@ -341,6 +482,10 @@ function animate(now: number): void {
   hpFillEl.style.width = `${hpPct}%`;
   hpTextEl.textContent = `${hpPct}`;
 
+  const armorPct = Math.round(playerArmor);
+  armorFillEl.style.width = `${armorPct}%`;
+  armorTextEl.textContent = `${armorPct}`;
+
   const starStr = '★'.repeat(wanted.stars) + '☆'.repeat(5 - wanted.stars);
   starsEl.textContent = starStr;
   starsEl.classList.toggle('cooling', wanted.isCoolingDown());
@@ -349,7 +494,13 @@ function animate(now: number): void {
 
   objTitleEl.textContent = objHud.title;
   objDescEl.textContent = objHud.description;
-  objDistEl.textContent = objHud.distanceM > 0 ? `${objHud.distanceM} m` : '';
+  if (objHud.timerText && objHud.distanceM > 0) {
+    objDistEl.textContent = `${objHud.timerText} · ${objHud.distanceM} m`;
+  } else if (objHud.timerText) {
+    objDistEl.textContent = objHud.timerText;
+  } else {
+    objDistEl.textContent = objHud.distanceM > 0 ? `${objHud.distanceM} m` : '';
+  }
 
   if (objHud.toastText) {
     toastBannerEl.textContent = objHud.toastText;
@@ -382,7 +533,10 @@ function animate(now: number): void {
     hitmarkerEl.style.opacity = String(wHud.hitmarkerAlpha);
     hitmarkerEl.classList.toggle('kill', wHud.hitmarkerKill && wHud.hitmarkerAlpha > 0.05);
 
-    if (driveHud.nearbyVehicleName) {
+    if (shop.isPlayerNear(player.position) && !shopOpen) {
+      interactPromptEl.textContent = '[B] AMMU-NEON SHOP ÖFFNEN ($)';
+      interactPromptEl.classList.add('visible');
+    } else if (driveHud.nearbyVehicleName) {
       interactPromptEl.textContent = `[E] EINSTEIGEN · ${driveHud.nearbyVehicleName}`;
       interactPromptEl.classList.add('visible');
     } else {

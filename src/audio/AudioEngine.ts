@@ -103,7 +103,17 @@ export class AudioEngine {
     const oGain = this.ctx.createGain();
     osc.type = 'triangle';
 
-    if (weaponId === 'shotgun') {
+    if (weaponId === 'launcher') {
+      filter.frequency.setValueAtTime(380, now);
+      filter.Q.value = 0.6;
+      nGain.gain.setValueAtTime(0.55, now);
+      nGain.gain.exponentialRampToValueAtTime(0.001, now + 0.36);
+
+      osc.frequency.setValueAtTime(120, now);
+      osc.frequency.exponentialRampToValueAtTime(38, now + 0.28);
+      oGain.gain.setValueAtTime(0.6, now);
+      oGain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+    } else if (weaponId === 'shotgun') {
       filter.frequency.setValueAtTime(620, now);
       filter.Q.value = 0.7;
       nGain.gain.setValueAtTime(0.65, now);
@@ -201,6 +211,74 @@ export class AudioEngine {
     gain.connect(this.masterGain);
     osc.start(now);
     osc.stop(now + 1.25);
+  }
+
+  public playExplosion(): void {
+    if (!this.ctx || !this.masterGain || !this.noiseBuffer || this.muted) return;
+    const now = this.ctx.currentTime;
+
+    // Deep sub-bass boom
+    const osc = this.ctx.createOscillator();
+    const oGain = this.ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(92, now);
+    osc.frequency.exponentialRampToValueAtTime(24, now + 0.65);
+    oGain.gain.setValueAtTime(0.85, now);
+    oGain.gain.exponentialRampToValueAtTime(0.001, now + 0.72);
+    osc.connect(oGain);
+    oGain.connect(this.masterGain);
+    osc.start(now);
+    osc.stop(now + 0.75);
+
+    // Filtered noise roar
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = this.noiseBuffer;
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(950, now);
+    filter.frequency.exponentialRampToValueAtTime(140, now + 0.85);
+    const nGain = this.ctx.createGain();
+    nGain.gain.setValueAtTime(0.75, now);
+    nGain.gain.exponentialRampToValueAtTime(0.001, now + 0.9);
+    noise.connect(filter);
+    filter.connect(nGain);
+    nGain.connect(this.masterGain);
+    noise.start(now);
+    noise.stop(now + 0.95);
+  }
+
+  public playPurchase(): void {
+    if (!this.ctx || !this.masterGain || this.muted) return;
+    const now = this.ctx.currentTime;
+    [587.33, 880].forEach((freq, i) => {
+      const osc = this.ctx!.createOscillator();
+      const gain = this.ctx!.createGain();
+      osc.type = 'sine';
+      const t = now + i * 0.07;
+      osc.frequency.setValueAtTime(freq, t);
+      gain.gain.setValueAtTime(0.24, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+      osc.connect(gain);
+      gain.connect(this.masterGain!);
+      osc.start(t);
+      osc.stop(t + 0.22);
+    });
+  }
+
+  public playCheckpoint(): void {
+    if (!this.ctx || !this.masterGain || this.muted) return;
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(740, now);
+    osc.frequency.exponentialRampToValueAtTime(1108, now + 0.14);
+    gain.gain.setValueAtTime(0.22, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+    osc.connect(gain);
+    gain.connect(this.masterGain);
+    osc.start(now);
+    osc.stop(now + 0.24);
   }
 
   private playWetFootstep(): void {

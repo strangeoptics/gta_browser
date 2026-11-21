@@ -87,11 +87,21 @@ export class Minimap {
 
     // Vehicles
     for (const v of vehicles) {
+      if (v.destroyed) continue;
       const vx = (v.position.x - playerX) * scale;
       const vz = (v.position.z - playerZ) * scale;
       ctx.fillStyle = v.isPolice ? (Math.sin(elapsed * 12) > 0 ? '#ff3355' : '#33aaff') : '#ff9f43';
       ctx.fillRect(vx - 2.5, vz - 2.5, 5, 5);
     }
+
+    // AMMU-NEON Shop marker ($) at Central Plaza (-4.5, 4.5)
+    const sx = (-4.5 - playerX) * scale;
+    const sz = (4.5 - playerZ) * scale;
+    ctx.fillStyle = '#52f29c';
+    ctx.font = '900 11px "Segoe UI", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('$', sx, sz);
 
     // Police & Bounty NPCs
     for (const n of npcs) {
@@ -112,7 +122,7 @@ export class Minimap {
     ctx.restore(); // end rotated map layer
 
     // Objective marker (clamped to radar edge if outside radius)
-    if (objective) {
+    if (objective && objective.kind !== 'survive') {
       const dx = objective.targetPos.x - playerX;
       const dz = objective.targetPos.z - playerZ;
       const cos = Math.cos(headingYaw);
@@ -130,9 +140,11 @@ export class Minimap {
       const color =
         objective.kind === 'stash'
           ? '#36f1e6'
-          : objective.kind === 'dropoff'
-            ? '#ff9f43'
-            : '#ff4fa3';
+          : objective.kind === 'race'
+            ? '#ffbe3b'
+            : objective.kind === 'dropoff'
+              ? '#ff9f43'
+              : '#ff4fa3';
 
       const pulse = 4.5 + Math.sin(elapsed * 6) * 1.4;
       ctx.save();

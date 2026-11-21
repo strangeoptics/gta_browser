@@ -89,6 +89,24 @@ export class NpcSystem {
     }
   }
 
+  public applyBlastDamage(origin: THREE.Vector3, radius: number, maxDamage: number): void {
+    const rSq = radius * radius;
+    for (const npc of this.npcs) {
+      if (!npc.alive) continue;
+      const dSq = npc.position.distanceToSquared(origin);
+      if (dSq < rSq) {
+        const dist = Math.sqrt(dSq);
+        const dmg = maxDamage * (1 - dist / radius);
+        npc.hp -= dmg;
+        if (npc.hp <= 0) {
+          this.killNpc(npc);
+        } else if (npc.role === 'civilian') {
+          npc.state = 'flee';
+        }
+      }
+    }
+  }
+
   public getShootableTargets(): ShootableTarget[] {
     const out: ShootableTarget[] = [];
     for (const npc of this.npcs) {

@@ -106,6 +106,24 @@ const WEAPONS: WeaponDef[] = [
     adsPos: new THREE.Vector3(0.0, -0.165, -0.4),
     tracerColor: 0xff7b54,
   },
+  {
+    id: 'launcher',
+    name: 'NEON LAUNCHER',
+    auto: false,
+    fireRate: 0.75,
+    damage: 120,
+    pellets: 1,
+    spreadHip: 0.008,
+    spreadAds: 0.002,
+    magSize: 4,
+    reloadTime: 2.1,
+    recoilKick: 0.18,
+    recoilPitch: 0.18,
+    range: 130,
+    hipPos: new THREE.Vector3(0.3, -0.26, -0.46),
+    adsPos: new THREE.Vector3(0.06, -0.18, -0.38),
+    tracerColor: 0xff4fa3,
+  },
 ];
 
 export class WeaponSystem {
@@ -126,6 +144,7 @@ export class WeaponSystem {
   private semiConsumed = false;
   private ads = false;
   private enabled = true;
+  private launcherUnlocked = false;
 
   // Viewmodel animation state
   private recoilZ = 0;
@@ -144,8 +163,9 @@ export class WeaponSystem {
   private readonly sparkGeo = new THREE.BoxGeometry(0.05, 0.05, 0.05);
   private readonly raycaster = new THREE.Raycaster();
 
-  // Optional callback for audio/wanted system hooks in Phases 4 & 5
+  // Optional callbacks for audio, wanted & explosion hooks
   public onShotFired?: (weaponId: string, origin: THREE.Vector3) => void;
+  public onExplosion?: (origin: THREE.Vector3, radius: number, damage: number) => void;
 
   constructor(scene: THREE.Scene, camera: THREE.PerspectiveCamera) {
     this.scene = scene;
@@ -159,9 +179,10 @@ export class WeaponSystem {
     const pistol = this.buildPistolModel();
     const smg = this.buildSmgModel();
     const shotgun = this.buildShotgunModel();
+    const launcher = this.buildLauncherModel();
 
-    this.weaponModels.push(pistol.group, smg.group, shotgun.group);
-    this.muzzleTips.push(pistol.muzzleLocal, smg.muzzleLocal, shotgun.muzzleLocal);
+    this.weaponModels.push(pistol.group, smg.group, shotgun.group, launcher.group);
+    this.muzzleTips.push(pistol.muzzleLocal, smg.muzzleLocal, shotgun.muzzleLocal, launcher.muzzleLocal);
     this.weaponModels.forEach((m, i) => {
       m.visible = i === this.slotIndex;
       this.rig.add(m);
@@ -190,6 +211,22 @@ export class WeaponSystem {
       this.triggerDown = false;
       this.ads = false;
     }
+  }
+
+  public unlockLauncher(): void {
+    this.launcherUnlocked = true;
+    this.ammo[3] = WEAPONS[3].magSize;
+    this.switchWeapon(3);
+  }
+
+  public isLauncherUnlocked(): boolean {
+    return this.launcherUnlocked;
+  }
+
+  public refillAllAmmo(): void {
+    WEAPONS.forEach((w, i) => {
+      this.ammo[i] = w.magSize;
+    });
   }
 
   private bindInputs(): void {
@@ -227,6 +264,7 @@ export class WeaponSystem {
       if (e.code === 'Digit1') this.switchWeapon(0);
       else if (e.code === 'Digit2') this.switchWeapon(1);
       else if (e.code === 'Digit3') this.switchWeapon(2);
+      else if (e.code === 'Digit4' && this.launcherUnlocked) this.switchWeapon(3);
       else if (e.code === 'KeyR') this.startReload();
     });
 
@@ -234,8 +272,9 @@ export class WeaponSystem {
       'wheel',
       (e) => {
         if (!this.enabled) return;
+        const count = this.launcherUnlocked ? WEAPONS.length : 3;
         const dir = e.deltaY > 0 ? 1 : -1;
-        const next = (this.slotIndex + dir + WEAPONS.length) % WEAPONS.length;
+        const next = (this.slotIndex + dir + count) % count;
         this.switchWeapon(next);
       },
       { passive: true },
@@ -244,6 +283,7 @@ export class WeaponSystem {
 
   public switchWeapon(index: number): void {
     if (index === this.slotIndex || index < 0 || index >= WEAPONS.length) return;
+    if (index === 3 && !this.launcherUnlocked) return;
     this.slotIndex = index;
     this.reloading = false;
     this.reloadTimer = 0;
@@ -424,14 +464,21 @@ export class WeaponSystem {
           normal.transformDirection(hit.object.matrixWorld);
         }
 
-        const matchedTarget = targetMap.get(hit.object);
-        if (matchedTarget) {
-          const killed = matchedTarget.onHit(def.damage, endPoint, normal);
+        if (def.id === 'launcher') {
+          this.onExplosion?.(endPoint, 9.5, def.damage);
           this.hitmarkerAlpha = 1.0;
-          this.hitmarkerKill = this.hitmarkerKill || killed;
-          this.spawnSparks(endPoint, normal, killed ? 0xff4fa3 : 0x36f1e6, killed ? 12 : 6);
+          this.hitmarkerKill = true;
+          this.spawnSparks(endPoint, normal, 0xff7b33, 18);
         } else {
-          this.spawnSparks(endPoint, normal, 0xffc066, 5);
+          const matchedTarget = targetMap.get(hit.object);
+          if (matchedTarget) {
+            const killed = matchedTarget.onHit(def.damage, endPoint, normal);
+            this.hitmarkerAlpha = 1.0;
+            this.hitmarkerKill = this.hitmarkerKill || killed;
+            this.spawnSparks(endPoint, normal, killed ? 0xff4fa3 : 0x36f1e6, killed ? 12 : 6);
+          } else {
+            this.spawnSparks(endPoint, normal, 0xffc066, 5);
+          }
         }
       }
 
@@ -612,5 +659,39 @@ export class WeaponSystem {
     group.add(bead);
 
     return { group, muzzleLocal: new THREE.Vector3(0, 0.026, -0.55) };
+  }
+
+  private buildLauncherModel(): { group: THREE.Group; muzzleLocal: THREE.Vector3 } {
+    const group = new THREE.Group();
+    const tubeMat = new THREE.MeshStandardMaterial({ color: '#262033', roughness: 0.4, metalness: 0.7 });
+    const ringMat = new THREE.MeshStandardMaterial({
+      color: '#ff4fa3',
+      emissive: '#ff4fa3',
+      emissiveIntensity: 2.2,
+    });
+    const cyanMat = new THREE.MeshStandardMaterial({
+      color: '#36f1e6',
+      emissive: '#36f1e6',
+      emissiveIntensity: 2.2,
+    });
+
+    const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.062, 0.062, 0.68, 12), tubeMat);
+    tube.rotation.x = Math.PI / 2;
+    tube.position.set(0, 0.02, -0.18);
+    group.add(tube);
+
+    const frontRing = new THREE.Mesh(new THREE.TorusGeometry(0.066, 0.01, 8, 16), ringMat);
+    frontRing.position.set(0, 0.02, -0.51);
+    group.add(frontRing);
+
+    const sightBox = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.045, 0.08), cyanMat);
+    sightBox.position.set(-0.075, 0.055, -0.22);
+    group.add(sightBox);
+
+    const grip = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.14, 0.065), tubeMat);
+    grip.position.set(0, -0.09, -0.05);
+    group.add(grip);
+
+    return { group, muzzleLocal: new THREE.Vector3(0, 0.02, -0.55) };
   }
 }

@@ -40,7 +40,7 @@
           <div id="obj-desc">Lade Ziel…</div>
         </div>
 
-        <!-- Top Right: Wanted Stars, Cash, HP -->
+        <!-- Top Right: Wanted Stars, Cash, HP & Armor -->
         <div id="status-box">
           <div id="wanted-stars">☆☆☆☆☆</div>
           <div id="cash-display">$0</div>
@@ -48,6 +48,11 @@
             <span class="hp-label">HP</span>
             <div class="hp-bar"><div id="hp-fill"></div></div>
             <span id="hp-text">100</span>
+          </div>
+          <div class="hp-row armor-row">
+            <span class="armor-label">AR</span>
+            <div class="hp-bar"><div id="armor-fill"></div></div>
+            <span id="armor-text">0</span>
           </div>
         </div>
 
@@ -69,6 +74,7 @@
             <span id="slot-1" class="slot active">1 · 9MM</span>
             <span id="slot-2" class="slot">2 · SMG</span>
             <span id="slot-3" class="slot">3 · 12G</span>
+            <span id="slot-4" class="slot locked">4 · RPG</span>
           </div>
           <div id="weapon-name">VICE 9MM</div>
           <div class="ammo-row">
@@ -86,6 +92,21 @@
             <span class="speed-unit">KM/H</span>
           </div>
           <div id="vehicle-cam-hint">[V] CHASE · [E] AUSSTEIGEN</div>
+        </div>
+      </div>
+
+      <!-- AMMU-NEON Upgrade Shop Modal -->
+      <div id="shop-overlay">
+        <div class="shop-card">
+          <div class="title-eyebrow">CENTRAL PLAZA · UPGRADE KIOSK</div>
+          <h2 class="shop-title">AMMU-NEON $</h2>
+          <div class="shop-balance">Guthaben: <span id="shop-cash">$0</span></div>
+          <div class="shop-items">
+            <button id="buy-medkit" class="shop-btn" type="button">MEDKIT (+50 HP) · $250</button>
+            <button id="buy-armor" class="shop-btn" type="button">KEVLAR ARMOR (100%) · $400</button>
+            <button id="buy-launcher" class="shop-btn" type="button">NEON LAUNCHER [4] · $900</button>
+          </div>
+          <button id="shop-close" class="shop-close-btn" type="button">WEITERSPIELEN [B / ESC]</button>
         </div>
       </div>
 

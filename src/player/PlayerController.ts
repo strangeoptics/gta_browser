@@ -306,7 +306,7 @@ export class PlayerController {
     this.grounded = resolved.grounded;
 
     // Enter swimming mode whenever seabed is deep enough (chest-deep / open ocean) and player is in the water
-    const inDeepWater = baseGroundY < WATER_SURFACE_Y - 0.85 && this.position.y < WATER_SURFACE_Y - 0.55;
+    const inDeepWater = baseGroundY < WATER_SURFACE_Y - 0.85 && this.position.y < WATER_SURFACE_Y - 0.2;
     if (inDeepWater) {
       this.swimming = true;
       this.grounded = false;

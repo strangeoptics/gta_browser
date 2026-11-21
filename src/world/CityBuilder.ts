@@ -510,28 +510,26 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
   // ---------------------------------------------------------------------------
   // 5b) Sloping Coastal Beach (Dry Dunes -> Mirror-Wet Shoreline) & Dusk Ocean
   // ---------------------------------------------------------------------------
-  // Shared continuous beach & seabed elevation function:
-  // Flush with boardwalk at x = 74 (+0.20m), sloping gently across the dry/wet beach
-  // to the surf line (-0.25m at x = 102), then dropping into deep ocean water (-2.4m)!
-  // Also returns deep seabed (-2.4m) in the North Marina Bay (z < -98.5) and South Port Sea (z > 126.2).
+  // Shared continuous beach & deep-ocean seabed elevation function:
+  // Flush with boardwalk at x = 74 (+0.20m), sloping gently to the surf line (-0.22m at x = 98),
+  // then dropping steeply into deep 6m ocean water (-6.0m)!
+  // Also returns deep -6.0m seabed everywhere in the North Marina Bay (z < -98.5) and South Port Sea (z > 126.2).
   const getBeachHeight = (x: number, z: number): number => {
-    if (x <= 74) {
-      if (z < -98.5 || z > 126.2) return -2.4;
-      return 0;
-    }
-    if (x <= 102) {
-      const t = (x - 74) / 28;
+    if (z < -98.5 || z > 126.2) return -6.0;
+    if (x <= 74) return 0;
+    if (x <= 98) {
+      const t = (x - 74) / 24;
       const smoothSlope = t * t * (3 - 2 * t);
-      const baseY = THREE.MathUtils.lerp(0.2, -0.25, smoothSlope);
+      const baseY = THREE.MathUtils.lerp(0.2, -0.22, smoothSlope);
       const dune =
         (Math.sin(z * 0.085) * 0.12 + Math.cos(x * 0.16 + z * 0.04) * 0.05) *
         (1 - smoothSlope) *
         Math.min(1, (x - 74) / 5);
       return baseY + dune;
     }
-    const deepT = THREE.MathUtils.clamp((x - 102) / 16, 0, 1);
+    const deepT = THREE.MathUtils.clamp((x - 98) / 14, 0, 1);
     const deepSmooth = deepT * deepT * (3 - 2 * deepT);
-    return THREE.MathUtils.lerp(-0.25, -2.4, deepSmooth);
+    return THREE.MathUtils.lerp(-0.22, -6.0, deepSmooth);
   };
 
   // Boardwalk east of x = 66
@@ -615,16 +613,22 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
         vec3 viewDir = normalize(cameraPosition - vWorldPos);
         float fresnel = pow(1.0 - max(dot(viewDir, vec3(0.0, 1.0, 0.0)), 0.0), 3.0);
 
-        // Dynamic tide swash line oscillating across x ~ 96..103
-        float swashOffset = sin(uTime * 1.35 + sin(vWorldPos.z * 0.07) * 2.2) * 2.1;
+        // Dynamic tide swash line oscillating across East beach x ~ 95..101
+        float swashOffset = sin(uTime * 1.35 + sin(vWorldPos.z * 0.07) * 2.2) * 1.8;
         float shoreX = vWorldPos.x + swashOffset;
 
-        float shoreBlend = smoothstep(98.0, 142.0, vWorldPos.x);
-        vec3 waterCol = mix(uShallowColor, uDeepColor, shoreBlend);
+        // Deep-water factors for East Ocean, North Marina Bay (z < -95) & South Vice Port Sea (z > 125)
+        float eastDeep = smoothstep(97.0, 122.0, vWorldPos.x);
+        float northDeep = smoothstep(-95.0, -104.0, vWorldPos.z);
+        float southDeep = smoothstep(124.5, 133.0, vWorldPos.z);
+        float deepBlend = max(eastDeep, max(northDeep, southDeep));
+
+        vec3 waterCol = mix(uShallowColor, uDeepColor, deepBlend);
         waterCol = mix(waterCol, uHorizonGlow, fresnel * 0.72);
 
-        // Soft animated foam ribbon hugging the wet sloping sand
-        float foamBand = smoothstep(106.0, 99.5, shoreX) * smoothstep(95.5, 99.0, shoreX);
+        // Soft animated foam ribbon hugging the East sloping sand beach
+        float onEastBeach = step(-96.0, vWorldPos.z) * step(vWorldPos.z, 126.0);
+        float foamBand = smoothstep(104.0, 98.5, shoreX) * smoothstep(94.5, 98.0, shoreX) * onEastBeach;
         float foamPattern = 0.55 + 0.45 * sin(vWorldPos.z * 0.45 + uTime * 2.4) * cos(shoreX * 1.4 - uTime * 1.8);
         float foam = clamp(foamBand * foamPattern, 0.0, 1.0);
         waterCol = mix(waterCol, vec3(1.0, 0.92, 0.93), foam * 0.65);
@@ -632,16 +636,27 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
         // Subtle golden wave crest shimmer
         waterCol += vec3(1.0, 0.72, 0.55) * max(vWave, 0.0) * 0.35;
 
-        // Translucent shallow edge so wet sand glows underneath the surf
-        float alpha = smoothstep(96.0, 102.5, shoreX) * 0.92 + foam * 0.35;
-        gl_FragColor = vec4(waterCol, clamp(alpha, 0.0, 0.96));
+        // Opaque deep water in North Marina, South Port & East Ocean; translucent shallow wash only at East shoreline
+        float eastAlpha = smoothstep(94.5, 100.5, shoreX) * 0.94 + foam * 0.35;
+        float bayAlpha = max(smoothstep(-94.0, -96.5, vWorldPos.z), smoothstep(123.5, 126.0, vWorldPos.z)) * 0.94;
+        float alpha = max(eastAlpha, bayAlpha);
+        gl_FragColor = vec4(waterCol, clamp(alpha, 0.0, 0.97));
       }
     `,
   });
   const ocean = new THREE.Mesh(new THREE.PlaneGeometry(240, 420, 48, 48), oceanMat);
   ocean.rotation.x = -Math.PI / 2;
-  ocean.position.set(214, -0.18, 0); // spans x = 94 .. 334, intersecting the sloping beach around x ~ 99!
+  ocean.position.set(214, -0.18, 0); // spans x = 94 .. 334, intersecting the sloping beach around x ~ 98!
   scene.add(ocean);
+
+  // Deep ocean seabed plane at y = -6.0m so water always looks genuinely deep everywhere
+  const seabed = new THREE.Mesh(
+    new THREE.PlaneGeometry(520, 520),
+    new THREE.MeshBasicMaterial({ color: '#081829' }),
+  );
+  seabed.rotation.x = -Math.PI / 2;
+  seabed.position.set(60, -6.0, 0);
+  scene.add(seabed);
 
   // ---------------------------------------------------------------------------
   // 6) Palm Trees along Ocean Drive & Avenues

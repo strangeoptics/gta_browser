@@ -19,6 +19,7 @@ export class HelicopterSystem {
 
   private readonly scene: THREE.Scene;
   private readonly group: THREE.Group;
+  private readonly hitbox: THREE.Mesh;
   private readonly mainRotor: THREE.Group;
   private readonly tailRotor: THREE.Mesh;
   private readonly searchlight: THREE.SpotLight;
@@ -40,6 +41,11 @@ export class HelicopterSystem {
     this.group = built.group;
     this.mainRotor = built.mainRotor;
     this.tailRotor = built.tailRotor;
+    this.hitbox = new THREE.Mesh(
+      new THREE.BoxGeometry(2.6, 2.4, 7.2),
+      new THREE.MeshBasicMaterial({ visible: false }),
+    );
+    this.group.add(this.hitbox);
     this.group.visible = false;
     this.scene.add(this.group);
 
@@ -55,7 +61,7 @@ export class HelicopterSystem {
     return [
       {
         id: 'vice-pd-heli',
-        mesh: this.group,
+        mesh: this.hitbox,
         onHit: (damage: number) => {
           this.hp = Math.max(0, this.hp - damage);
           if (this.hp <= 0) {

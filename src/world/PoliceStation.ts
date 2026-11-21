@@ -383,13 +383,22 @@ export function buildPoliceStation(
   // Divider between Cell 1 (West) and Cell 2 (East) at x = cx - 4.8
   addBox(0.3, floorH, 4.6, cx - 4.8, floorY + floorH / 2, cz - 7.1, stuccoMat);
 
-  // Steel Cell Bars along z = cz - 4.8 (leave open doorway on Cell 2 at x: -42.5..-41.0 so player can step in!)
+  // Steel Cell Bars along z = cz - 4.8 (single InstancedMesh -> 1 draw call instead of 22!)
+  const barXList: number[] = [];
   for (let bx = cx - 9.2; bx <= cx - 0.4; bx += 0.38) {
     if (bx > cx - 2.6 && bx < cx - 1.1) continue; // open cell doorway
-    const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, floorH - 0.3, 6), steelMat);
-    bar.position.set(bx, floorY + floorH / 2, cz - 4.8);
-    scene.add(bar);
+    barXList.push(bx);
   }
+  const barGeo = new THREE.CylinderGeometry(0.025, 0.025, floorH - 0.3, 6);
+  const barInst = new THREE.InstancedMesh(barGeo, steelMat, barXList.length);
+  const barDummy = new THREE.Object3D();
+  barXList.forEach((bx, idx) => {
+    barDummy.position.set(bx, floorY + floorH / 2, cz - 4.8);
+    barDummy.updateMatrix();
+    barInst.setMatrixAt(idx, barDummy.matrix);
+  });
+  barInst.instanceMatrix.needsUpdate = true;
+  scene.add(barInst);
   // Colliders for the barred cell fronts (leaving the open doorway walkable)
   colliders.push({
     minX: cx - 9.5,
@@ -552,6 +561,11 @@ export function buildPoliceStation(
     update: (elapsed: number, dt: number, playerPos?: THREE.Vector3, cash = 0, wantedStars = 0) => {
       const clampedDt = Math.min(dt, 0.05);
       const blend = 1 - Math.exp(-7.0 * clampedDt);
+      const pdDistSq = playerPos ? (playerPos.x - cx) ** 2 + (playerPos.z - cz) ** 2 : 0;
+      const nearPd = pdDistSq < 40 * 40;
+      entryLight.visible = nearPd;
+      lobbyLight.visible = nearPd;
+      backLight.visible = nearPd;
 
       redrawWantedBoard(cash, wantedStars);
 

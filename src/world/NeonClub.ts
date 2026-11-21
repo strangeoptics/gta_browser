@@ -7,7 +7,7 @@ export interface NeonClubHandle {
   isInside: (pos: THREE.Vector3) => boolean;
   isNearBar: (pos: THREE.Vector3) => boolean;
   getProximity: (pos: THREE.Vector3) => number; // 0 = far, 0.35 = outside door, 1.0 = inside club
-  update: (elapsed: number) => void;
+  update: (elapsed: number, playerPos?: THREE.Vector3) => void;
 }
 
 /**
@@ -155,25 +155,32 @@ export function buildNeonClub(
   );
   discoGroup.add(discoCore);
 
-  // Sparkling mirror tiles around the disco ball
+  // Sparkling mirror tiles around the disco ball (single InstancedMesh -> 1 draw call!)
   const sparkleColors = ['#ffffff', '#36f1e6', '#ff4fa3', '#ffd15c'];
   const tileGeo = new THREE.BoxGeometry(0.11, 0.11, 0.04);
+  const discoTileInst = new THREE.InstancedMesh(
+    tileGeo,
+    new THREE.MeshBasicMaterial({ color: '#ffffff' }),
+    28,
+  );
+  const tileDummy = new THREE.Object3D();
+  const tmpColor = new THREE.Color();
   for (let i = 0; i < 28; i++) {
     const phi = Math.acos(1 - (2 * (i + 0.5)) / 28);
     const theta = Math.PI * (1 + Math.sqrt(5)) * i;
-    const col = sparkleColors[i % sparkleColors.length];
-    const tile = new THREE.Mesh(
-      tileGeo,
-      new THREE.MeshBasicMaterial({ color: col }),
-    );
-    tile.position.set(
+    tileDummy.position.set(
       Math.sin(phi) * Math.cos(theta) * 0.7,
       Math.cos(phi) * 0.7,
       Math.sin(phi) * Math.sin(theta) * 0.7,
     );
-    tile.lookAt(0, 0, 0);
-    discoGroup.add(tile);
+    tileDummy.lookAt(0, 0, 0);
+    tileDummy.updateMatrix();
+    discoTileInst.setMatrixAt(i, tileDummy.matrix);
+    discoTileInst.setColorAt(i, tmpColor.set(sparkleColors[i % sparkleColors.length]));
   }
+  discoTileInst.instanceMatrix.needsUpdate = true;
+  if (discoTileInst.instanceColor) discoTileInst.instanceColor.needsUpdate = true;
+  discoGroup.add(discoTileInst);
   scene.add(discoGroup);
 
   // 4 Sweeping Volumetric Effect-Spotlight Cones aimed inward onto the dancefloor
@@ -311,7 +318,7 @@ export function buildNeonClub(
     scene.add(seat);
   }
 
-  // Backlit neon bottle wall along the back wall (x = clubX - 8.3)
+  // Backlit neon bottle wall along the back wall (single InstancedMesh -> 1 draw call instead of 36!)
   const shelfBacklitMat = new THREE.MeshStandardMaterial({
     color: '#2ad4cc',
     emissive: '#1ea8a2',
@@ -320,6 +327,7 @@ export function buildNeonClub(
   });
   const bottleColors = ['#36f1e6', '#ff4fa3', '#ffd15c', '#52f29c', '#a86bff'];
   const bottleGeo = new THREE.CylinderGeometry(0.055, 0.07, 0.34, 6);
+  const bottlePlacements: { y: number; z: number; col: string }[] = [];
   for (let shelf = 0; shelf < 3; shelf++) {
     const sy = 1.35 + shelf * 0.72;
     const shelfBoard = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.06, 8.0), shelfBacklitMat);
@@ -327,14 +335,24 @@ export function buildNeonClub(
     scene.add(shelfBoard);
     for (let bz = -3.4; bz <= 3.4; bz += 0.62) {
       const col = bottleColors[Math.abs(Math.round(bz * 10) + shelf) % bottleColors.length];
-      const bottle = new THREE.Mesh(
-        bottleGeo,
-        new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 0.45, roughness: 0.18 }),
-      );
-      bottle.position.set(clubX - 8.32, sy + 0.2, clubZ + bz);
-      scene.add(bottle);
+      bottlePlacements.push({ y: sy + 0.2, z: clubZ + bz, col });
     }
   }
+  const bottleInst = new THREE.InstancedMesh(
+    bottleGeo,
+    new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.18, metalness: 0.15 }),
+    bottlePlacements.length,
+  );
+  bottlePlacements.forEach((bp, idx) => {
+    tileDummy.position.set(clubX - 8.32, bp.y, bp.z);
+    tileDummy.rotation.set(0, 0, 0);
+    tileDummy.updateMatrix();
+    bottleInst.setMatrixAt(idx, tileDummy.matrix);
+    bottleInst.setColorAt(idx, tmpColor.set(bp.col));
+  });
+  bottleInst.instanceMatrix.needsUpdate = true;
+  if (bottleInst.instanceColor) bottleInst.instanceColor.needsUpdate = true;
+  scene.add(bottleInst);
 
   // Animated Bartender behind the bar (black vest, white shirt, bow tie, sunglasses!)
   const bartender = createClubCharacter('#ffffff', '#191522', true);
@@ -452,7 +470,13 @@ export function buildNeonClub(
       const distDoor = Math.hypot(pos.x - (clubX + clubW / 2), pos.z - clubZ);
       return THREE.MathUtils.clamp(1 - distDoor / 22, 0, 0.45);
     },
-    update: (elapsed: number) => {
+    update: (elapsed: number, playerPos?: THREE.Vector3) => {
+      // Distance-cull expensive club PointLights & interior animations when far away
+      const distSq = playerPos ? (playerPos.x - clubX) ** 2 + (playerPos.z - clubZ) ** 2 : 0;
+      const nearClub = distSq < 42 * 42;
+      clubLightPink.visible = nearClub;
+      clubLightCyan.visible = nearClub;
+      if (!nearClub) return;
       const beatPulse = Math.pow(0.5 + 0.5 * Math.sin(elapsed * beatRadPerSec), 3);
 
       // Rotate mirror Disco Ball

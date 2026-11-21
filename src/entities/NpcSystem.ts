@@ -10,6 +10,7 @@ export interface NpcEntity {
   id: string;
   role: NpcRole;
   group: THREE.Group;
+  hitbox: THREE.Mesh;
   bodyRoot: THREE.Group;
   position: THREE.Vector3;
   yaw: number;
@@ -59,6 +60,8 @@ export class NpcSystem {
   public readonly npcs: NpcEntity[] = [];
   private readonly scene: THREE.Scene;
   private readonly enemyTracers: EnemyTracer[] = [];
+  private readonly hitboxGeo = new THREE.BoxGeometry(0.68, 1.88, 0.54);
+  private readonly hitboxMat = new THREE.MeshBasicMaterial({ visible: false });
   private nextId = 1;
 
   public onPlayerDamaged?: (amount: number) => void;
@@ -170,7 +173,7 @@ export class NpcSystem {
       if (!npc.alive) continue;
       out.push({
         id: npc.id,
-        mesh: npc.group,
+        mesh: npc.hitbox,
         onHit: (damage: number) => {
           npc.hp -= damage;
           npc.flinchTimer = 0.18;
@@ -700,12 +703,17 @@ export class NpcSystem {
     const leftLegPivot = buildLeg(-1);
     const rightLegPivot = buildLeg(1);
 
+    const hitbox = new THREE.Mesh(this.hitboxGeo, this.hitboxMat);
+    hitbox.position.y = 0.94;
+    group.add(hitbox);
+
     this.scene.add(group);
 
     const npc: NpcEntity = {
       id: `npc-${seed}`,
       role,
       group,
+      hitbox,
       bodyRoot,
       position: new THREE.Vector3(x, 0.18, z),
       yaw: Math.random() * Math.PI * 2,

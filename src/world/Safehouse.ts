@@ -857,6 +857,11 @@ export function buildSafehouse(
     update: (elapsed: number, dt: number, playerPos?: THREE.Vector3, cash = 0, wantedStars = 0) => {
       const clampedDt = Math.min(dt, 0.05);
       const blend = 1 - Math.exp(-6.5 * clampedDt);
+      const shDistSq = playerPos ? (playerPos.x - cx) ** 2 + (playerPos.z - cz) ** 2 : 0;
+      const nearSafehouse = shDistSq < 38 * 38;
+      garageLight.visible = nearSafehouse;
+      loungeLight.visible = nearSafehouse;
+      poolLight.visible = nearSafehouse;
       const inside = playerPos
         ? playerPos.x > cx - 10 &&
           playerPos.x < cx + 10 &&

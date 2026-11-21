@@ -15,6 +15,7 @@ export interface Vehicle {
   isBike: boolean;
   isRv: boolean;
   mesh: THREE.Group;
+  hitbox: THREE.Mesh;
   bodyMat: THREE.MeshStandardMaterial;
   riderMesh?: THREE.Group;
   kickstand?: THREE.Object3D;
@@ -112,6 +113,7 @@ export class VehicleSystem {
   private readonly explosions: ExplosionFlash[] = [];
   private readonly smokeParticles: SmokeParticle[] = [];
   private readonly smokeGeo = new THREE.BoxGeometry(0.28, 0.28, 0.28);
+  private readonly hitboxMat = new THREE.MeshBasicMaterial({ visible: false });
 
   // Dynamic headlight SpotLight for the player-driven car (illuminates wet asphalt & facades!)
   private readonly headlightSpot: THREE.SpotLight;
@@ -151,6 +153,13 @@ export class VehicleSystem {
 
       const isRv = spec.model === 'bounder';
       const maxHp = isRv ? 240 : spec.model === 'cybertruck' ? 210 : 140;
+      const hbW = spec.bike ? 0.7 : isRv ? 2.3 : 2.1;
+      const hbH = spec.bike ? 1.35 : isRv ? 2.7 : 1.45;
+      const hbD = spec.bike ? 2.1 : isRv ? 6.1 : 4.6;
+      const hitbox = new THREE.Mesh(new THREE.BoxGeometry(hbW, hbH, hbD), this.hitboxMat);
+      hitbox.position.y = hbH * 0.5;
+      built.group.add(hitbox);
+
       const v: Vehicle = {
         id: `car-${idx}`,
         name: spec.name,
@@ -159,6 +168,7 @@ export class VehicleSystem {
         isBike: spec.bike,
         isRv,
         mesh: built.group,
+        hitbox,
         bodyMat: built.bodyMat,
         riderMesh: built.riderMesh,
         kickstand: 'kickstand' in built ? built.kickstand : undefined,
@@ -262,7 +272,7 @@ export class VehicleSystem {
       .filter((v) => v !== this.activeVehicle && !v.destroyed)
       .map((v) => ({
         id: v.id,
-        mesh: v.mesh,
+        mesh: v.hitbox,
         onHit: (damage: number) => {
           this.damageVehicle(v, damage);
           return v.destroyed;

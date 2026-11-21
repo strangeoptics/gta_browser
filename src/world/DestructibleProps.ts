@@ -7,6 +7,7 @@ interface DestructibleProp {
   id: string;
   kind: PropKind;
   group: THREE.Group;
+  hitbox: THREE.Mesh;
   spawnPos: THREE.Vector3;
   broken: boolean;
   vel: THREE.Vector3;
@@ -33,6 +34,7 @@ export class DestructibleProps {
   private readonly props: DestructibleProp[] = [];
   private readonly drops: WaterDrop[] = [];
   private readonly dropGeo = new THREE.BoxGeometry(0.14, 0.24, 0.14);
+  private readonly hitboxMat = new THREE.MeshBasicMaterial({ visible: false });
   private sprayTick = 0;
 
   public onPropSmashed?: (kind: PropKind) => void;
@@ -79,7 +81,7 @@ export class DestructibleProps {
       if (p.broken) continue;
       out.push({
         id: p.id,
-        mesh: p.group,
+        mesh: p.hitbox,
         onHit: (_dmg: number, hitPoint: THREE.Vector3, hitNormal: THREE.Vector3) => {
           const impulse = hitNormal.clone().multiplyScalar(-5.5);
           impulse.y = 4.5;
@@ -228,11 +230,16 @@ export class DestructibleProps {
     nozzle.position.y = 0.52;
     group.add(nozzle);
 
+    const hitbox = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.95, 0.7), this.hitboxMat);
+    hitbox.position.y = 0.45;
+    group.add(hitbox);
+
     this.scene.add(group);
     this.props.push({
       id,
       kind: 'hydrant',
       group,
+      hitbox,
       spawnPos,
       broken: false,
       vel: new THREE.Vector3(),
@@ -270,11 +277,16 @@ export class DestructibleProps {
     canopy.castShadow = true;
     group.add(canopy);
 
+    const hitbox = new THREE.Mesh(new THREE.BoxGeometry(1.5, 2.5, 1.5), this.hitboxMat);
+    hitbox.position.y = 1.25;
+    group.add(hitbox);
+
     this.scene.add(group);
     this.props.push({
       id,
       kind: 'cafe',
       group,
+      hitbox,
       spawnPos,
       broken: false,
       vel: new THREE.Vector3(),
@@ -306,11 +318,16 @@ export class DestructibleProps {
     rim.position.y = 0.88;
     group.add(rim);
 
+    const hitbox = new THREE.Mesh(new THREE.BoxGeometry(0.75, 1.0, 0.75), this.hitboxMat);
+    hitbox.position.y = 0.5;
+    group.add(hitbox);
+
     this.scene.add(group);
     this.props.push({
       id,
       kind: 'bin',
       group,
+      hitbox,
       spawnPos,
       broken: false,
       vel: new THREE.Vector3(),

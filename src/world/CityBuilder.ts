@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { AABB } from '../types';
 import {
   BLOCK_CENTERS,
@@ -25,6 +26,7 @@ import { buildTrafficLights } from './TrafficLights';
 export interface MiamiWorld {
   colliders: AABB[];
   worldMeshes: THREE.Object3D[];
+  cameraMeshes: THREE.Object3D[];
   stuntRamps: StuntRamp[];
   layout: CityLayout;
   cycleTimeOfDay: () => string;
@@ -601,13 +603,12 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
     }
   }
 
-  const palmGroup = buildPalmTrees(palmPositions);
-  scene.add(palmGroup);
+  const palms = buildPalmTrees(scene, palmPositions);
 
   // ---------------------------------------------------------------------------
   // 7) Coastal Streetlights, Working Traffic Lights & Neon Stunt Ramps
   // ---------------------------------------------------------------------------
-  buildStreetlights(scene);
+  const streetLights = buildStreetlights(scene);
   const trafficLights = buildTrafficLights(scene);
   const stuntRamps = buildStuntRamps(scene);
 
@@ -714,9 +715,27 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
     return p.name;
   };
 
+  // Pre-filter large structural meshes (>= 2.2m) for 3rd-person camera wall-clip raycasts (skips tiny stairs & props)
+  const cameraMeshes = worldMeshes.filter((obj) => {
+    if (!(obj instanceof THREE.Mesh)) return false;
+    obj.geometry.computeBoundingBox();
+    const bb = obj.geometry.boundingBox;
+    if (!bb) return true;
+    const maxDim = Math.max(bb.max.x - bb.min.x, bb.max.y - bb.min.y, bb.max.z - bb.min.z);
+    return maxDim >= 2.2;
+  });
+
+  // Freeze matrices on static world meshes so Three.js doesn't recompute them every frame
+  for (const obj of worldMeshes) {
+    obj.updateMatrix();
+    obj.updateMatrixWorld(true);
+    obj.matrixAutoUpdate = false;
+  }
+
   const worldHandle: MiamiWorld = {
     colliders,
     worldMeshes,
+    cameraMeshes,
     stuntRamps,
     layout,
     cycleTimeOfDay: () => {
@@ -761,18 +780,22 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
     update: (elapsed: number, dt: number, playerPos?: THREE.Vector3, cash = 0, wantedStars = 0) => {
       oceanUniforms.uTime.value = elapsed;
       beachHighlights.update(elapsed);
-      neonClub.update(elapsed);
+      neonClub.update(elapsed, playerPos);
       safehouse.update(elapsed, dt, playerPos, cash, wantedStars);
       policeStation.update(elapsed, dt, playerPos, cash, wantedStars);
       trafficLights.update(elapsed);
-      palmGroup.children.forEach((palm, idx) => {
-        const crown = palm.userData.crown as THREE.Object3D | undefined;
-        if (crown) {
-          const breeze = rainActive ? 2.1 : 1.0;
-          crown.rotation.z = Math.sin(elapsed * 1.4 * breeze + idx * 0.9) * 0.045 * breeze;
-          crown.rotation.x = Math.cos(elapsed * 1.1 * breeze + idx * 0.7) * 0.03 * breeze;
+      palms.update(elapsed, rainActive ? 2.1 : 1.0);
+
+      // Distance-cull streetlamp PointLights so distant blocks cost zero PBR shader loops
+      if (playerPos) {
+        const px = playerPos.x;
+        const pz = playerPos.z;
+        for (const sl of streetLights) {
+          const dx = sl.position.x - px;
+          const dz = sl.position.z - pz;
+          sl.visible = dx * dx + dz * dz < 54 * 54;
         }
-      });
+      }
 
       const posAttr = mistGeo.getAttribute('position') as THREE.BufferAttribute;
       for (let i = 0; i < mistCount; i++) {
@@ -815,9 +838,9 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
 }
 
 function buildPalmTrees(
+  scene: THREE.Scene,
   placements: { x: number; z: number; rot: number; scale: number }[],
-): THREE.Group {
-  const group = new THREE.Group();
+): { update: (elapsed: number, breeze: number) => void } {
   const trunkMat = new THREE.MeshStandardMaterial({ color: '#6b5346', roughness: 0.9 });
   const frondMat = new THREE.MeshStandardMaterial({
     color: '#2d6a4f',
@@ -825,53 +848,112 @@ function buildPalmTrees(
     side: THREE.DoubleSide,
   });
 
-  const trunkSegGeo = new THREE.CylinderGeometry(0.16, 0.23, 1.9, 6);
-  const frondGeo = new THREE.ConeGeometry(0.55, 3.2, 4);
-  frondGeo.scale(1.0, 1.0, 0.16);
-  frondGeo.rotateX(Math.PI / 2);
-  frondGeo.translate(0, 0, 1.55);
+  // Merge the 4 curved trunk segments into 1 single BufferGeometry -> 1 InstancedMesh draw call for ALL palms!
+  const trunkSegBase = new THREE.CylinderGeometry(0.16, 0.23, 1.9, 6);
+  const trunkParts: THREE.BufferGeometry[] = [];
+  let curY = 0;
+  let curX = 0;
+  const partMat = new THREE.Matrix4();
+  const partQuat = new THREE.Quaternion();
+  const partEuler = new THREE.Euler();
+  const partPos = new THREE.Vector3();
+  const partScale = new THREE.Vector3();
 
-  for (const p of placements) {
-    const palm = new THREE.Group();
-    palm.position.set(p.x, 0.18, p.z);
-    palm.rotation.y = p.rot;
-    palm.scale.setScalar(p.scale);
-
-    // 4 slightly curved trunk segments
-    let curY = 0;
-    let curX = 0;
-    for (let s = 0; s < 4; s++) {
-      const seg = new THREE.Mesh(trunkSegGeo, trunkMat);
-      const lean = s * 0.065;
-      seg.position.set(curX + lean * 0.6, curY + 0.9, 0);
-      seg.rotation.z = -lean;
-      seg.scale.setScalar(1 - s * 0.08);
-      seg.castShadow = true;
-      palm.add(seg);
-      curY += 1.72;
-      curX += Math.sin(lean) * 1.4;
-    }
-
-    // Palm crown with 7 drooping fronds
-    const crown = new THREE.Group();
-    crown.position.set(curX + 0.12, curY + 0.1, 0);
-    for (let f = 0; f < 7; f++) {
-      const frond = new THREE.Mesh(frondGeo, frondMat);
-      const angle = (f / 7) * Math.PI * 2;
-      frond.rotation.y = angle;
-      frond.rotation.x = 0.35 + (f % 2) * 0.18;
-      frond.castShadow = true;
-      crown.add(frond);
-    }
-    palm.add(crown);
-    palm.userData.crown = crown;
-    group.add(palm);
+  for (let s = 0; s < 4; s++) {
+    const lean = s * 0.065;
+    const g = trunkSegBase.clone();
+    partPos.set(curX + lean * 0.6, curY + 0.9, 0);
+    partEuler.set(0, 0, -lean);
+    partQuat.setFromEuler(partEuler);
+    partScale.setScalar(1 - s * 0.08);
+    partMat.compose(partPos, partQuat, partScale);
+    g.applyMatrix4(partMat);
+    trunkParts.push(g);
+    curY += 1.72;
+    curX += Math.sin(lean) * 1.4;
   }
+  const mergedTrunkGeo = mergeGeometries(trunkParts);
+  trunkSegBase.dispose();
+  trunkParts.forEach((g) => g.dispose());
 
-  return group;
+  // Merge the 7 drooping fronds into 1 single BufferGeometry -> 1 InstancedMesh draw call for ALL crowns!
+  const frondBase = new THREE.ConeGeometry(0.55, 3.2, 4);
+  frondBase.scale(1.0, 1.0, 0.16);
+  frondBase.rotateX(Math.PI / 2);
+  frondBase.translate(0, 0, 1.55);
+  const frondParts: THREE.BufferGeometry[] = [];
+  for (let f = 0; f < 7; f++) {
+    const g = frondBase.clone();
+    const angle = (f / 7) * Math.PI * 2;
+    partEuler.set(0.35 + (f % 2) * 0.18, angle, 0, 'YXZ');
+    partQuat.setFromEuler(partEuler);
+    partMat.compose(new THREE.Vector3(0, 0, 0), partQuat, new THREE.Vector3(1, 1, 1));
+    g.applyMatrix4(partMat);
+    frondParts.push(g);
+  }
+  const mergedCrownGeo = mergeGeometries(frondParts);
+  frondBase.dispose();
+  frondParts.forEach((g) => g.dispose());
+
+  const count = placements.length;
+  const trunkInst = new THREE.InstancedMesh(mergedTrunkGeo, trunkMat, count);
+  trunkInst.castShadow = true;
+  trunkInst.receiveShadow = true;
+
+  const crownInst = new THREE.InstancedMesh(mergedCrownGeo, frondMat, count);
+  crownInst.castShadow = true;
+
+  const crownOffsetLocal = new THREE.Vector3(curX + 0.12, curY + 0.1, 0);
+  const crownWorldBases: THREE.Vector3[] = [];
+  const dummy = new THREE.Object3D();
+
+  placements.forEach((p, idx) => {
+    dummy.position.set(p.x, 0.18, p.z);
+    dummy.rotation.set(0, p.rot, 0);
+    dummy.scale.setScalar(p.scale);
+    dummy.updateMatrix();
+    trunkInst.setMatrixAt(idx, dummy.matrix);
+
+    const cw = crownOffsetLocal.clone().multiplyScalar(p.scale).applyAxisAngle(new THREE.Vector3(0, 1, 0), p.rot);
+    cw.x += p.x;
+    cw.y += 0.18;
+    cw.z += p.z;
+    crownWorldBases.push(cw);
+
+    dummy.position.copy(cw);
+    dummy.updateMatrix();
+    crownInst.setMatrixAt(idx, dummy.matrix);
+  });
+
+  trunkInst.instanceMatrix.needsUpdate = true;
+  crownInst.instanceMatrix.needsUpdate = true;
+  trunkInst.matrixAutoUpdate = false;
+  crownInst.matrixAutoUpdate = false;
+  scene.add(trunkInst);
+  scene.add(crownInst);
+
+  return {
+    update: (elapsed: number, breeze: number) => {
+      for (let i = 0; i < count; i++) {
+        const p = placements[i];
+        const cw = crownWorldBases[i];
+        dummy.position.copy(cw);
+        dummy.rotation.set(
+          Math.cos(elapsed * 1.1 * breeze + i * 0.7) * 0.03 * breeze,
+          p.rot,
+          Math.sin(elapsed * 1.4 * breeze + i * 0.9) * 0.045 * breeze,
+        );
+        dummy.scale.setScalar(p.scale);
+        dummy.updateMatrix();
+        crownInst.setMatrixAt(i, dummy.matrix);
+      }
+      crownInst.instanceMatrix.needsUpdate = true;
+    },
+  };
 }
 
-function buildStreetlights(scene: THREE.Scene): void {
+function buildStreetlights(scene: THREE.Scene): THREE.PointLight[] {
+  const streetLights: THREE.PointLight[] = [];
   const poleMat = new THREE.MeshStandardMaterial({ color: '#2b2433', roughness: 0.4, metalness: 0.7 });
   const bulbMat = new THREE.MeshStandardMaterial({
     color: '#ffdf9e',
@@ -932,6 +1014,8 @@ function buildStreetlights(scene: THREE.Scene): void {
       const pt = new THREE.PointLight('#ff9e4a', 24, 26, 1.7);
       pt.position.set(spot.x + spot.dirX * 1.15, 5.7, spot.z);
       scene.add(pt);
+      streetLights.push(pt);
     }
   }
+  return streetLights;
 }

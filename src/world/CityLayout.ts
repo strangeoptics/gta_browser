@@ -217,7 +217,7 @@ export function generateCityLayout(): CityLayout {
     playableBounds: {
       minX: -122, // extends west through Little Havana, Starlight Diner, Banco de Vice & Vice Customs (x=-66..-124)
       maxX: 204, // extends across the Causeway Bridge (x=66..148) & Starfish Island (x=148..198)
-      minZ: -128, // extends north through North Point Coastal Highway, Vice Marina & Cape Vice Lighthouse (z=-66..-128)
+      minZ: -136, // extends north through North Point Coastal Highway, Vice Marina & Cape Vice Cliff Lighthouse (z=-66..-136)
       maxZ: 141, // extends south through Vice Port Docks (z=66..126) & Cargo Freighter (z=127..141)
     },
     buildings,

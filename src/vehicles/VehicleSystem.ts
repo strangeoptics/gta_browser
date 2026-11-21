@@ -1040,6 +1040,12 @@ export class VehicleSystem {
           this.onStuntLanded?.(Math.round(jumpDist), reward);
         }
       }
+    } else if (v.position.y - baseGroundY > 0.9 && !v.airborne) {
+      // Driving off a high cliff ledge -> launch into realistic airborne drop!
+      v.airborne = true;
+      v.vy = 0;
+      v.jumpStartX = v.position.x;
+      v.jumpStartZ = v.position.z;
     } else {
       v.position.y = baseGroundY;
       // Subtle natural pitch on the arched Miami Causeway Bridge!

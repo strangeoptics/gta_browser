@@ -612,7 +612,7 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
   // ---------------------------------------------------------------------------
   // 6) Palm Trees along Ocean Drive & Avenues
   // ---------------------------------------------------------------------------
-  const palmPositions: { x: number; z: number; rot: number; scale: number }[] = [];
+  const palmPositions: { x: number; y?: number; z: number; rot: number; scale: number }[] = [];
 
   // Ocean Drive beachfront palms (keep Causeway Bridge corridor z = -67.5..-52.5 clear & frame the bridge entrance!)
   palmPositions.push({ x: 67.4, z: -68.2, rot: -1.1, scale: 1.0 });
@@ -772,8 +772,11 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
     obj.matrixAutoUpdate = false;
   }
 
-  // Pre-filter static world colliders once at startup (exclude overhead lintels & roofs with minY >= 2.9m!)
-  const solidVehicleColliders = colliders.filter((c) => c.maxY > 0.45 && c.minY < 2.9);
+  // Pre-filter static world colliders once at startup (exclude ground-level overhead lintels & roofs, but keep elevated Cape Vice Cliff structures!)
+  const elevatedTags = new Set(['cliff-guardrail', 'lighthouse-base', 'keepers-cottage']);
+  const solidVehicleColliders = colliders.filter(
+    (c) => c.maxY > 0.45 && (c.minY < 2.9 || (c.tag !== undefined && elevatedTags.has(c.tag))),
+  );
   const solidNpcColliders = colliders.filter((c) => c.maxY > 0.45 && c.minY < 1.85);
 
   const worldHandle: MiamiWorld = {
@@ -838,7 +841,8 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
     isTvOn: () => safehouse.isTvOn(),
     isNearClubBar: (pos: THREE.Vector3) => neonClub.isNearBar(pos),
     getClubProximity: (pos: THREE.Vector3) => neonClub.getProximity(pos),
-    getGroundHeight: (x: number, z: number) => starfish.getGroundHeight(x, z) ?? getBeachHeight(x, z),
+    getGroundHeight: (x: number, z: number) =>
+      northPoint.getGroundHeight(x, z) ?? starfish.getGroundHeight(x, z) ?? getBeachHeight(x, z),
     shouldTrafficStop: (x: number, z: number, yaw: number) => trafficLights.shouldAiStop(x, z, yaw),
     update: (elapsed: number, dt: number, playerPos?: THREE.Vector3, cash = 0, wantedStars = 0) => {
       oceanUniforms.uTime.value = elapsed;
@@ -901,7 +905,7 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
 
 function buildPalmTrees(
   scene: THREE.Scene,
-  placements: { x: number; z: number; rot: number; scale: number }[],
+  placements: { x: number; y?: number; z: number; rot: number; scale: number }[],
 ): { update: (elapsed: number, breeze: number) => void } {
   const trunkMat = new THREE.MeshStandardMaterial({ color: '#6b5346', roughness: 0.9 });
   const frondMat = new THREE.MeshStandardMaterial({
@@ -970,7 +974,8 @@ function buildPalmTrees(
   const dummy = new THREE.Object3D();
 
   placements.forEach((p, idx) => {
-    dummy.position.set(p.x, 0.18, p.z);
+    const baseY = p.y ?? 0.18;
+    dummy.position.set(p.x, baseY, p.z);
     dummy.rotation.set(0, p.rot, 0);
     dummy.scale.setScalar(p.scale);
     dummy.updateMatrix();
@@ -978,7 +983,7 @@ function buildPalmTrees(
 
     const cw = crownOffsetLocal.clone().multiplyScalar(p.scale).applyAxisAngle(new THREE.Vector3(0, 1, 0), p.rot);
     cw.x += p.x;
-    cw.y += 0.18;
+    cw.y += baseY;
     cw.z += p.z;
     crownWorldBases.push(cw);
 

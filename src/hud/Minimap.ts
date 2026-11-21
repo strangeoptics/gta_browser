@@ -73,9 +73,39 @@ export class Minimap {
     for (const px of [-36, -8, 20]) {
       ctx.fillRect((px - 1.8 - playerX) * scale, (-124 - playerZ) * scale, 3.6 * scale, 26 * scale);
     }
-    // Cape Vice Lighthouse Peninsula (x = 49..95, z = -124..-96)
-    ctx.fillStyle = 'rgba(216, 186, 147, 0.45)';
-    ctx.fillRect((49 - playerX) * scale, (-124 - playerZ) * scale, 46 * scale, 28 * scale);
+    // Cape Vice 11m Sea Cliff Plateau (center 78, -114, r = 16.5) & Winding Serpentine Road
+    ctx.fillStyle = 'rgba(156, 137, 116, 0.55)';
+    ctx.strokeStyle = 'rgba(235, 208, 162, 0.5)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc((78 - playerX) * scale, (-114 - playerZ) * scale, 16.5 * scale, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Winding Serpentine Coastal Road climbing around the East Cliff
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.28)';
+    ctx.lineWidth = 7.4 * scale;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    const serpPts: [number, number][] = [
+      [44, -82],
+      [56, -83],
+      [70, -86],
+      [86, -90],
+      [98, -98],
+      [99, -111],
+      [94, -123],
+      [84, -127.5],
+      [78, -121.5],
+    ];
+    ctx.beginPath();
+    serpPts.forEach(([sx, sz], idx) => {
+      const mx = (sx - playerX) * scale;
+      const mz = (sz - playerZ) * scale;
+      if (idx === 0) ctx.moveTo(mx, mz);
+      else ctx.lineTo(mx, mz);
+    });
+    ctx.stroke();
 
     // Causeway Bridge (x = 66..148, z = -60)
     ctx.fillStyle = 'rgba(255, 255, 255, 0.22)';
@@ -196,11 +226,11 @@ export class Minimap {
     ctx.fillStyle = '#ffd15c';
     ctx.fillText('B', (-88 - playerX) * scale, (40 - playerZ) * scale);
 
-    // North Point markers: Vice Marina (⚓) & Cape Vice Lighthouse (L)
+    // North Point markers: Vice Marina (⚓) & Cape Vice Cliff Lighthouse (L)
     ctx.fillStyle = '#36f1e6';
     ctx.fillText('⚓', (-8 - playerX) * scale, (-104 - playerZ) * scale);
     ctx.fillStyle = '#ff9f43';
-    ctx.fillText('L', (76 - playerX) * scale, (-114 - playerZ) * scale);
+    ctx.fillText('L', (81 - playerX) * scale, (-114 - playerZ) * scale);
 
     // Flyable Vice Maverick Helicopter marker (M)
     if (maverickPos) {

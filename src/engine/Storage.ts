@@ -1,5 +1,6 @@
 export interface GameSettings {
   mouseSensitivity: number; // 0.5 .. 2.0
+  invertMouseY: boolean;
   sfxVolume: number; // 0 .. 1
   musicVolume: number; // 0 .. 1
   performanceMode: boolean;
@@ -19,6 +20,7 @@ const PROGRESS_KEY = 'vice_dusk_progress_v1';
 
 export const DEFAULT_SETTINGS: GameSettings = {
   mouseSensitivity: 1.0,
+  invertMouseY: false,
   sfxVolume: 0.75,
   musicVolume: 0.7,
   performanceMode: false,
@@ -43,6 +45,7 @@ export function loadSettings(): GameSettings {
         typeof parsed.mouseSensitivity === 'number'
           ? Math.max(0.5, Math.min(2.0, parsed.mouseSensitivity))
           : DEFAULT_SETTINGS.mouseSensitivity,
+      invertMouseY: Boolean(parsed.invertMouseY),
       sfxVolume:
         typeof parsed.sfxVolume === 'number'
           ? Math.max(0, Math.min(1, parsed.sfxVolume))

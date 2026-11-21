@@ -98,6 +98,7 @@ const statMissionsEl = document.getElementById('stat-missions') as HTMLElement;
 const resetSaveBtn = document.getElementById('reset-save-btn') as HTMLButtonElement;
 const optSensInput = document.getElementById('opt-sens') as HTMLInputElement;
 const optSensValEl = document.getElementById('opt-sens-val') as HTMLSpanElement;
+const optInvertYInput = document.getElementById('opt-invert-y') as HTMLInputElement;
 const optSfxInput = document.getElementById('opt-sfx') as HTMLInputElement;
 const optSfxValEl = document.getElementById('opt-sfx-val') as HTMLSpanElement;
 const optMusicInput = document.getElementById('opt-music') as HTMLInputElement;
@@ -290,6 +291,7 @@ function persistProgress(): void {
 function applySettings(next: GameSettings): void {
   settings = next;
   player.setSensitivityMultiplier(settings.mouseSensitivity);
+  player.setInvertY(settings.invertMouseY);
   audio.setSfxVolume(settings.sfxVolume);
   audio.setMusicVolume(settings.musicVolume);
   renderer.shadowMap.enabled = !settings.performanceMode;
@@ -298,6 +300,7 @@ function applySettings(next: GameSettings): void {
 
   optSensInput.value = String(settings.mouseSensitivity);
   optSensValEl.textContent = `${settings.mouseSensitivity.toFixed(1)}×`;
+  optInvertYInput.checked = settings.invertMouseY;
   optSfxInput.value = String(settings.sfxVolume);
   optSfxValEl.textContent = `${Math.round(settings.sfxVolume * 100)}%`;
   optMusicInput.value = String(settings.musicVolume);
@@ -311,6 +314,9 @@ persistProgress();
 
 optSensInput.addEventListener('input', () => {
   applySettings({ ...settings, mouseSensitivity: parseFloat(optSensInput.value) });
+});
+optInvertYInput.addEventListener('change', () => {
+  applySettings({ ...settings, invertMouseY: optInvertYInput.checked });
 });
 optSfxInput.addEventListener('input', () => {
   applySettings({ ...settings, sfxVolume: parseFloat(optSfxInput.value) });
@@ -692,8 +698,9 @@ window.addEventListener('mousedown', (e) => {
 
 window.addEventListener('mousemove', (e) => {
   if (!photoMode || document.pointerLockElement !== canvas) return;
+  const ySign = settings.invertMouseY ? -1 : 1;
   photoYaw -= e.movementX * 0.0022 * settings.mouseSensitivity;
-  photoPitch = Math.max(-1.45, Math.min(1.45, photoPitch - e.movementY * 0.0022 * settings.mouseSensitivity));
+  photoPitch = Math.max(-1.45, Math.min(1.45, photoPitch - e.movementY * 0.0022 * settings.mouseSensitivity * ySign));
 });
 
 // Enter / Exit Vehicle on [E], Shop on [B], Radio on [Q], Photo Mode on [P], Mute Audio on [M]

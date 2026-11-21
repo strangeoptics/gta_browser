@@ -11,6 +11,7 @@ export class PlayerController {
   private yaw = 0;
   private pitch = 0;
   private sensitivityMult = 1.0;
+  private invertY = false;
 
   private readonly keys = new Set<string>();
   private isLocked = false;
@@ -96,6 +97,10 @@ export class PlayerController {
     this.sensitivityMult = THREE.MathUtils.clamp(mult, 0.4, 2.5);
   }
 
+  public setInvertY(invert: boolean): void {
+    this.invertY = invert;
+  }
+
   public toggleThirdPerson(): boolean {
     this.thirdPerson = !this.thirdPerson;
     return this.thirdPerson;
@@ -142,9 +147,11 @@ export class PlayerController {
     const sensitivity = 0.0022 * this.sensitivityMult;
     const maxPitch = Math.PI / 2 - 0.04;
 
+    const ySign = this.invertY ? -1 : 1;
+
     if (this.isLocked) {
       this.yaw -= e.movementX * sensitivity;
-      this.pitch -= e.movementY * sensitivity;
+      this.pitch -= e.movementY * sensitivity * ySign;
       this.pitch = Math.max(-maxPitch, Math.min(maxPitch, this.pitch));
       return;
     }
@@ -155,7 +162,7 @@ export class PlayerController {
       this.lastMouseX = e.clientX;
       this.lastMouseY = e.clientY;
       this.yaw -= dx * sensitivity * 1.4;
-      this.pitch -= dy * sensitivity * 1.4;
+      this.pitch -= dy * sensitivity * 1.4 * ySign;
       this.pitch = Math.max(-maxPitch, Math.min(maxPitch, this.pitch));
     }
   };
@@ -176,8 +183,9 @@ export class PlayerController {
     // Analog right-stick camera look (Gamepad)
     if (active && pad && pad.connected) {
       const lookSpeed = 2.6 * this.sensitivityMult * clampedDt;
+      const ySign = this.invertY ? -1 : 1;
       this.yaw -= pad.lookX * lookSpeed;
-      this.pitch = Math.max(-maxPitch, Math.min(maxPitch, this.pitch - pad.lookY * lookSpeed * 0.8));
+      this.pitch = Math.max(-maxPitch, Math.min(maxPitch, this.pitch - pad.lookY * lookSpeed * 0.8 * ySign));
     }
 
     // Arrow-key look fallback when not pointer-locked

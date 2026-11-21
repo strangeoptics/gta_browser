@@ -24,6 +24,7 @@ export class Minimap {
     npcs: NpcEntity[],
     objective: ActiveObjective | null,
     elapsed: number,
+    heliPos?: { x: number; z: number } | null,
   ): void {
     const ctx = this.ctx;
     const half = this.half;
@@ -102,6 +103,20 @@ export class Minimap {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('$', sx, sz);
+
+    // Pay 'n' Spray marker (P) at West Avenue (-56, -38)
+    const px = (-56 - playerX) * scale;
+    const pz = (-38 - playerZ) * scale;
+    ctx.fillStyle = '#ff9f43';
+    ctx.fillText('P', px, pz);
+
+    // Vice PD Chopper marker (H) when deployed
+    if (heliPos) {
+      const hx = (heliPos.x - playerX) * scale;
+      const hz = (heliPos.z - playerZ) * scale;
+      ctx.fillStyle = Math.sin(elapsed * 16) > 0 ? '#ff3355' : '#36f1e6';
+      ctx.fillText('H', hx, hz);
+    }
 
     // Police & Bounty NPCs
     for (const n of npcs) {

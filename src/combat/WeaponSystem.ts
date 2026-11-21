@@ -229,13 +229,71 @@ export class WeaponSystem {
     });
   }
 
+  /**
+   * Fires a Drive-By Neon Mac-10 SMG burst from the player's car window along the camera look ray.
+   */
+  public updateDriveBy(
+    dt: number,
+    isPlaying: boolean,
+    carPos: THREE.Vector3,
+    worldMeshes: THREE.Object3D[],
+    targets: ShootableTarget[],
+  ): void {
+    const clampedDt = Math.min(dt, 0.05);
+    this.fireCooldown = Math.max(0, this.fireCooldown - clampedDt);
+    this.hitmarkerAlpha = Math.max(0, this.hitmarkerAlpha - clampedDt * 4.5);
+    this.updateEffects(clampedDt);
+
+    if (!isPlaying || !this.triggerDown || this.fireCooldown > 0) return;
+
+    const smg = WEAPONS[1];
+    this.fireCooldown = 1 / smg.fireRate;
+    const origin = new THREE.Vector3(carPos.x, carPos.y + 1.18, carPos.z);
+    this.onShotFired?.('smg', origin);
+
+    const dir = new THREE.Vector3(
+      (Math.random() - 0.5) * 0.05,
+      (Math.random() - 0.5) * 0.04,
+      -1,
+    )
+      .normalize()
+      .applyQuaternion(this.camera.quaternion);
+
+    const targetMap = new Map<THREE.Object3D, ShootableTarget>();
+    const targetRoots: THREE.Object3D[] = [];
+    for (const t of targets) {
+      targetRoots.push(t.mesh);
+      t.mesh.traverse((child) => targetMap.set(child, t));
+    }
+    this.raycaster.set(origin, dir);
+    this.raycaster.far = 90;
+
+    const hits = this.raycaster.intersectObjects([...targetRoots, ...worldMeshes], true);
+    let endPoint = origin.clone().addScaledVector(dir, 90);
+    if (hits.length > 0) {
+      const hit = hits[0];
+      endPoint = hit.point.clone();
+      const normal = hit.face ? hit.face.normal.clone() : new THREE.Vector3(0, 1, 0);
+      if (hit.object instanceof THREE.Mesh) normal.transformDirection(hit.object.matrixWorld);
+      const matched = targetMap.get(hit.object);
+      if (matched) {
+        const killed = matched.onHit(smg.damage, endPoint, normal);
+        this.hitmarkerAlpha = 1.0;
+        this.hitmarkerKill = killed;
+        this.spawnSparks(endPoint, normal, killed ? 0xff4fa3 : 0x36f1e6, killed ? 10 : 5);
+      } else {
+        this.spawnSparks(endPoint, normal, 0xffc066, 4);
+      }
+    }
+    this.spawnTracer(origin, endPoint, smg.tracerColor);
+  }
+
   private bindInputs(): void {
     window.addEventListener('mousedown', (e) => {
-      if (!this.enabled) return;
       if (e.button === 0) {
         this.triggerDown = true;
         this.semiConsumed = false;
-      } else if (e.button === 2) {
+      } else if (e.button === 2 && this.enabled) {
         this.ads = true;
       }
     });

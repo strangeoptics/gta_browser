@@ -11,9 +11,11 @@ import { VehicleSystem } from './vehicles/VehicleSystem';
 import { BoatSystem } from './vehicles/BoatSystem';
 import { DestructibleProps } from './world/DestructibleProps';
 import { NpcSystem } from './entities/NpcSystem';
+import { HelicopterSystem } from './entities/HelicopterSystem';
 import { WantedSystem } from './gameplay/WantedSystem';
 import { ObjectiveSystem } from './gameplay/ObjectiveSystem';
 import { ShopSystem } from './gameplay/ShopSystem';
+import { PayNSpray } from './gameplay/PayNSpray';
 import { Minimap } from './hud/Minimap';
 import { AudioEngine } from './audio/AudioEngine';
 import {
@@ -118,9 +120,11 @@ const weapons = new WeaponSystem(scene, camera);
 const vehicles = new VehicleSystem(scene);
 const boat = new BoatSystem(scene);
 const npcs = new NpcSystem(scene);
+const heli = new HelicopterSystem(scene);
 const wanted = new WantedSystem();
 const objectives = new ObjectiveSystem(scene);
 const shop = new ShopSystem(scene);
+const payNSpray = new PayNSpray(scene);
 const minimap = new Minimap(minimapCanvas);
 const audio = new AudioEngine();
 objectives.startNextObjective(npcs, wanted);
@@ -234,6 +238,7 @@ function triggerWorldExplosion(origin: THREE.Vector3, radius: number, maxDamage:
   vehicles.spawnExplosionVfx(origin);
   npcs.applyBlastDamage(origin, radius, maxDamage);
   vehicles.applyBlastDamage(origin, radius, maxDamage * 0.85);
+  heli.applyBlastDamage(origin, radius, maxDamage * 1.1);
   wanted.addHeat(45);
 
   const distToPlayer = player.position.distanceTo(origin);
@@ -315,6 +320,18 @@ destructibles.onPropSmashed = (kind) => {
 
 world.onThunder = () => {
   audio.playThunder();
+};
+
+heli.onPlayerDamaged = (dmg) => {
+  applyPlayerDamage(dmg);
+};
+
+heli.onHelicopterDestroyed = (impactPos) => {
+  audio.playExplosion();
+  vehicles.spawnExplosionVfx(impactPos);
+  objectives.cash += 1500;
+  persistProgress();
+  showQuickToast('VICE PD CHOPPER ABGESCHOSSEN · +$1.500');
 };
 
 objectives.onCheckpointReached = () => {
@@ -418,6 +435,25 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyY' && player.getIsActive() && !shopOpen) {
     const raining = world.toggleRain();
     showQuickToast(raining ? 'WETTER · TROPENSCHAUER' : 'WETTER · NACH DEM REGEN');
+    return;
+  }
+
+  if (e.code === 'KeyF' && player.getIsActive() && !shopOpen && wastedTimer <= 0) {
+    const car = vehicles.getActiveVehicle();
+    if (car && payNSpray.isCarInBay(car.position)) {
+      if (objectives.cash >= payNSpray.cost) {
+        objectives.cash -= payNSpray.cost;
+        payNSpray.resprayVehicle(car);
+        wanted.reset();
+        npcs.clearPolice();
+        heli.clear();
+        audio.playPurchase();
+        persistProgress();
+        showQuickToast("PAY 'N' SPRAY · REPARIERT & STERNE GELÖSCHT");
+      } else {
+        showQuickToast(`ZU WENIG CASH · BENÖTIGT $${payNSpray.cost}`);
+      }
+    }
     return;
   }
 
@@ -566,6 +602,7 @@ function animate(now: number): void {
       playerHp = 100;
       wanted.reset();
       npcs.clearPolice();
+      heli.clear();
       player.setSpawn(60, 0.2, 24, 0.12);
     }
   }
@@ -610,8 +647,10 @@ function animate(now: number): void {
   world.update(elapsed, dt, player.position);
   destructibles.update(dt);
   shop.update(elapsed);
+  payNSpray.update(dt, elapsed);
   wanted.update(dt);
   npcs.update(dt, player.position, wanted.stars);
+  heli.update(dt, elapsed, player.position, wanted.stars);
   const objHud = objectives.update(dt, elapsed, player.position, vehicles, npcs, wanted);
 
   if (objHud.completedCount > lastCompletedCount) {
@@ -636,8 +675,15 @@ function animate(now: number): void {
     ...npcs.getShootableTargets(),
     ...vehicles.getShootableTargets(),
     ...destructibles.getShootableTargets(),
+    ...heli.getShootableTargets(),
   ];
   const wHud = weapons.update(dt, isPlaying && !inAnyCraft, playerSpeed, world.worldMeshes, shootables);
+  if (inVehicle) {
+    const car = vehicles.getActiveVehicle();
+    if (car) {
+      weapons.updateDriveBy(dt, isPlaying, car.position, world.worldMeshes, shootables);
+    }
+  }
 
   minimap.render(
     player.position.x,
@@ -648,6 +694,7 @@ function animate(now: number): void {
     npcs.npcs,
     objectives.current,
     elapsed,
+    heli.active ? heli.position : null,
   );
 
   // --- HUD Updates ---
@@ -700,8 +747,14 @@ function animate(now: number): void {
     vehicleSpeedEl.textContent = `${driveHud.speedKmh}`;
     vehicleHpFillEl.style.width = `${driveHud.hpPct}%`;
     vehicleHpFillEl.classList.toggle('low', driveHud.hpPct < 35);
-    vehicleCamHintEl.textContent = `[Q] ${audio.getRadioStation()} · [V] ${driveHud.firstPersonCam ? 'COCKPIT' : 'CHASE'} · [E] AUS`;
-    interactPromptEl.classList.remove('visible');
+    vehicleCamHintEl.textContent = `[LMB] DRIVE-BY · [Q] ${audio.getRadioStation()} · [V] CAM · [E] AUS`;
+    const car = vehicles.getActiveVehicle();
+    if (car && payNSpray.isCarInBay(car.position)) {
+      interactPromptEl.textContent = `[F] PAY 'N' SPRAY · $${payNSpray.cost} (REPARATUR & STERNE WEG)`;
+      interactPromptEl.classList.add('visible');
+    } else {
+      interactPromptEl.classList.remove('visible');
+    }
   } else {
     weaponNameEl.textContent = wHud.name;
     ammoCurrentEl.textContent = wHud.reloading ? 'RLD' : String(wHud.ammo);

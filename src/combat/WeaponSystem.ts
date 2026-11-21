@@ -184,9 +184,10 @@ export class WeaponSystem {
   private readonly sparkGeo = new THREE.BoxGeometry(0.05, 0.05, 0.05);
   private readonly raycaster = new THREE.Raycaster();
 
-  // Optional callbacks for audio, wanted & explosion hooks
+  // Optional callbacks for audio, wanted, decals & explosion hooks
   public onShotFired?: (weaponId: string, origin: THREE.Vector3) => void;
   public onExplosion?: (origin: THREE.Vector3, radius: number, damage: number) => void;
+  public onWorldImpact?: (point: THREE.Vector3, normal: THREE.Vector3) => void;
 
   constructor(scene: THREE.Scene, camera: THREE.PerspectiveCamera) {
     this.scene = scene;
@@ -621,6 +622,7 @@ export class WeaponSystem {
             this.spawnSparks(endPoint, normal, killed ? 0xff4fa3 : 0x36f1e6, killed ? 12 : 6);
           } else {
             this.spawnSparks(endPoint, normal, 0xffc066, 5);
+            this.onWorldImpact?.(endPoint, normal);
           }
         }
       }

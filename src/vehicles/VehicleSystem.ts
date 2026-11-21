@@ -95,6 +95,7 @@ export class VehicleSystem {
   public onPoliceRamPlayer?: (damage: number) => void;
   public onCarCrash?: (intensity: number, playerInvolved: boolean) => void;
   public onActiveVehicleDestroyed?: () => void;
+  public onDriftMark?: (x: number, z: number, yaw: number) => void;
   private ramCooldown = 0;
   private crashSoundCooldown = 0;
 
@@ -786,6 +787,7 @@ export class VehicleSystem {
         for (const side of [-0.95, 0.95]) {
           const wx = v.position.x - fwdX * 1.35 + rightX * side;
           const wz = v.position.z - fwdZ * 1.35 + rightZ * side;
+          this.onDriftMark?.(wx, wz, v.yaw);
           const mat = new THREE.MeshBasicMaterial({
             color: '#d8e8f2',
             transparent: true,

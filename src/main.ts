@@ -10,6 +10,7 @@ import { WeaponSystem } from './combat/WeaponSystem';
 import { VehicleSystem } from './vehicles/VehicleSystem';
 import { BoatSystem } from './vehicles/BoatSystem';
 import { DestructibleProps } from './world/DestructibleProps';
+import { DecalSystem } from './world/DecalSystem';
 import { NpcSystem } from './entities/NpcSystem';
 import { HelicopterSystem } from './entities/HelicopterSystem';
 import { WantedSystem } from './gameplay/WantedSystem';
@@ -68,6 +69,8 @@ const vehicleSpeedEl = document.getElementById('vehicle-speed') as HTMLSpanEleme
 const vehicleHpFillEl = document.getElementById('vehicle-hp-fill') as HTMLDivElement;
 const vehicleCamHintEl = document.getElementById('vehicle-cam-hint') as HTMLDivElement;
 const toastBannerEl = document.getElementById('toast-banner') as HTMLDivElement;
+const dispatchBannerEl = document.getElementById('dispatch-banner') as HTMLDivElement;
+const dispatchTextEl = document.getElementById('dispatch-text') as HTMLSpanElement;
 const damageVignetteEl = document.getElementById('damage-vignette') as HTMLDivElement;
 const wastedOverlayEl = document.getElementById('wasted-overlay') as HTMLDivElement;
 const audioStatusEl = document.getElementById('audio-status') as HTMLDivElement;
@@ -121,6 +124,7 @@ composer.addPass(new OutputPass());
 // World + Gameplay Systems
 const world = buildMiamiCity(scene, renderer);
 const destructibles = new DestructibleProps(scene);
+const decals = new DecalSystem(scene);
 const weapons = new WeaponSystem(scene, camera);
 const vehicles = new VehicleSystem(scene);
 const boat = new BoatSystem(scene);
@@ -149,7 +153,24 @@ let settings: GameSettings = loadSettings();
 let playerHp = 100;
 let playerArmor = savedProgress.armor;
 let damageFlash = 0;
+let shakeTrauma = 0;
+let lastWantedStars = 0;
+let dispatchTimer = 0;
+let dispatchCooldown = 0;
 let wastedTimer = 0;
+
+function addCameraShake(amount: number): void {
+  shakeTrauma = Math.min(1.0, shakeTrauma + amount);
+}
+
+function sendPoliceDispatch(message: string, force = false): void {
+  if (!force && dispatchCooldown > 0) return;
+  dispatchCooldown = 4.5;
+  dispatchTimer = 4.2;
+  dispatchTextEl.textContent = message;
+  dispatchBannerEl.classList.add('visible');
+  audio.playRadioChirp();
+}
 let lastCompletedCount = savedProgress.completedMissions;
 let shopOpen = false;
 
@@ -228,6 +249,7 @@ function applyPlayerDamage(amount: number): void {
 
   playerHp = Math.max(0, playerHp - dmg);
   damageFlash = 0.85;
+  addCameraShake(0.28);
   audio.playDamage();
 
   if (playerHp <= 0) {
@@ -244,12 +266,14 @@ function applyPlayerDamage(amount: number): void {
 function triggerWorldExplosion(origin: THREE.Vector3, radius: number, maxDamage: number): void {
   audio.playExplosion();
   vehicles.spawnExplosionVfx(origin);
+  decals.addScorchMark(origin.x, origin.z);
   npcs.applyBlastDamage(origin, radius, maxDamage);
   vehicles.applyBlastDamage(origin, radius, maxDamage * 0.85);
   heli.applyBlastDamage(origin, radius, maxDamage * 1.1);
   wanted.addHeat(45);
 
   const distToPlayer = player.position.distanceTo(origin);
+  addCameraShake(Math.max(0.2, 0.85 - distToPlayer * 0.025));
   if (distToPlayer < radius) {
     const playerDmg = maxDamage * 0.65 * (1 - distToPlayer / radius);
     applyPlayerDamage(playerDmg);
@@ -263,7 +287,13 @@ weapons.onShotFired = (weaponId, origin) => {
     return;
   }
   audio.playShot(weaponId);
+  if (weaponId === 'shotgun') addCameraShake(0.22);
+  else if (weaponId === 'launcher') addCameraShake(0.35);
   npcs.alertNearbyCivilians(origin, 28);
+};
+
+weapons.onWorldImpact = (point, normal) => {
+  decals.addBulletHole(point, normal);
 };
 
 weapons.onExplosion = (origin, radius, damage) => {
@@ -272,13 +302,19 @@ weapons.onExplosion = (origin, radius, damage) => {
 
 vehicles.onVehicleExploded = (origin, radius, maxDamage) => {
   audio.playExplosion();
+  decals.addScorchMark(origin.x, origin.z);
   npcs.applyBlastDamage(origin, radius, maxDamage);
   vehicles.applyBlastDamage(origin, radius, maxDamage * 0.8);
   wanted.addHeat(55);
   const distToPlayer = player.position.distanceTo(origin);
+  addCameraShake(Math.max(0.25, 0.9 - distToPlayer * 0.025));
   if (distToPlayer < radius) {
     applyPlayerDamage(maxDamage * 0.6 * (1 - distToPlayer / radius));
   }
+};
+
+vehicles.onDriftMark = (x, z, yaw) => {
+  decals.addSkidmark(x, z, yaw);
 };
 
 vehicles.onPoliceRamPlayer = (dmg) => {
@@ -287,8 +323,11 @@ vehicles.onPoliceRamPlayer = (dmg) => {
 
 vehicles.onCarCrash = (intensity, playerInvolved) => {
   audio.playCrash(intensity);
-  if (playerInvolved && intensity > 0.45) {
-    wanted.addHeat(12);
+  if (playerInvolved) {
+    addCameraShake(intensity * 0.55);
+    if (intensity > 0.45) {
+      wanted.addHeat(12);
+    }
   }
 };
 
@@ -341,9 +380,12 @@ heli.onPlayerDamaged = (dmg) => {
 heli.onHelicopterDestroyed = (impactPos) => {
   audio.playExplosion();
   vehicles.spawnExplosionVfx(impactPos);
+  decals.addScorchMark(impactPos.x, impactPos.z);
+  addCameraShake(0.85);
   objectives.cash += 1500;
   persistProgress();
   showQuickToast('VICE PD CHOPPER ABGESCHOSSEN · +$1.500');
+  sendPoliceDispatch('Mayday! Air-One ist abgestürzt — Verstärkung anfordern!', true);
 };
 
 objectives.onCheckpointReached = () => {
@@ -465,6 +507,7 @@ function tryUsePayNSpray(): void {
       audio.playPurchase();
       persistProgress();
       showQuickToast("PAY 'N' SPRAY · REPARIERT & STERNE GELÖSCHT");
+      sendPoliceDispatch('Sichtkontakt verloren — alle Einheiten abbrechen.', true);
     } else {
       showQuickToast(`ZU WENIG CASH · BENÖTIGT $${payNSpray.cost}`);
     }
@@ -707,6 +750,26 @@ function animate(now: number): void {
   shop.update(elapsed);
   payNSpray.update(dt, elapsed);
   wanted.update(dt);
+
+  // Vice PD Radio Dispatch triggers on Wanted star escalation
+  if (dispatchCooldown > 0) dispatchCooldown -= dt;
+  if (dispatchTimer > 0) {
+    dispatchTimer -= dt;
+    if (dispatchTimer <= 0) dispatchBannerEl.classList.remove('visible');
+  }
+  if (wanted.stars > lastWantedStars) {
+    const activeCar = vehicles.getActiveVehicle();
+    const area = player.position.x > 48 ? 'Ocean Drive' : 'Downtown Vice';
+    if (wanted.stars === 1) {
+      sendPoliceDispatch(`10-31 am ${area} — Verdächtiger gesichtet!`);
+    } else if (wanted.stars === 2) {
+      const carNote = activeCar ? ` im ${activeCar.name}` : '';
+      sendPoliceDispatch(`Alle Streifenwagen: Verfolgung${carNote} am ${area}!`, true);
+    } else if (wanted.stars >= 3) {
+      sendPoliceDispatch(`Code 3! Air-One Helikopter startet über ${area}!`, true);
+    }
+  }
+  lastWantedStars = wanted.stars;
   const insideClub = world.isInsideClub(player.position);
   npcs.update(dt, player.position, wanted.stars);
   heli.update(dt, elapsed, player.position, insideClub ? 0 : wanted.stars);
@@ -872,6 +935,15 @@ function animate(now: number): void {
     } else {
       interactPromptEl.classList.remove('visible');
     }
+  }
+
+  // Apply decaying Camera-Shake right before rendering
+  if (shakeTrauma > 0.001) {
+    const s = shakeTrauma * shakeTrauma;
+    camera.position.x += (Math.random() - 0.5) * s * 0.45;
+    camera.position.y += (Math.random() - 0.5) * s * 0.45;
+    camera.rotation.z += (Math.random() - 0.5) * s * 0.06;
+    shakeTrauma = Math.max(0, shakeTrauma - dt * 2.4);
   }
 
   composer.render();

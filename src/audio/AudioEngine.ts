@@ -422,6 +422,38 @@ export class AudioEngine {
     noise.stop(now + 0.2);
   }
 
+  public playRadioChirp(): void {
+    if (!this.ctx || !this.masterGain || !this.noiseBuffer || this.muted) return;
+    const now = this.ctx.currentTime;
+
+    // Classic police walkie-talkie squelch burst + high beep
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = this.noiseBuffer;
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.value = 2600;
+    filter.Q.value = 3.2;
+    const nGain = this.ctx.createGain();
+    nGain.gain.setValueAtTime(0.16, now);
+    nGain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+    noise.connect(filter);
+    filter.connect(nGain);
+    nGain.connect(this.masterGain);
+    noise.start(now);
+    noise.stop(now + 0.13);
+
+    const beep = this.ctx.createOscillator();
+    const bGain = this.ctx.createGain();
+    beep.type = 'sine';
+    beep.frequency.setValueAtTime(1680, now + 0.04);
+    bGain.gain.setValueAtTime(0.11, now + 0.04);
+    bGain.gain.exponentialRampToValueAtTime(0.001, now + 0.11);
+    beep.connect(bGain);
+    bGain.connect(this.masterGain);
+    beep.start(now + 0.04);
+    beep.stop(now + 0.12);
+  }
+
   private playWetFootstep(): void {
     if (!this.ctx || !this.masterGain || !this.noiseBuffer || this.muted) return;
     const now = this.ctx.currentTime;

@@ -831,6 +831,16 @@ function buildStreetlights(scene: THREE.Scene): void {
   const poleGeo = new THREE.CylinderGeometry(0.08, 0.11, 6.2, 6);
   const armGeo = new THREE.BoxGeometry(1.3, 0.08, 0.08);
   const globeGeo = new THREE.SphereGeometry(0.22, 8, 8);
+  // Subtle post-rain warm amber haze cone hanging beneath each streetlamp
+  const hazeConeGeo = new THREE.ConeGeometry(2.35, 5.8, 12, 1, true);
+  const hazeConeMat = new THREE.MeshBasicMaterial({
+    color: '#ffb05c',
+    transparent: true,
+    opacity: 0.065,
+    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+  });
 
   const lampSpots: { x: number; z: number; dirX: number; withLight: boolean }[] = [
     // Ocean Drive promenade lamps
@@ -862,6 +872,10 @@ function buildStreetlights(scene: THREE.Scene): void {
     const globe = new THREE.Mesh(globeGeo, bulbMat);
     globe.position.set(spot.x + spot.dirX * 1.15, 6.1, spot.z);
     scene.add(globe);
+
+    const hazeCone = new THREE.Mesh(hazeConeGeo, hazeConeMat);
+    hazeCone.position.set(spot.x + spot.dirX * 1.15, 3.15, spot.z);
+    scene.add(hazeCone);
 
     if (spot.withLight) {
       const pt = new THREE.PointLight('#ff9e4a', 24, 26, 1.7);

@@ -876,6 +876,41 @@ body,
   color: #36f1e6;
 }
 
+/* Photo Mode */
+#hud.photo-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+#photo-bar {
+  position: fixed;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 25;
+  display: none;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 18px;
+  border-radius: 999px;
+  background: rgba(16, 10, 26, 0.82);
+  border: 1px solid rgba(54, 241, 230, 0.5);
+  color: #fff6f0;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  backdrop-filter: blur(8px);
+}
+
+#photo-bar.visible {
+  display: flex;
+}
+
+#photo-bar > span:first-child {
+  color: #ff4fa3;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+}
+
 /* Pointer-Lock Overlay */
 #overlay {
   position: fixed;

@@ -31,6 +31,8 @@ export interface Vehicle {
   respawnTimer: number;
   smokeTimer: number;
   wheels: THREE.Mesh[];
+  tailMat?: THREE.MeshStandardMaterial;
+  reverseMat?: THREE.MeshStandardMaterial;
   lightbarRed?: THREE.Mesh;
   lightbarBlue?: THREE.Mesh;
   // AI traffic state
@@ -151,6 +153,8 @@ export class VehicleSystem {
         respawnTimer: 0,
         smokeTimer: 0,
         wheels: built.wheels,
+        tailMat: built.tailMat,
+        reverseMat: built.reverseMat,
         lightbarRed: built.lightbarRed,
         lightbarBlue: built.lightbarBlue,
         isAiControlled: spec.ai,
@@ -799,6 +803,16 @@ export class VehicleSystem {
 
     v.speed = THREE.MathUtils.clamp(v.speed, maxReverse, maxForward);
 
+    // Dynamic brake lights (bright red on S / Space) & white reverse lights (when reversing)
+    if (v.tailMat) {
+      const braking = handbrake || (accelInput < -0.1 && v.speed > 0.3);
+      v.tailMat.emissiveIntensity = braking ? 6.8 : 2.4;
+    }
+    if (v.reverseMat) {
+      const reversing = v.speed < -0.4;
+      v.reverseMat.emissiveIntensity = reversing ? 4.5 : 0.05;
+    }
+
     // Realistic banking lean into turns for the PCJ-86 Neon Bike!
     if (v.isBike) {
       const targetLean = -steerInput * 0.42 * Math.min(1, Math.abs(v.speed) / 14);
@@ -1021,6 +1035,8 @@ export class VehicleSystem {
     group: THREE.Group;
     bodyMat: THREE.MeshStandardMaterial;
     wheels: THREE.Mesh[];
+    tailMat?: THREE.MeshStandardMaterial;
+    reverseMat?: THREE.MeshStandardMaterial;
     lightbarRed?: THREE.Mesh;
     lightbarBlue?: THREE.Mesh;
     riderMesh?: THREE.Group;
@@ -1078,11 +1094,22 @@ export class VehicleSystem {
     const tailMat = new THREE.MeshStandardMaterial({
       color: '#ff2b55',
       emissive: '#ff1f4a',
-      emissiveIntensity: 3.2,
+      emissiveIntensity: 2.4,
     });
     const tailBar = new THREE.Mesh(new THREE.BoxGeometry(1.86, 0.15, 0.08), tailMat);
     tailBar.position.set(0, 0.66, -2.18);
     group.add(tailBar);
+
+    const reverseMat = new THREE.MeshStandardMaterial({
+      color: '#ffffff',
+      emissive: '#e8f6ff',
+      emissiveIntensity: 0.05,
+    });
+    for (const side of [-0.55, 0.55]) {
+      const rev = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.11, 0.09), reverseMat);
+      rev.position.set(side, 0.5, -2.18);
+      group.add(rev);
+    }
 
     const glowMat = new THREE.MeshStandardMaterial({
       color: neonColor,
@@ -1130,7 +1157,7 @@ export class VehicleSystem {
       wheels.push(wheel);
     }
 
-    return { group, bodyMat, wheels, lightbarRed, lightbarBlue, riderMesh: undefined as THREE.Group | undefined };
+    return { group, bodyMat, wheels, tailMat, reverseMat, lightbarRed, lightbarBlue, riderMesh: undefined as THREE.Group | undefined };
   }
 
   private createBikeMesh(
@@ -1140,6 +1167,8 @@ export class VehicleSystem {
     group: THREE.Group;
     bodyMat: THREE.MeshStandardMaterial;
     wheels: THREE.Mesh[];
+    tailMat?: THREE.MeshStandardMaterial;
+    reverseMat?: THREE.MeshStandardMaterial;
     lightbarRed?: THREE.Mesh;
     lightbarBlue?: THREE.Mesh;
     riderMesh: THREE.Group;

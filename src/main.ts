@@ -71,6 +71,8 @@ const vehicleNameEl = document.getElementById('vehicle-name') as HTMLDivElement;
 const vehicleSpeedEl = document.getElementById('vehicle-speed') as HTMLSpanElement;
 const vehicleHpFillEl = document.getElementById('vehicle-hp-fill') as HTMLDivElement;
 const vehicleCamHintEl = document.getElementById('vehicle-cam-hint') as HTMLDivElement;
+const hudEl = document.getElementById('hud') as HTMLDivElement;
+const photoBarEl = document.getElementById('photo-bar') as HTMLDivElement;
 const toastBannerEl = document.getElementById('toast-banner') as HTMLDivElement;
 const dispatchBannerEl = document.getElementById('dispatch-banner') as HTMLDivElement;
 const dispatchTextEl = document.getElementById('dispatch-text') as HTMLSpanElement;
@@ -180,6 +182,10 @@ function sendPoliceDispatch(message: string, force = false): void {
 }
 let lastCompletedCount = savedProgress.completedMissions;
 let shopOpen = false;
+let photoMode = false;
+let photoYaw = 0;
+let photoPitch = 0;
+const photoKeys = new Set<string>();
 
 objectives.cash = savedProgress.cash;
 objectives.completedCount = savedProgress.completedMissions;
@@ -535,8 +541,46 @@ function tryUsePayNSpray(): void {
   }
 }
 
-// Enter / Exit Vehicle on [E], Shop on [B], Radio on [Q], Mute Audio on [M]
+window.addEventListener('keyup', (e) => {
+  photoKeys.delete(e.code);
+});
+
+window.addEventListener('mousemove', (e) => {
+  if (!photoMode || document.pointerLockElement !== canvas) return;
+  photoYaw -= e.movementX * 0.0022 * settings.mouseSensitivity;
+  photoPitch = Math.max(-1.45, Math.min(1.45, photoPitch - e.movementY * 0.0022 * settings.mouseSensitivity));
+});
+
+// Enter / Exit Vehicle on [E], Shop on [B], Radio on [Q], Photo Mode on [P], Mute Audio on [M]
 window.addEventListener('keydown', (e) => {
+  photoKeys.add(e.code);
+
+  if (e.code === 'KeyP' && (player.getIsActive() || photoMode) && !shopOpen) {
+    photoMode = !photoMode;
+    hudEl.classList.toggle('photo-hidden', photoMode);
+    photoBarEl.classList.toggle('visible', photoMode);
+    if (photoMode) {
+      const euler = new THREE.Euler().setFromQuaternion(camera.quaternion, 'YXZ');
+      photoYaw = euler.y;
+      photoPitch = euler.x;
+      weapons.setViewmodelVisible(false);
+    } else {
+      weapons.setViewmodelVisible(!vehicles.isInVehicle() && !boat.isInBoat() && !player.isThirdPerson());
+    }
+    return;
+  }
+
+  if (e.code === 'KeyK' && photoMode) {
+    // Capture clean PNG screenshot directly from WebGL canvas
+    composer.render();
+    const link = document.createElement('a');
+    link.download = `vice-dusk-${Date.now()}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+    return;
+  }
+
+  if (photoMode) return;
   if (e.code === 'KeyM') {
     const muted = audio.toggleMute();
     audioStatusEl.textContent = muted ? 'AUDIO: STUMM [M]' : 'AUDIO: AN [M]';
@@ -706,6 +750,25 @@ function animate(now: number): void {
   const dt = Math.min((now - lastTime) / 1000, 0.05);
   const elapsed = (now - startTime) / 1000;
   lastTime = now;
+
+  // Photo Mode: freeze simulation and let user free-fly the camera!
+  if (photoMode) {
+    const flySpd = (photoKeys.has('ShiftLeft') ? 22 : 10) * dt;
+    const fwd = new THREE.Vector3(0, 0, -1).applyEuler(new THREE.Euler(photoPitch, photoYaw, 0, 'YXZ'));
+    const right = new THREE.Vector3(1, 0, 0).applyEuler(new THREE.Euler(0, photoYaw, 0, 'YXZ'));
+    if (photoKeys.has('KeyW')) camera.position.addScaledVector(fwd, flySpd);
+    if (photoKeys.has('KeyS')) camera.position.addScaledVector(fwd, -flySpd);
+    if (photoKeys.has('KeyD')) camera.position.addScaledVector(right, flySpd);
+    if (photoKeys.has('KeyA')) camera.position.addScaledVector(right, -flySpd);
+    if (photoKeys.has('KeyE') || photoKeys.has('Space')) camera.position.y += flySpd;
+    if (photoKeys.has('KeyQ') || photoKeys.has('KeyC')) camera.position.y = Math.max(0.4, camera.position.y - flySpd);
+    camera.rotation.order = 'YXZ';
+    camera.rotation.y = photoYaw;
+    camera.rotation.x = photoPitch;
+    camera.rotation.z = 0;
+    composer.render();
+    return;
+  }
 
   // Handle Wasted respawn countdown
   if (wastedTimer > 0) {

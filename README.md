@@ -13,28 +13,21 @@ Gebaut mit **Three.js**, **TypeScript**, **Vite** und der **Web Audio API** — 
 
 ## Features
 
-- **Miami Coastal District (3×3 Blocks + Ocean Drive, Strand & Begehbarer Club):**
-  - Prozedurale Art-Deco-Pastellfassaden, leuchtende Neon-Schilder, zwei beleuchtete **Aussichtsdecks mit Außentreppen** und der **begehbare NEON CLUB (`C`)** am Ocean Drive (pulsierende Tanzfläche, Bar, DJ-Pult, tanzende Gäste & Deckung vor dem Polizei-Heli).
-  - **Nasser Post-Rain-Asphalt** mit prozeduraler Pfützen-Roughness-Map, **Drift-Skidmarks**, Brandspuren & Einschusslöchern (`DecalSystem`), Palmen, Strand & animierter Dusk-Ozean-Shader + `UnrealBloomPass`.
-  - **Tageszeit & Wetter live umschaltbar:** `T` wechselt zwischen *Golden Hour*, *Miami Sunset* und *Neon Night*; `Y` startet einen **Tropenschauer** mit 3D-Regenstreifen, Wetterleuchten und fernem Donner.
-  - **Zerstörbare Street-Props:** Feuerhydranten (mit 11s-Wasserfontäne!), Café-Tische mit Pastell-Sonnenschirmen und Neon-Mülltonnen.
-- **First-Person-Gunplay (5 Waffen inkl. Nahkampf) & Drive-By:**
-  - **Neon Katana (`0`)** für schnelle Nahkampf-Slashes, **Vice 9mm (`1`)**, **Neon Mac-10 SMG (`2`)**, **Palm 12G Shotgun (`3`)** und **Neon Launcher (`4 · RPG`)** mit Flächenschaden & **Camera-Shake**.
-  - 3D-Viewmodels mit Sway, Rückstoß, Mündungsfeuer, ADS-Zoom (`RMB`), Nachladen (`R`), Tracern, Funken & Hitmarkern.
-  - **Drive-By-Schießen:** Während der Fahrt mit `LMB` aus dem Fahrerfenster feuern.
-- **Fahrbare Retro-Autos, Kollisionsphysik & Speedboat:**
-  - 8 Retro-Fahrzeuge (u. a. *Cheetah GT*, *Infernus 86*, *Solaris Cabrio*, *Vice PD Cruiser* & *Interceptor* + Verkehr) mit **solider Auto-zu-Auto-Kollision**, geschwindigkeitsabhängigem **Crash-Schaden**, Rauch/Feuer und **Explosionen mit Kettenreaktionen**.
-  - Dynamischer **Scheinwerfer-Lichtkegel (`SpotLight`)**, Drift-Rauch & Reifenquietschen (`Space`), umschaltbare **Chase-/Cockpit-Kamera (`V`)** und **Pay ’n’ Spray Lackiererei (`F`)** zum Reparieren, Umlackieren & Sterne-Löschen.
-  - **Stinger Speedboat** direkt am Strandufer (`E`) für rasante Fahrten mit Gischtspur über den Dusk-Ozean.
-- **Vice-City-Charaktere, Polizei-KI, Helikopter, Polizeifunk & Story-Heist:**
-  - Prozedural texturierte, animierte Charaktere (80s-Sonnenbrillen, Hawaii-Hemden, Pastell-Sakkos, Vice-PD-Uniformen & Syndikat-Anzüge).
-  - **1–5 Wanted-Sterne:** Vice-PD-Einheiten zu Fuß, aktive **Polizei-Streifenwagen** ab 2 Sternen, abschießbarer **Vice-PD-Helikopter mit Suchscheinwerfer** ab 3 Sternen und **Vice-PD-Polizeifunk** mit Walkie-Talkie-Rauschen.
-  - **3-stufiger Story-Heist „Ocean Club Finale“ (`H`, `+$3.500`):** Fluchtwagen positionieren → Syndikat-Wachen auf der Terrasse ausschalten & Tresorkoffer sichern → unter 4-Sterne-Heat per Speedboat über den Ozean entkommen!
-  - **5 rotierende Mini-Missionen** mit 3D-Neon-Beacon & **AMMU-NEON Shop (`B`)** für Medkits, Kevlar-Rüstung (`AR`) & *Neon Launcher*.
-- **Miami-Radar, 80s-Radio, Gamepad, Touch & Persistenz:**
-  - Mitdrehende Minimap mit Gebäuden, Straßen, Fahrzeugen, `$`-Shop, `P`-Pay-’n’-Spray, `C`-Club, `★`-Heist & `H`-Helikopter.
-  - Prozedurale **Web-Audio-Engine** + **3 Synthwave-Radiosender (`Q`)**: *VICE FM*, *DUSK CHILL*, *OUTRUN TURBO*.
-  - Voller **Gamepad-Support** (Xbox/PlayStation), automatische **Mobile/Tablet-Touch-Steuerung**, Vite Code-Splitting & `localStorage`-Speicherstand.
+- **Miami Coastal District (3×3 Blocks + Abschüssiger Strand & NEON CLUB):**
+  - Prozedurale Art-Deco-Pastellfassaden, leuchtende Neon-Schilder, zwei **Aussichtsdecks**, funktionierende **Ampeln** an den 4 Hauptkreuzungen, Post-Rain-**Laternen-Dunst** und **Neon-Stunt-Rampen** (*INSANE STUNT BONUS!*).
+  - **Abschüssiger Miami Beach:** Sanft abfallende Dünen mit spiegelndem **nassem Ufersand**, halbtransparenter Brandung, **South-Beach-Lifeguard-Turm** (begehbar), beleuchtetem **Holzsteg zum Speedboat**, Sonnenliegen, Beachvolleyball-Netz, kreisenden **Möwen** & räumlichem **Meeresrauschen**.
+  - **Begehbarer NEON CLUB (`C`):** Rotierende **Spiegel-Discokugel**, 4 bis zum Boden reichende **Effektstrahler**, beleuchtete Bar mit **Barkeeper & Miami Vice Cocktails (`F`)**, DJ-Pult mit basspulsierenden **Subwoofer-Türmen**, 5 Tänzer und **räumliche 126-BPM-Clubmusik**.
+  - **Tageszeit, Wetter & Zerstörung:** `T` (Golden Hour / Sunset / Neon Night), `Y` (Tropenschauer mit Blitz & Donner), zerstörbare Hydranten (mit Wasserfontäne!), Café-Tische & Mülltonnen.
+- **First- & Third-Person-Gunplay (5 Waffen inkl. Nahkampf) & Drive-By:**
+  - Umschaltbar zu Fuß per **`V`** zwischen **First-Person** und **3rd-Person (Over-the-Shoulder mit 80s-Spielermodell)**.
+  - **Neon Katana (`0`)**, **Vice 9mm (`1`)**, **Neon Mac-10 SMG (`2`)**, **Palm 12G Shotgun (`3`)**, **Neon Launcher (`4 · RPG`)** + **Drive-By-Schießen (`LMB`)** aus dem Fahrzeug.
+- **Fahrbare Retro-Autos, 80s-Motorrad („PCJ-86“), Speedboat & Polizei-Eskalation:**
+  - 9 Fahrzeuge inkl. **PCJ-86 Neon-Motorrad** (mit Kurven-Schräglage & 3D-Fahrer), Auto-zu-Auto-Kollisionen, geschwindigkeitsabhängigem Crash-Schaden, **Explosionen**, **Brems- & Rückfahrlichtern**, Drift-Rauch & Skidmarks, **Pay ’n’ Spray (`F`)** sowie dem **Stinger Speedboat** am Pier.
+  - **1–5 Wanted-Sterne:** Personen-Kollisionen, verfolgende **Vice-PD-Streifenwagen** (ab 2★), **Polizei-Straßensperren** & abschießbarer **Vice-PD-Helikopter mit Suchscheinwerfer** (ab 3★) plus **Polizeifunk**.
+- **Story-Heist, Mini-Missionen, Fotomodus (`P`) & Komfort:**
+  - **3-stufiger Story-Heist „Ocean Club Finale“ (`H`, `+$3.500`)**, 5 rotierende Mini-Missionen & **AMMU-NEON Shop (`B`)** (Medkits, Kevlar-Armor, Launcher).
+  - **Fotomodus (`P`):** Welt einfrieren, freie Flugkamera (`WASD` + `E`/`Q`) und PNG-Screenshot per **`K`** speichern.
+  - Miami-Radar, **3 Synthwave-Radiosender (`Q`)**, **Gamepad-Support**, **Mobile/Tablet-Touch-Steuerung**, Vite Code-Splitting & `localStorage`-Speicherstand.
 
 ---
 
@@ -51,11 +44,12 @@ Gebaut mit **Three.js**, **TypeScript**, **Vite** und der **Web Audio API** — 
 | `Shift` / `C` | Sprinten / Ducken |
 | `Space` | Springen / Drift-Handbremse im Auto |
 | `E` | Auto oder Speedboat ein- / aussteigen |
-| `V` | Kamera im Auto wechseln (Chase / Cockpit) |
+| `V` | Kamera wechseln (zu Fuß: 1st/3rd-Person · im Auto: Chase/Cockpit) |
 | `Q` | 80s-Radio-Sender wechseln |
-| `F` | Pay ’n’ Spray nutzen (im Auto in der Bucht) |
+| `F` | Pay ’n’ Spray (im Auto) / Miami Vice Cocktail an der Club-Bar |
 | `B` | AMMU-NEON Shop öffnen (am Central Plaza) |
 | `T` / `Y` | Tageszeit wechseln / Tropenschauer an & aus |
+| `P` / `K` | Fotomodus an & aus / PNG-Screenshot im Fotomodus |
 | `M` | Audio stummschalten |
 | `ESC` | Pause & Einstellungen |
 

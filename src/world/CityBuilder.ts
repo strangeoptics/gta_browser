@@ -10,6 +10,7 @@ import {
 } from './CityLayout';
 import {
   createArtDecoFacadeTexture,
+  createBeachSandTextures,
   createNeonSignTexture,
   createSidewalkTexture,
   createWetAsphaltTextures,
@@ -22,6 +23,7 @@ export interface MiamiWorld {
   cycleTimeOfDay: () => string;
   toggleRain: () => boolean;
   isInsideClub: (pos: THREE.Vector3) => boolean;
+  getGroundHeight: (x: number, z: number) => number;
   onThunder?: () => void;
   update: (elapsed: number, dt: number, playerPos?: THREE.Vector3) => void;
 }
@@ -548,8 +550,22 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
   scene.add(oceanDeckNeon);
 
   // ---------------------------------------------------------------------------
-  // 5b) Ocean Drive Boardwalk, Beach & Animated Golden-Hour Ocean (East Edge)
+  // 5b) Sloping Coastal Beach (Dry Dunes -> Mirror-Wet Shoreline) & Dusk Ocean
   // ---------------------------------------------------------------------------
+  // Shared continuous beach elevation function:
+  // Flush with boardwalk at x = 74 (+0.20m), gently sloping with subtle coastal dunes
+  // down into the shallow surf (-0.65m at x = 114).
+  const getBeachHeight = (x: number, z: number): number => {
+    if (x <= 74) return 0;
+    const t = THREE.MathUtils.clamp((x - 74) / 40, 0, 1);
+    const smoothSlope = t * t * (3 - 2 * t);
+    const baseY = THREE.MathUtils.lerp(0.2, -0.68, smoothSlope);
+    // Gentle natural dunes on the upper dry beach, flattening smoothly at the surf line
+    const dune =
+      (Math.sin(z * 0.085) * 0.12 + Math.cos(x * 0.16 + z * 0.04) * 0.05) * (1 - smoothSlope) * Math.min(1, (x - 74) / 5);
+    return baseY + dune;
+  };
+
   // Boardwalk east of x = 66
   addStaticBox(8, 0.22, 144, 70, 0.11, 0, sidewalkMat, false, 'sidewalk');
 
@@ -559,35 +575,58 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
     addStaticBox(0.55, 0.85, 22, 73.7, 0.22 + 0.425, segZ, seawallMat, true, 'prop');
   }
 
-  // Golden-hour sand beach (x = 74 to 118)
-  const sandMat = new THREE.MeshStandardMaterial({ color: '#c9a684', roughness: 0.92 });
-  const beach = new THREE.Mesh(new THREE.PlaneGeometry(46, 260), sandMat);
-  beach.rotation.x = -Math.PI / 2;
-  beach.rotation.y = 0;
-  beach.position.set(96, -0.04, 0);
+  // Subdivided sloping beach mesh (x = 74 to 120) with dry-to-wet sand PBR roughness map
+  const beachTex = createBeachSandTextures();
+  const sandMat = new THREE.MeshStandardMaterial({
+    map: beachTex.map,
+    roughnessMap: beachTex.roughnessMap,
+    roughness: 1.0, // modulated by roughnessMap (dry ~0.92, wet shoreline ~0.10)
+    metalness: 0.14,
+    envMapIntensity: 1.45,
+  });
+
+  const beachWidth = 46; // x: 74 .. 120
+  const beachLength = 260;
+  const beachGeo = new THREE.PlaneGeometry(beachWidth, beachLength, 44, 64);
+  beachGeo.rotateX(-Math.PI / 2);
+  const bPos = beachGeo.attributes.position as THREE.BufferAttribute;
+  for (let i = 0; i < bPos.count; i++) {
+    const worldX = bPos.getX(i) + 97; // centered at x = 97 -> spans 74..120
+    const worldZ = bPos.getZ(i);
+    bPos.setY(i, getBeachHeight(worldX, worldZ));
+  }
+  beachGeo.computeVertexNormals();
+
+  const beach = new THREE.Mesh(beachGeo, sandMat);
+  beach.position.set(97, 0, 0);
   beach.receiveShadow = true;
   scene.add(beach);
+  worldMeshes.push(beach);
 
-  // Animated Dusk Ocean Shader (x > 110 out to horizon)
+  // Animated Dusk Ocean Shader with translucent shallow wash & receding shoreline foam
   const oceanUniforms = {
     uTime: { value: 0 },
     uSunDir: { value: sunDir },
     uDeepColor: { value: new THREE.Color('#181938') },
-    uShallowColor: { value: new THREE.Color('#275b75') },
+    uShallowColor: { value: new THREE.Color('#276882') },
     uHorizonGlow: { value: new THREE.Color('#ff8e5c') },
   };
   const oceanMat = new THREE.ShaderMaterial({
     uniforms: oceanUniforms,
+    transparent: true,
     vertexShader: /* glsl */ `
       uniform float uTime;
       varying vec3 vWorldPos;
       varying float vWave;
       void main() {
         vec3 pos = position;
-        float w1 = sin(pos.x * 0.18 + uTime * 1.4) * 0.16;
-        float w2 = cos(pos.y * 0.14 - uTime * 1.1) * 0.12;
-        pos.z += w1 + w2;
-        vWave = w1 + w2;
+        float distFromShore = clamp((pos.x + 120.0) / 40.0, 0.0, 1.0);
+        float w1 = sin(pos.x * 0.18 - uTime * 1.65) * 0.15 * distFromShore;
+        float w2 = cos(pos.y * 0.14 - uTime * 1.15) * 0.11 * distFromShore;
+        // Gentle rhythmic shoreline swash lifting the shallow edge
+        float swash = sin(uTime * 1.35 + pos.y * 0.05) * 0.045 * (1.0 - distFromShore);
+        pos.z += w1 + w2 + swash;
+        vWave = w1 + w2 + swash;
         vec4 wp = modelMatrix * vec4(pos, 1.0);
         vWorldPos = wp.xyz;
         gl_Position = projectionMatrix * viewMatrix * wp;
@@ -603,20 +642,33 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
       void main() {
         vec3 viewDir = normalize(cameraPosition - vWorldPos);
         float fresnel = pow(1.0 - max(dot(viewDir, vec3(0.0, 1.0, 0.0)), 0.0), 3.0);
-        float shoreBlend = smoothstep(106.0, 145.0, vWorldPos.x);
+
+        // Dynamic tide swash line oscillating across x ~ 96..103
+        float swashOffset = sin(uTime * 1.35 + sin(vWorldPos.z * 0.07) * 2.2) * 2.1;
+        float shoreX = vWorldPos.x + swashOffset;
+
+        float shoreBlend = smoothstep(98.0, 142.0, vWorldPos.x);
         vec3 waterCol = mix(uShallowColor, uDeepColor, shoreBlend);
         waterCol = mix(waterCol, uHorizonGlow, fresnel * 0.72);
-        // Subtle foam shimmer near shore
-        float foam = smoothstep(112.0, 106.5, vWorldPos.x) * (0.45 + 0.55 * sin(vWorldPos.z * 0.35 + uTime * 2.2));
-        waterCol += vec3(0.95, 0.85, 0.88) * max(foam, 0.0) * 0.35;
-        waterCol += vec3(1.0, 0.72, 0.55) * max(vWave, 0.0) * 0.3;
-        gl_FragColor = vec4(waterCol, 1.0);
+
+        // Soft animated foam ribbon hugging the wet sloping sand
+        float foamBand = smoothstep(106.0, 99.5, shoreX) * smoothstep(95.5, 99.0, shoreX);
+        float foamPattern = 0.55 + 0.45 * sin(vWorldPos.z * 0.45 + uTime * 2.4) * cos(shoreX * 1.4 - uTime * 1.8);
+        float foam = clamp(foamBand * foamPattern, 0.0, 1.0);
+        waterCol = mix(waterCol, vec3(1.0, 0.92, 0.93), foam * 0.65);
+
+        // Subtle golden wave crest shimmer
+        waterCol += vec3(1.0, 0.72, 0.55) * max(vWave, 0.0) * 0.35;
+
+        // Translucent shallow edge so wet sand glows underneath the surf
+        float alpha = smoothstep(96.0, 102.5, shoreX) * 0.92 + foam * 0.35;
+        gl_FragColor = vec4(waterCol, clamp(alpha, 0.0, 0.96));
       }
     `,
   });
-  const ocean = new THREE.Mesh(new THREE.PlaneGeometry(240, 420, 40, 40), oceanMat);
+  const ocean = new THREE.Mesh(new THREE.PlaneGeometry(240, 420, 48, 48), oceanMat);
   ocean.rotation.x = -Math.PI / 2;
-  ocean.position.set(226, -0.12, 0);
+  ocean.position.set(214, -0.18, 0); // spans x = 94 .. 334, intersecting the sloping beach around x ~ 99!
   scene.add(ocean);
 
   // ---------------------------------------------------------------------------
@@ -768,6 +820,7 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
       pos.z > clubZ - clubD / 2 &&
       pos.z < clubZ + clubD / 2 &&
       pos.y < clubH,
+    getGroundHeight: (x: number, z: number) => getBeachHeight(x, z),
     update: (elapsed: number, dt: number, playerPos?: THREE.Vector3) => {
       oceanUniforms.uTime.value = elapsed;
 

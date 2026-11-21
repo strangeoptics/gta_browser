@@ -295,3 +295,92 @@ export function createNeonSignTexture(text: string, neonColor: string): THREE.Ca
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
 }
+
+/**
+ * Generates paired beach sand albedo & roughness maps transitioning across U (west -> east):
+ * - Upper dry Miami sand (warm light golden, rough ~0.92, subtle wind ripples)
+ * - Wavy organic damp tide-line
+ * - Wet reflective shoreline sand (darker rich tone, smooth ~0.10 so it mirrors the sunset!)
+ */
+export function createBeachSandTextures(): {
+  map: THREE.CanvasTexture;
+  roughnessMap: THREE.CanvasTexture;
+} {
+  const w = 512;
+  const h = 256;
+
+  const albedoCanvas = document.createElement('canvas');
+  albedoCanvas.width = w;
+  albedoCanvas.height = h;
+  const aCtx = albedoCanvas.getContext('2d')!;
+
+  const roughCanvas = document.createElement('canvas');
+  roughCanvas.width = w;
+  roughCanvas.height = h;
+  const rCtx = roughCanvas.getContext('2d')!;
+
+  const aImg = aCtx.createImageData(w, h);
+  const rImg = rCtx.createImageData(w, h);
+
+  for (let y = 0; y < h; y++) {
+    const v = y / h;
+    // Periodic wavy tide-line along the shore
+    const tideWave =
+      Math.sin(v * Math.PI * 2 * 2) * 0.028 +
+      Math.sin(v * Math.PI * 2 * 5 + 1.3) * 0.014;
+
+    for (let x = 0; x < w; x++) {
+      const u = x / w; // 0 = promenade edge (dry), 1 = underwater (wet)
+      const grain = (hash2D(x * 1.1, y * 1.1) - 0.5) * 18;
+      const ripple = Math.sin(u * 95 + Math.sin(v * Math.PI * 2 * 4) * 2.5) * 5;
+
+      // Smooth transition from dry sand (u < 0.48) to wet reflective surf sand (u > 0.62)
+      const wetFactor = THREE.MathUtils.smoothstep(u + tideWave, 0.46, 0.64);
+
+      // Dry warm Miami sand (#d8b994) -> Wet darker reflective sand (#6b4f41)
+      const dryR = 216 + grain + ripple;
+      const dryG = 184 + grain * 0.9 + ripple * 0.8;
+      const dryB = 148 + grain * 0.8 + ripple * 0.6;
+
+      const wetR = 104 + grain * 0.45;
+      const wetG = 78 + grain * 0.4;
+      const wetB = 66 + grain * 0.4;
+
+      const r = THREE.MathUtils.clamp(THREE.MathUtils.lerp(dryR, wetR, wetFactor), 0, 255);
+      const g = THREE.MathUtils.clamp(THREE.MathUtils.lerp(dryG, wetG, wetFactor), 0, 255);
+      const b = THREE.MathUtils.clamp(THREE.MathUtils.lerp(dryB, wetB, wetFactor), 0, 255);
+
+      // Roughness: ~0.92 (235) on dry sand -> ~0.10 (26) on mirror-wet shoreline sand
+      const roughVal = Math.round(
+        THREE.MathUtils.clamp(THREE.MathUtils.lerp(236 + grain * 0.5, 24, wetFactor), 18, 250),
+      );
+
+      const idx = (y * w + x) * 4;
+      aImg.data[idx] = r;
+      aImg.data[idx + 1] = g;
+      aImg.data[idx + 2] = b;
+      aImg.data[idx + 3] = 255;
+
+      rImg.data[idx] = roughVal;
+      rImg.data[idx + 1] = roughVal;
+      rImg.data[idx + 2] = roughVal;
+      rImg.data[idx + 3] = 255;
+    }
+  }
+
+  aCtx.putImageData(aImg, 0, 0);
+  rCtx.putImageData(rImg, 0, 0);
+
+  const map = new THREE.CanvasTexture(albedoCanvas);
+  map.colorSpace = THREE.SRGBColorSpace;
+  map.wrapS = THREE.ClampToEdgeWrapping;
+  map.wrapT = THREE.RepeatWrapping;
+  map.repeat.set(1, 6);
+
+  const roughnessMap = new THREE.CanvasTexture(roughCanvas);
+  roughnessMap.wrapS = THREE.ClampToEdgeWrapping;
+  roughnessMap.wrapT = THREE.RepeatWrapping;
+  roughnessMap.repeat.set(1, 6);
+
+  return { map, roughnessMap };
+}

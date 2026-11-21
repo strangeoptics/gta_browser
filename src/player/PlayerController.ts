@@ -149,7 +149,12 @@ export class PlayerController {
     }
   };
 
-  public update(dt: number, colliders: AABB[], pad?: GamepadSnapshot): PlayerStatus {
+  public update(
+    dt: number,
+    colliders: AABB[],
+    pad?: GamepadSnapshot,
+    getGroundHeight?: (x: number, z: number) => number,
+  ): PlayerStatus {
     const clampedDt = Math.min(dt, 0.05);
     const active = this.getIsActive();
     const maxPitch = Math.PI / 2 - 0.04;
@@ -238,6 +243,7 @@ export class PlayerController {
     );
 
     const activeHeight = this.crouching ? this.crouchHeight : this.standHeight;
+    const baseGroundY = getGroundHeight ? getGroundHeight(nextX, nextZ) : 0;
     const resolved = resolvePlayerCollisions(
       nextX,
       nextY,
@@ -246,6 +252,8 @@ export class PlayerController {
       this.radius,
       activeHeight,
       colliders,
+      0.28,
+      baseGroundY,
     );
 
     this.position.set(resolved.x, resolved.y, resolved.z);

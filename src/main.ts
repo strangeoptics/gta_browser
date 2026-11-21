@@ -722,7 +722,7 @@ function animate(now: number): void {
 
   if (!inAnyCraft) {
     const allColliders = [...world.colliders, ...vehicles.getVehicleColliders()];
-    const status = player.update(dt, allColliders, pad);
+    const status = player.update(dt, allColliders, pad, world.getGroundHeight);
     playerSpeed = status.speed;
     playerGrounded = status.grounded;
   } else if (inVehicle) {

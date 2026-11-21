@@ -22,6 +22,7 @@ export function resolvePlayerCollisions(
   height: number,
   colliders: AABB[],
   maxStepHeight = 0.28,
+  baseGroundY = 0,
 ): ColliderResolution {
   let outX = x;
   let outY = y;
@@ -30,9 +31,9 @@ export function resolvePlayerCollisions(
   let grounded = false;
   let hitCeiling = false;
 
-  // Base ground plane at y = 0
-  if (outY <= 0) {
-    outY = 0;
+  // Base terrain/ground height (flat y = 0 in city, gently sloping on the beach)
+  if (outY <= baseGroundY) {
+    outY = baseGroundY;
     if (outVy < 0) outVy = 0;
     grounded = true;
   }

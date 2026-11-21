@@ -50,28 +50,32 @@ src/
 │   ├── VigilanteSystem.ts   # Police Vigilante mode ([G]) in Vice PD vehicles with escalating bounties
 │   └── WantedSystem.ts      # 0–5 star heat & decay system
 ├── hud/
-│   └── Minimap.ts           # Rotating circular 2D-canvas radar (streets, buildings, vehicles, $, P, C, ⌂, PD, ★, H)
+│   └── Minimap.ts           # 30-Hz rotating circular 2D-canvas radar (streets, Starfish Island, Yacht, Vice Port, $, P, C, ⌂, PD, IE, M, ★, H)
 ├── player/
 │   ├── PlayerAvatar.ts      # 3rd-person 80s protagonist model with 5 switchable outfits (incl. Vice PD Uniform) & held weapon
 │   └── PlayerController.ts  # Pointer-Lock + drag/arrow fallback FPS & Over-the-Shoulder 3rd-person camera (with wall-clip raycast & drunk stagger)
 ├── vehicles/
-│   ├── BoatSystem.ts        # Drivable Stinger Speedboat moored off the beach pier (x~111, z=8)
+│   ├── BoatSystem.ts        # Drivable Stinger Speedboat (beach pier, Starfish Island & Superyacht docking)
+│   ├── CarBuilder.ts        # 8 detailed extruded 3D car models (DeLorean, Cybertruck, Trans Am K.I.T.T., Bounder RV, Monaco, Challenger, Police, Supercar)
 │   ├── MotorcycleBuilder.ts # Detailed procedural 80s superbike ("PCJ-86 NEON BIKE") with torus tires, forks, engine & rider
-│   └── VehicleSystem.ts     # Cars + PCJ-86 Bike, 2-sphere car-to-car collisions, crash damage, explosions, stunt jumps, AI traffic & police pursuit
+│   ├── PlayerHelicopterSystem.ts # Flyable 80s executive helicopter ("VICE MAVERICK") stationed on Starfish Island Helipad
+│   └── VehicleSystem.ts     # Vehicle physics, height-aware building/bridge collisions, 2-sphere car collisions, pooled VFX & AI traffic/police
 └── world/
     ├── BeachProps.ts        # Lifeguard tower, illuminated wooden pier, loungers, volleyball net, dune grass & circling seagulls
-    ├── CityBuilder.ts       # Sky dome, PMREM reflections, wet roads, Art-Deco buildings, sloping beach, ocean shader, weather & time-of-day
-    ├── CityLayout.ts        # Deterministic 3×3 city grid & reserved walk-in interior blocks
-    ├── DecalSystem.ts       # Fixed-cap (150) ring buffer for drift skidmarks, blast scorches & bullet holes
-    ├── DestructibleProps.ts # Smashable hydrants (water geyser), café tables & neon bins
-    ├── NeonClub.ts          # Walk-in NEON CLUB (40, 0): disco ball, floor-reaching spotlights, bar/cocktails (drunk system), bartender, DJ & dancers
-    ├── PoliceStation.ts     # Walk-in VICE PD PRECINCT 06 (-40, 0): lobby, Desk Sergeant, Wanted board, donuts, 2 cells, evidence armory (+$1,500 case), rooftop helipad
+    ├── CityBuilder.ts       # Sky dome, PMREM reflections, instanced palms, fixed PointLight pool, wet roads, beach, ocean shader & weather
+    ├── CityLayout.ts        # Deterministic 3×3 city grid, reserved walk-in blocks & expanded playableBounds (Starfish Island + Vice Port)
+    ├── DecalSystem.ts       # 3 InstancedMesh ring buffers (constant 3 draw calls) for skidmarks, scorches & bullet holes
+    ├── DestructibleProps.ts # Smashable hydrants (water geyser), café tables & neon bins (with flat raycast hitboxes)
+    ├── NeonClub.ts          # Walk-in NEON CLUB (40, 0): instanced bottles/disco tiles, spotlights, bar/cocktails (drunk system), bartender, DJ & dancers
+    ├── PoliceStation.ts     # Walk-in VICE PD PRECINCT 06 (-40, 0): lobby, Desk Sergeant, Wanted board, donuts, 2 cells, evidence armory (+$1,500), helipad
     ├── RoadblockSystem.ts   # Vice PD roadblocks at 3+ stars with smashable barricades
-    ├── Safehouse.ts         # Walk-in 2-level VICE SAFEHOUSE (40, -40): tight-sensor garage, sliding doors, kitchenette/fridge, gun cabinet, TV, recessed rooftop pool + unicorn float
+    ├── Safehouse.ts         # Walk-in 2-level VICE SAFEHOUSE (40, -40): tight-sensor garage, sliding doors, kitchenette/fridge, gun cabinet, TV, pool + unicorn float
+    ├── StarfishIsland.ts    # Arched Neon Causeway Bridge (z=-60), Starfish Island Estate (+$2,500 vault), & 44m Superyacht "LADY VICE" (+$1,800 stash)
     ├── StuntRamps.ts        # Neon stunt ramps (beach & downtown)
     ├── Textures.ts          # Procedural wet asphalt/puddle, beach sand, sidewalk, Art-Deco facade & neon sign textures
     ├── TrafficLights.ts     # Working 3-phase traffic signals at the 4 central intersections
-    └── ViceNewsTv.ts        # Procedural 80s US news channel ("VICE 6 NEWS") with animated anchor, ticker & Web Speech API voice
+    ├── ViceNewsTv.ts        # Procedural 80s US news channel ("VICE 6 NEWS") with animated anchor, ticker & Web Speech API voice
+    └── VicePort.ts          # South Industrial Container Docks (z=66..140): 26m animated cranes, 58m freighter, stunt ramps & Import/Export warehouse (IE)
 ```
 
 ---
@@ -94,17 +98,21 @@ Respect these coordinates when adding buildings, props, or spawn points:
   - `row=0, col=2` `(40, -40)`: Hollow 2-level **VICE SAFEHOUSE** (garage + lounge + recessed rooftop pool).
   - **Pay 'n' Spray:** West avenue at `(-56, -38)`.
   - **Heist Start Beacon:** Ocean Drive at `(60, -26)`.
+  - **Starfish Island & Superyacht (East):** Arched Causeway Bridge at `z = -60` (`x = 66..148`), Starfish Island (`x = 148..198, z = -84..-20`, `y = 0.68`, Estate vault + Maverick helipad at `(162, -74)`), Superyacht `"LADY VICE"` (`x = 165..179, z = -7..38`).
+  - **Vice Port Industrial Docks (South):** Concrete port apron (`x = -68..78, z = 66..126`), 58m freighter (`z = 135`), Import/Export Warehouse (`58, 92`).
 
 ---
 
 ## Key Conventions & Gotchas
 
-1. **Walkable Stairs:** `Physics.ts` uses `maxStepHeight = 0.28`. Every walkable staircase (rooftop decks, lifeguard tower, safehouse stairs, pool exit steps) **must** use step risers `<= 0.24m`.
-2. **Bloom Threshold (`0.86`):** `UnrealBloomPass` triggers above `0.86`. Keep `emissiveIntensity > 1.0` strictly for thin neon tubes, signs, headlights, and beacons. Large flat surfaces (pool water, rooftops, floors, walls) must stay `<= 0.35` or they blow out into blinding bloom.
-3. **Hollow Interiors & Rooftop Openings:** Never place a single spanning box across a roof that has a recessed pool or skylight, and verify interior partition walls don't intersect recessed basins.
-4. **Unified Input Flow:** `GamepadInput.poll()` produces a `GamepadSnapshot`, which `TouchControls.mergeInto()` augments on touch devices. Pass this snapshot into controllers (`PlayerController`, `WeaponSystem`, `VehicleSystem`, `BoatSystem`) rather than duplicating input plumbing.
-5. **Collision Layers:**
+1. **Walkable Stairs:** `Physics.ts` uses `maxStepHeight = 0.28`. Every walkable staircase (rooftop decks, lifeguard tower, safehouse stairs, pool exit steps, yacht stairs) **must** use step risers `<= 0.24m`.
+2. **Bloom Threshold (`0.86`):** `UnrealBloomPass` runs at half-resolution and triggers above `0.86`. Keep `emissiveIntensity > 1.0` strictly for thin neon tubes, signs, headlights, and beacons. Large flat surfaces (pool water, rooftops, floors, walls) must stay `<= 0.35` or they blow out into blinding bloom.
+3. **Never Toggle `THREE.Light.visible` or Add/Remove Lights at Runtime:** Changing the active `NUM_POINT_LIGHTS` count triggers synchronous ANGLE/D3D11 shader recompilation stalls (300–1000ms freezes). Keep a small, fixed set of permanent lights, modulate `intensity` (0 when inactive), and pre-compile via `renderer.compile(scene, camera)` at startup.
+4. **Hollow Interiors & Rooftop Openings:** Never place a single spanning box across a roof that has a recessed pool or skylight, and verify interior partition walls don't intersect recessed basins.
+5. **Unified Input Flow:** `GamepadInput.poll()` produces a `GamepadSnapshot`, which `TouchControls.mergeInto()` augments on touch devices. Pass this snapshot into controllers (`PlayerController`, `WeaponSystem`, `VehicleSystem`, `BoatSystem`, `PlayerHelicopterSystem`) rather than duplicating input plumbing.
+6. **Collision Layers & Vertical Clearance:**
    - Player on foot collides with `[...world.colliders, ...vehicles.getVehicleColliders(), ...npcs.getNpcColliders()]`.
-   - Vehicles filter `worldColliders` to `c.maxY > 0.45` (so cars drive over `0.18m` curbs) plus `roadblocks.getActiveColliders()`, and use 2-sphere bumper capsules for pairwise car-to-car collisions.
-6. **Target Registration:** Anything shootable (NPCs, vehicles, destructible props, police helicopter) implements `ShootableTarget` (`{ id, mesh, onHit }`) and is aggregated into `shootables` in `src/main.ts`.
-7. **Texture & Geometry Hygiene:** Cache procedural `CanvasTexture`s (as in `CharacterTextures.ts`) and dispose transient particle geometries/materials when their lifetime ends.
+   - Vehicles use pre-filtered `world.solidVehicleColliders` (`c.maxY > 0.45 && c.minY < 2.9`) plus vertical overlap checks (`v.position.y < box.maxY && vehTop > box.minY`) so cars/bikes drive cleanly under garage lintels and roofs.
+   - NPCs use `world.solidNpcColliders` with per-NPC floor elevation checks (`box.maxY > npcY + 0.35`) so Starfish Island & Superyacht guards walk cleanly on elevated decks.
+7. **Target Registration & Flat Hitboxes:** Anything shootable (NPCs, vehicles, destructible props, police helicopter) exposes a single invisible proxy `hitbox` `THREE.Mesh` (`material: { visible: false }`) as `ShootableTarget.mesh` so `WeaponSystem` performs fast non-recursive raycasts (`intersectObjects(..., false)`).
+8. **Texture & Geometry Hygiene:** Cache procedural `CanvasTexture`s (as in `CharacterTextures.ts`), use `InstancedMesh` for repeated props/palms/decals, and pool transient particle meshes/materials (`sparkPool`, `smokePool`).

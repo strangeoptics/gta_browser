@@ -13,9 +13,13 @@ Gebaut mit **Three.js**, **TypeScript**, **Vite** und der **Web Audio API** — 
 
 ## Features
 
-- **Miami Coastal District (3×3 Blocks + Abschüssiger Strand & NEON CLUB):**
+- **Miami Coastal District (3×3 Blocks + Strand, Starfish Island, Superyacht & Vice Port):**
   - Prozedurale Art-Deco-Pastellfassaden, leuchtende Neon-Schilder, zwei **Aussichtsdecks**, funktionierende **Ampeln** an den 4 Hauptkreuzungen, Post-Rain-**Laternen-Dunst** und **Neon-Stunt-Rampen** (*INSANE STUNT BONUS!*).
   - **Abschüssiger Miami Beach:** Sanft abfallende Dünen mit spiegelndem **nassem Ufersand**, halbtransparenter Brandung, **South-Beach-Lifeguard-Turm** (begehbar), beleuchtetem **Holzsteg zum Speedboat**, Sonnenliegen, Beachvolleyball-Netz, kreisenden **Möwen** & räumlichem **Meeresrauschen**.
+  - **Starfish Island, Küstenbrücke & 44 m Superyacht „LADY VICE“ (Osten):**
+    - Befahrbare, geschwungene **Neon-Bogenbrücke (Causeway)** übers Meer (`z = -60`, Speedboat passt unten durch!) zur tropischen Privatinsel mit **Kartell-Anwesen „STARFISH ESTATE“** (`+$2.500` Goldtresor, bewacht von **6 Kartell-Sicherheitswachen**), Helipad mit **fliegbarem „VICE MAVERICK“-Helikopter (`M`)** sowie der begehbaren **44-Meter-Superyacht „LADY VICE“** (Planken-Teakdeck, Jacuzzi, Flybridge, drehendes Radar, Yacht-Helipad & `+$1.800` Kapitäns-Gold).
+  - **Vice Port — Container-Hafen & Industrie-Docks (Süden, `z = +66..+140`):**
+    - Industrie-Kaimauer mit Warnstreifen & Pollern, **Wellblech-Container-Schluchten**, **2 animierte 26-Meter-Containerbrücken (Hafenkräne)**, **58-Meter-Frachtschiff „MV VICE TRADER“**, 4 Flutlichtmasten, 2 Hafen-Stunt-Rampen und die **Import-/Export-Halle (`IE`)** mit live aktualisierter 3D-Tafel für 6 gesuchte Kult-Autos (`+$1.500–$2.200` pro Fahrzeug + **`$5.000` Komplett-Bonus**).
   - **Begehbarer NEON CLUB (`C`):** Rotierende **Spiegel-Discokugel**, 4 bis zum Boden reichende **Effektstrahler**, beleuchtete Bar mit **Barkeeper & Miami Vice Cocktails (`F`, `$50`, auch bei 100 % HP)** — ab dem 2. Cocktail treten **stufenweise Betrunkenheits-Effekte** beim Laufen, Schießen, Fahren und in der Kamera auf — plus DJ-Pult, Subwoofer-Türme, 5 Tänzer und **räumliche 126-BPM-Clubmusik**.
   - **Begehbare Polizeistation — VICE PD · PRECINCT 06 (`PD` in West Downtown `-40, 0`):**
     - Art-Deco-Revier mit blauen Kugellampen, automatischen Glasschiebetüren, begehbarer Außentreppe zum **Dach-Helipad (`H`)**, Empfangstresen mit Desk-Sergeant, dynamischer **„MOST WANTED“-Pinnwand**, **Donut-Bar** (3D-Hand) und **2 Gitterzellen** (mit automatischer Schiebe-Zellentür).
@@ -25,8 +29,9 @@ Gebaut mit **Three.js**, **TypeScript**, **Vite** und der **Web Audio API** — 
 - **First- & Third-Person-Gunplay (5 Waffen inkl. Nahkampf) & Drive-By:**
   - Umschaltbar zu Fuß per **`V`** zwischen **First-Person** und **3rd-Person (Over-the-Shoulder mit 80s-Spielermodell)**.
   - **Neon Katana (`0`)**, **Vice 9mm (`1`)**, **Neon Mac-10 SMG (`2`)**, **Palm 12G Shotgun (`3`)**, **Neon Launcher (`4 · RPG`)** + **Drive-By-Schießen (`LMB`)** aus dem Fahrzeug.
-- **Fahrbare Retro-Autos, 80s-Motorrad („PCJ-86“), Speedboat & Polizei-Eskalation:**
-  - 9 Fahrzeuge inkl. detailreicher **PCJ-86 Neon-Superbike** (abgerundete Sportreifen, 5-Speichen-Felgen, Upside-Down-Gabel, Reihen-4-Zylinder, Doppel-Auspuff, Digital-Cockpit, Seitenständer, dynamisches Bremslicht & Kurven-Schräglage), Auto-zu-Auto-Kollisionen, Crash-Schaden, **Explosionen**, **Brems- & Rückfahrlichtern**, Drift-Rauch & Skidmarks, **Pay ’n’ Spray (`F`)** sowie dem **Stinger Speedboat** am Pier.
+- **Kult-Fahrzeuge, Superbike, Speedboat & Fliegbarer Helikopter:**
+  - **8 individuelle 3D-Fahrzeugmodelle** mit extrudierten Karosserieprofilen & detaillierten Rädern: **DeLorean DMC-12**, **Tesla Cybertruck**, **1982 Pontiac Firebird Trans Am** (mit animiertem rotem **K.I.T.T.-Scanner**!), **Dodge Challenger**, **1986 Fleetwood Bounder** (Breaking-Bad-Wohnmobil), **1974 Dodge Monaco** (*Bluesmobile* mit Dach-Megaphon), **Vice PD Cruiser / Interceptor** & **Cheetah GT** — plus die hochdetaillierte **PCJ-86 Neon-Superbike**, das **Stinger Speedboat** und der **fliegbare „VICE MAVERICK“-Helikopter** (`Space`/`C` Höhe, `WASD` Fliegen)!
+  - Auto-zu-Auto-Kollisionen, Crash-Schaden, **Explosionen**, **Brems- & Rückfahrlichter**, Drift-Rauch & `InstancedMesh`-Skidmarks sowie **Pay ’n’ Spray (`F`)**.
   - **1–5 Wanted-Sterne:** Solide Gebäude-, Fahrzeug- & Safehouse-Kollision für alle NPCs, verfolgende **Vice-PD-Streifenwagen** (ab 2★), **Polizei-Straßensperren** & abschießbarer **Vice-PD-Helikopter mit Suchscheinwerfer** (ab 3★) plus **Polizeifunk**.
 - **Eigene Basis — VICE SAFEHOUSE (`⌂` am Nord-Ocean-Drive):**
   - Begehbare 2-Ebenen-Art-Deco-Villa mit **automatischem Rolltor** (private Garage mit engem Nahbereichs-Sensor), **automatischen Glasschiebe- & Innentüren**, Lounge (Sofa, **einschaltbarer 80s-CRT-TV „VICE CHANNEL 6“**, **öffenbarer Waffenschrank** mit allen 5 3D-Waffen, Kleiderschrank mit 5 Outfits, Tresor), **Küchenzeile mit selbstöffnendem Kühlschrank** und **Penthouse-Dachterrasse mit eingelassenem, begehbarem Pool** inkl. Unterwasser-Stufen & schwimmendem **Einhorn-Schwimmreifen**.
@@ -54,8 +59,8 @@ Gebaut mit **Three.js**, **TypeScript**, **Vite** und der **Web Audio API** — 
 | `H` | Ocean Club Story-Heist starten (`+$3.500`) |
 | `G` | Bürgerwehr-Modus (Vigilante) im Vice-PD-Streifenwagen starten / beenden |
 | `Shift` / `C` | Sprinten / Ducken |
-| `Space` | Springen / Drift-Handbremse im Auto |
-| `E` | Auto oder Speedboat ein- / aussteigen |
+| `Space` / `C` | Springen / Ducken · Im Auto: Drift-Handbremse · Im Helikopter: Steigen / Sinken |
+| `E` | Auto, Motorrad, Speedboat oder Helikopter ein- / aussteigen |
 | `V` | Kamera wechseln (zu Fuß: 1st/3rd-Person · im Auto: Chase/Cockpit) |
 | `Q` | 80s-Radio-Sender wechseln |
 | `F` | Pay ’n’ Spray / Safehouse / Polizeiwache (Kaution, Asservaten, Uniform) / Club-Cocktail |
@@ -121,23 +126,27 @@ src/
 ├── player/
 │   └── PlayerController.ts    # Pointer-Lock FPS-Controller mit Fallback-Steuerung
 ├── vehicles/
-│   ├── BoatSystem.ts          # Fahrbares Stinger Speedboat am Strand
+│   ├── BoatSystem.ts          # Fahrbares Stinger Speedboat (Strand, Starfish Island & Yacht)
+│   ├── CarBuilder.ts          # 8 individuelle 3D-Automodelle (DeLorean, Cybertruck, Trans Am, Bounder, Monaco, Challenger…)
 │   ├── MotorcycleBuilder.ts   # Hochdetailliertes 80s-Superbike (PCJ-86 Neon Bike)
-│   └── VehicleSystem.ts       # Retro-Autos, Kollisionen, Crash-Schaden, Explosionen & Polizei-Jäger
+│   ├── PlayerHelicopterSystem.ts # Fliegbarer „VICE MAVERICK“-Helikopter auf Starfish Island
+│   └── VehicleSystem.ts       # Fahrzeugphysik, Kollisionen, Crash-Schaden, Explosionen & Polizei-Jäger
 ├── world/
 │   ├── BeachProps.ts          # Lifeguard-Turm, Holzsteg, Sonnenliegen, Volleyball & Möwen
-│   ├── CityBuilder.ts         # 3×3 Miami-Welt, abschüssiger Strand, Wetter, Tageszeit & Ozean
-│   ├── CityLayout.ts          # Deterministisches Stadt-Layout
-│   ├── DecalSystem.ts         # Drift-Skidmarks, Brandspuren & Einschusslöcher
+│   ├── CityBuilder.ts         # Miami-Welt, Instanced-Palmen, fester Licht-Pool, Strand, Wetter & Ozean
+│   ├── CityLayout.ts          # Deterministisches Stadt-Layout & Weltgrenzen
+│   ├── DecalSystem.ts         # 3 InstancedMesh-Ringbuffer für Skidmarks, Brandspuren & Einschusslöcher
 │   ├── DestructibleProps.ts   # Zerstörbare Hydranten (Wasserfontäne), Cafés & Mülltonnen
 │   ├── NeonClub.ts            # Begehbarer NEON CLUB (Discokugel, Strahler, Bar, Barkeeper, DJ)
 │   ├── PoliceStation.ts       # Begehbare VICE PD Polizeistation (Zellen, Asservaten, Helipad)
 │   ├── RoadblockSystem.ts     # Vice-PD-Straßensperren mit durchbrechbaren Barrikaden
 │   ├── Safehouse.ts           # Begehbare VICE SAFEHOUSE Villa (Garage, Küche, Waffenschrank, TV, Einhorn-Pool)
+│   ├── StarfishIsland.ts      # Neon-Küstenbrücke, Starfish Island (Kartell-Villa) & 44m Superyacht „LADY VICE“
 │   ├── StuntRamps.ts          # Neon-Stunt-Rampen für Insane Stunt Bonuses
 │   ├── Textures.ts            # Prozedurale Pfützen-, Sand-, Fassaden- & Neon-Texturen
 │   ├── TrafficLights.ts       # Funktionierende Ampeln an den 4 Hauptkreuzungen
-│   └── ViceNewsTv.ts          # Prozeduraler 80s-US-Nachrichtensender (Canvas-Studio, Ticker & Speech API)
+│   ├── ViceNewsTv.ts          # Prozeduraler 80s-US-Nachrichtensender (Canvas-Studio, Ticker & Speech API)
+│   └── VicePort.ts            # Container-Hafen, 26m Hafenkräne, 58m Frachter & Import/Export-Halle
 └── main.ts                    # Game-Loop, Post-Processing (Bloom) & HUD-Wiring
 ```
 

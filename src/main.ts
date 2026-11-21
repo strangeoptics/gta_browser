@@ -18,6 +18,7 @@ import { ShopSystem } from './gameplay/ShopSystem';
 import { PayNSpray } from './gameplay/PayNSpray';
 import { Minimap } from './hud/Minimap';
 import { AudioEngine } from './audio/AudioEngine';
+import { GamepadInput } from './engine/GamepadInput';
 import {
   clearProgress,
   loadProgress,
@@ -127,6 +128,8 @@ const shop = new ShopSystem(scene);
 const payNSpray = new PayNSpray(scene);
 const minimap = new Minimap(minimapCanvas);
 const audio = new AudioEngine();
+const gamepad = new GamepadInput();
+let padConnectedToastShown = false;
 objectives.startNextObjective(npcs, wanted);
 
 // Player Controller — spawn on Ocean Drive near parked sports cars
@@ -411,6 +414,54 @@ shopCloseBtn.addEventListener('click', () => {
   closeShop();
 });
 
+function tryToggleVehicleOrBoat(): void {
+  if (boat.isInBoat()) {
+    const land = boat.disembark();
+    player.setSpawn(land.x, land.y, land.z, land.yaw);
+    camera.fov = 75;
+    camera.updateProjectionMatrix();
+    weapons.setEnabled(true);
+  } else if (vehicles.isInVehicle()) {
+    const exitPos = vehicles.exitVehicle();
+    if (exitPos) {
+      player.setSpawn(exitPos.x, exitPos.y, exitPos.z, exitPos.yaw);
+      camera.fov = 75;
+      camera.updateProjectionMatrix();
+      weapons.setEnabled(true);
+    }
+  } else if (boat.isPlayerNear(player.position)) {
+    boat.board();
+    weapons.setEnabled(false);
+  } else {
+    const nearest = vehicles.findNearestVehicle(player.position, 4.4);
+    if (nearest) {
+      if (nearest.isPolice || nearest.isAiControlled) {
+        wanted.addHeat(28);
+      }
+      vehicles.enterVehicle(nearest);
+      weapons.setEnabled(false);
+    }
+  }
+}
+
+function tryUsePayNSpray(): void {
+  const car = vehicles.getActiveVehicle();
+  if (car && payNSpray.isCarInBay(car.position)) {
+    if (objectives.cash >= payNSpray.cost) {
+      objectives.cash -= payNSpray.cost;
+      payNSpray.resprayVehicle(car);
+      wanted.reset();
+      npcs.clearPolice();
+      heli.clear();
+      audio.playPurchase();
+      persistProgress();
+      showQuickToast("PAY 'N' SPRAY · REPARIERT & STERNE GELÖSCHT");
+    } else {
+      showQuickToast(`ZU WENIG CASH · BENÖTIGT $${payNSpray.cost}`);
+    }
+  }
+}
+
 // Enter / Exit Vehicle on [E], Shop on [B], Radio on [Q], Mute Audio on [M]
 window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyM') {
@@ -439,21 +490,7 @@ window.addEventListener('keydown', (e) => {
   }
 
   if (e.code === 'KeyF' && player.getIsActive() && !shopOpen && wastedTimer <= 0) {
-    const car = vehicles.getActiveVehicle();
-    if (car && payNSpray.isCarInBay(car.position)) {
-      if (objectives.cash >= payNSpray.cost) {
-        objectives.cash -= payNSpray.cost;
-        payNSpray.resprayVehicle(car);
-        wanted.reset();
-        npcs.clearPolice();
-        heli.clear();
-        audio.playPurchase();
-        persistProgress();
-        showQuickToast("PAY 'N' SPRAY · REPARIERT & STERNE GELÖSCHT");
-      } else {
-        showQuickToast(`ZU WENIG CASH · BENÖTIGT $${payNSpray.cost}`);
-      }
-    }
+    tryUsePayNSpray();
     return;
   }
 
@@ -472,33 +509,7 @@ window.addEventListener('keydown', (e) => {
   }
 
   if (e.code === 'KeyE' && player.getIsActive() && !shopOpen && wastedTimer <= 0) {
-    if (boat.isInBoat()) {
-      const land = boat.disembark();
-      player.setSpawn(land.x, land.y, land.z, land.yaw);
-      camera.fov = 75;
-      camera.updateProjectionMatrix();
-      weapons.setEnabled(true);
-    } else if (vehicles.isInVehicle()) {
-      const exitPos = vehicles.exitVehicle();
-      if (exitPos) {
-        player.setSpawn(exitPos.x, exitPos.y, exitPos.z, exitPos.yaw);
-        camera.fov = 75;
-        camera.updateProjectionMatrix();
-        weapons.setEnabled(true);
-      }
-    } else if (boat.isPlayerNear(player.position)) {
-      boat.board();
-      weapons.setEnabled(false);
-    } else {
-      const nearest = vehicles.findNearestVehicle(player.position, 4.4);
-      if (nearest) {
-        if (nearest.isPolice || nearest.isAiControlled) {
-          wanted.addHeat(28);
-        }
-        vehicles.enterVehicle(nearest);
-        weapons.setEnabled(false);
-      }
-    }
+    tryToggleVehicleOrBoat();
   }
 });
 
@@ -607,7 +618,35 @@ function animate(now: number): void {
     }
   }
 
+  const pad = gamepad.poll();
+  if (pad.connected && !padConnectedToastShown) {
+    padConnectedToastShown = true;
+    showQuickToast('GAMEPAD VERBUNDEN · CONTROLLER AKTIV');
+  } else if (!pad.connected) {
+    padConnectedToastShown = false;
+  }
+
+  if (pad.connected && pad.startPressed) {
+    if (shopOpen) closeShop();
+    else if (player.getIsActive()) pauseGame();
+    else startGame();
+  }
+
   const isPlaying = player.getIsActive() && !shopOpen && wastedTimer <= 0;
+
+  if (isPlaying && pad.connected) {
+    if (pad.interactPressed) tryToggleVehicleOrBoat();
+    if (pad.reloadOrSprayPressed && vehicles.isInVehicle()) tryUsePayNSpray();
+    if (pad.prevWeaponPressed && (vehicles.isInVehicle() || boat.isInBoat())) {
+      const station = audio.nextRadioStation();
+      showQuickToast(`RADIO · ${station}`);
+    }
+    if (pad.timeCyclePressed) showQuickToast(`LICHT · ${world.cycleTimeOfDay()}`);
+    if (pad.rainTogglePressed) {
+      showQuickToast(world.toggleRain() ? 'WETTER · TROPENSCHAUER' : 'WETTER · NACH DEM REGEN');
+    }
+  }
+
   const inVehicle = vehicles.isInVehicle();
   const inBoat = boat.isInBoat();
   const inAnyCraft = inVehicle || inBoat;
@@ -618,7 +657,7 @@ function animate(now: number): void {
 
   if (!inAnyCraft) {
     const allColliders = [...world.colliders, ...vehicles.getVehicleColliders()];
-    const status = player.update(dt, allColliders);
+    const status = player.update(dt, allColliders, pad);
     playerSpeed = status.speed;
     playerGrounded = status.grounded;
   } else if (inVehicle) {
@@ -641,8 +680,9 @@ function animate(now: number): void {
     camera,
     world.colliders,
     world.layout.playableBounds,
+    pad,
   );
-  const boatHud = boat.update(dt, elapsed, isPlaying, player.position, camera);
+  const boatHud = boat.update(dt, elapsed, isPlaying, player.position, camera, pad);
 
   world.update(elapsed, dt, player.position);
   destructibles.update(dt);
@@ -677,11 +717,11 @@ function animate(now: number): void {
     ...destructibles.getShootableTargets(),
     ...heli.getShootableTargets(),
   ];
-  const wHud = weapons.update(dt, isPlaying && !inAnyCraft, playerSpeed, world.worldMeshes, shootables);
+  const wHud = weapons.update(dt, isPlaying && !inAnyCraft, playerSpeed, world.worldMeshes, shootables, pad);
   if (inVehicle) {
     const car = vehicles.getActiveVehicle();
     if (car) {
-      weapons.updateDriveBy(dt, isPlaying, car.position, world.worldMeshes, shootables);
+      weapons.updateDriveBy(dt, isPlaying, car.position, world.worldMeshes, shootables, pad);
     }
   }
 

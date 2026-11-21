@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { AABB } from '../types';
 import type { ShootableTarget } from '../combat/WeaponSystem';
+import type { GamepadSnapshot } from '../engine/GamepadInput';
 import { ROAD_COORDS } from '../world/CityLayout';
 
 export interface Vehicle {
@@ -492,10 +493,15 @@ export class VehicleSystem {
     camera: THREE.PerspectiveCamera,
     worldColliders: AABB[],
     bounds: { minX: number; maxX: number; minZ: number; maxZ: number },
+    pad?: GamepadSnapshot,
   ): DrivingHudState {
     const clampedDt = Math.min(dt, 0.05);
     this.ramCooldown = Math.max(0, this.ramCooldown - clampedDt);
     this.crashSoundCooldown = Math.max(0, this.crashSoundCooldown - clampedDt);
+
+    if (this.activeVehicle && pad?.connected && pad.camTogglePressed) {
+      this.firstPersonCam = !this.firstPersonCam;
+    }
 
     const solidColliders = worldColliders.filter((c) => c.maxY > 0.45);
 
@@ -542,7 +548,7 @@ export class VehicleSystem {
       }
 
       if (v === this.activeVehicle) {
-        this.updatePlayerDrivenCar(v, clampedDt, isActive, solidColliders, bounds);
+        this.updatePlayerDrivenCar(v, clampedDt, isActive, solidColliders, bounds, pad);
       } else if (v.isPursuitUnit && wantedStars >= 2) {
         // Active Vice PD Cruiser chase!
         this.updatePolicePursuitCar(v, clampedDt, playerPos, solidColliders, bounds);
@@ -739,18 +745,24 @@ export class VehicleSystem {
     isActive: boolean,
     solidColliders: AABB[],
     bounds: { minX: number; maxX: number; minZ: number; maxZ: number },
+    pad?: GamepadSnapshot,
   ): void {
-    const accelInput = isActive ? (this.keys.has('KeyW') ? 1 : 0) - (this.keys.has('KeyS') ? 1 : 0) : 0;
-    const steerInput = isActive ? (this.keys.has('KeyA') ? 1 : 0) - (this.keys.has('KeyD') ? 1 : 0) : 0;
-    const handbrake = isActive && this.keys.has('Space');
+    const kbAccel = (this.keys.has('KeyW') ? 1 : 0) - (this.keys.has('KeyS') ? 1 : 0);
+    const kbSteer = (this.keys.has('KeyA') ? 1 : 0) - (this.keys.has('KeyD') ? 1 : 0);
+    const padAccel = pad?.connected ? pad.rt - pad.lt : 0;
+    const padSteer = pad?.connected ? -pad.moveX : 0;
+
+    const accelInput = isActive ? THREE.MathUtils.clamp(kbAccel + padAccel, -1, 1) : 0;
+    const steerInput = isActive ? THREE.MathUtils.clamp(kbSteer + padSteer, -1, 1) : 0;
+    const handbrake = isActive && (this.keys.has('Space') || Boolean(pad?.connected && pad.handbrake));
 
     const maxForward = 24.5;
     const maxReverse = -9.0;
 
-    if (accelInput > 0) {
-      v.speed += 18.5 * dt;
-    } else if (accelInput < 0) {
-      v.speed -= (v.speed > 0.5 ? 28.0 : 12.0) * dt;
+    if (accelInput > 0.05) {
+      v.speed += 18.5 * accelInput * dt;
+    } else if (accelInput < -0.05) {
+      v.speed += (v.speed > 0.5 ? 28.0 : 12.0) * accelInput * dt;
     } else {
       v.speed *= Math.exp(-2.2 * dt);
     }

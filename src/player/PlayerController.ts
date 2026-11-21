@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { resolvePlayerCollisions } from '../engine/Physics';
+import type { GamepadSnapshot } from '../engine/GamepadInput';
 import type { AABB, PlayerStatus } from '../types';
 
 export class PlayerController {
@@ -148,26 +149,35 @@ export class PlayerController {
     }
   };
 
-  public update(dt: number, colliders: AABB[]): PlayerStatus {
+  public update(dt: number, colliders: AABB[], pad?: GamepadSnapshot): PlayerStatus {
     const clampedDt = Math.min(dt, 0.05);
     const active = this.getIsActive();
+    const maxPitch = Math.PI / 2 - 0.04;
+
+    // Analog right-stick camera look (Gamepad)
+    if (active && pad && pad.connected) {
+      const lookSpeed = 2.6 * this.sensitivityMult * clampedDt;
+      this.yaw -= pad.lookX * lookSpeed;
+      this.pitch = Math.max(-maxPitch, Math.min(maxPitch, this.pitch - pad.lookY * lookSpeed * 0.8));
+    }
 
     // Arrow-key look fallback when not pointer-locked
     if (active && !this.isLocked) {
       const turnSpeed = 2.0 * clampedDt;
-      const maxPitch = Math.PI / 2 - 0.04;
       if (this.keys.has('ArrowLeft')) this.yaw += turnSpeed;
       if (this.keys.has('ArrowRight')) this.yaw -= turnSpeed;
       if (this.keys.has('ArrowUp')) this.pitch = Math.min(maxPitch, this.pitch + turnSpeed * 0.7);
       if (this.keys.has('ArrowDown')) this.pitch = Math.max(-maxPitch, this.pitch - turnSpeed * 0.7);
     }
 
-    this.crouching = active && (this.keys.has('KeyC') || this.keys.has('ControlLeft'));
+    const padCrouch = Boolean(pad?.connected && pad.crouch);
+    const padSprint = Boolean(pad?.connected && pad.sprint && pad.moveY > 0.25);
+
+    this.crouching = active && (this.keys.has('KeyC') || this.keys.has('ControlLeft') || padCrouch);
     const wantsSprint =
       active &&
-      (this.keys.has('ShiftLeft') || this.keys.has('ShiftRight')) &&
       !this.crouching &&
-      this.keys.has('KeyW');
+      (((this.keys.has('ShiftLeft') || this.keys.has('ShiftRight')) && this.keys.has('KeyW')) || padSprint);
 
     // Compute horizontal wish direction from yaw
     this.forwardVec.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
@@ -179,9 +189,14 @@ export class PlayerController {
       if (this.keys.has('KeyS')) this.wishDir.sub(this.forwardVec);
       if (this.keys.has('KeyD')) this.wishDir.add(this.rightVec);
       if (this.keys.has('KeyA')) this.wishDir.sub(this.rightVec);
+
+      if (pad && pad.connected && (Math.abs(pad.moveX) > 0 || Math.abs(pad.moveY) > 0)) {
+        this.wishDir.addScaledVector(this.forwardVec, pad.moveY);
+        this.wishDir.addScaledVector(this.rightVec, pad.moveX);
+      }
     }
 
-    if (this.wishDir.lengthSq() > 0) {
+    if (this.wishDir.lengthSq() > 1) {
       this.wishDir.normalize();
     }
 
@@ -199,8 +214,9 @@ export class PlayerController {
     this.velocity.x += (targetVx - this.velocity.x) * blend;
     this.velocity.z += (targetVz - this.velocity.z) * blend;
 
-    // Jump
-    if (active && this.grounded && this.keys.has('Space') && !this.crouching) {
+    // Jump (Space or Gamepad A)
+    const wantsJump = this.keys.has('Space') || Boolean(pad?.connected && pad.jump);
+    if (active && this.grounded && wantsJump && !this.crouching) {
       this.velocity.y = this.jumpSpeed;
       this.grounded = false;
     }

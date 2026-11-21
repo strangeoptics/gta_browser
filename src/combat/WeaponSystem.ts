@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { GamepadSnapshot } from '../engine/GamepadInput';
 
 export interface ShootableTarget {
   id: string;
@@ -238,13 +239,15 @@ export class WeaponSystem {
     carPos: THREE.Vector3,
     worldMeshes: THREE.Object3D[],
     targets: ShootableTarget[],
+    pad?: GamepadSnapshot,
   ): void {
     const clampedDt = Math.min(dt, 0.05);
     this.fireCooldown = Math.max(0, this.fireCooldown - clampedDt);
     this.hitmarkerAlpha = Math.max(0, this.hitmarkerAlpha - clampedDt * 4.5);
     this.updateEffects(clampedDt);
 
-    if (!isPlaying || !this.triggerDown || this.fireCooldown > 0) return;
+    const wantsDriveBy = this.triggerDown || Boolean(pad?.connected && pad.nextWeaponPressed);
+    if (!isPlaying || !wantsDriveBy || this.fireCooldown > 0) return;
 
     const smg = WEAPONS[1];
     this.fireCooldown = 1 / smg.fireRate;
@@ -365,9 +368,24 @@ export class WeaponSystem {
     playerSpeed: number,
     worldMeshes: THREE.Object3D[],
     targets: ShootableTarget[],
+    pad?: GamepadSnapshot,
   ): WeaponHudState {
     const clampedDt = Math.min(dt, 0.05);
+
+    // Gamepad weapon switch & reload
+    if (this.enabled && isActive && pad?.connected) {
+      const count = this.launcherUnlocked ? WEAPONS.length : 3;
+      if (pad.nextWeaponPressed) this.switchWeapon((this.slotIndex + 1) % count);
+      else if (pad.prevWeaponPressed) this.switchWeapon((this.slotIndex - 1 + count) % count);
+      if (pad.reloadOrSprayPressed) this.startReload();
+    }
+
     const def = WEAPONS[this.slotIndex];
+    const padTrigger = Boolean(pad?.connected && pad.rt > 0.35);
+    const padAds = Boolean(pad?.connected && pad.lt > 0.35);
+    const effectiveAds = this.ads || padAds;
+    const effectiveTrigger = this.triggerDown || padTrigger;
+    if (!effectiveTrigger) this.semiConsumed = false;
 
     this.fireCooldown = Math.max(0, this.fireCooldown - clampedDt);
     this.hitmarkerAlpha = Math.max(0, this.hitmarkerAlpha - clampedDt * 4.5);
@@ -382,7 +400,7 @@ export class WeaponSystem {
     }
 
     // Firing logic
-    if (this.enabled && isActive && this.triggerDown && !this.reloading && this.fireCooldown <= 0) {
+    if (this.enabled && isActive && effectiveTrigger && !this.reloading && this.fireCooldown <= 0) {
       if (def.auto || !this.semiConsumed) {
         if (this.ammo[this.slotIndex] > 0) {
           this.fireWeapon(def, worldMeshes, targets);
@@ -404,7 +422,7 @@ export class WeaponSystem {
     }
 
     // Smooth ADS FOV
-    const targetFov = this.enabled && isActive && this.ads ? this.baseFov - 14 : this.baseFov;
+    const targetFov = this.enabled && isActive && effectiveAds ? this.baseFov - 14 : this.baseFov;
     if (Math.abs(this.camera.fov - targetFov) > 0.05) {
       this.camera.fov += (targetFov - this.camera.fov) * (1 - Math.exp(-14 * clampedDt));
       this.camera.updateProjectionMatrix();

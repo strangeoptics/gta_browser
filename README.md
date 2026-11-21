@@ -4,6 +4,8 @@ Ein kompakter **GTA-inspirierter First-Person Shooter im Browser**, angesiedelt 
 
 Gebaut mit **Three.js**, **TypeScript**, **Vite** und der **Web Audio API** — komplett ohne externe 3D-, Textur- oder Audio-Assets.
 
+> **Live spielen (GitHub Pages):** `https://strangeoptics.github.io/gta_browser/` *(aktivierbar unter Repo Settings → Pages → Source: GitHub Actions)*
+
 ![Ocean Drive FPS View — Vice 9mm & Neon Palms](docs/screenshot-fps.png)
 ![Ocean Drive Boardwalk — Neon Mac-10 SMG & Motel Vice](docs/screenshot-smg.png)
 
@@ -55,6 +57,13 @@ Gebaut mit **Three.js**, **TypeScript**, **Vite** und der **Web Audio API** — 
 | `T` / `Y` | Tageszeit wechseln / Tropenschauer an & aus |
 | `M` | Audio stummschalten |
 | `ESC` | Pause & Einstellungen |
+
+### Gamepad-Steuerung (Xbox / PlayStation)
+- **Linker Stick / Rechter Stick:** Analoges Laufen & Lenken / Umsehen
+- **RT / LT:** Schießen & Gas / Zielen (ADS) & Bremse/Rückwärts
+- **Y (Dreieck):** Auto & Boot ein-/aussteigen · **X (Viereck):** Nachladen / Pay ’n’ Spray
+- **A (Kreuz):** Springen / Handbremse · **LB / RB:** Waffen wechseln (im Auto: Radio / Drive-By)
+- **Steuerkreuz:** Rechts = Kamera, Hoch = Tageszeit, Runter = Regen · **Start:** Pause
 
 ---
 

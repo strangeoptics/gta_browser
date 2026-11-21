@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { GamepadSnapshot } from '../engine/GamepadInput';
 
 interface WakePuff {
   mesh: THREE.Mesh;
@@ -76,15 +77,20 @@ export class BoatSystem {
     isPlaying: boolean,
     playerPos: THREE.Vector3,
     camera: THREE.PerspectiveCamera,
+    pad?: GamepadSnapshot,
   ): BoatHudState {
     const clampedDt = Math.min(dt, 0.05);
 
     if (this.active && isPlaying) {
-      const throttle = (this.keys.has('KeyW') ? 1 : 0) - (this.keys.has('KeyS') ? 1 : 0);
-      const steer = (this.keys.has('KeyA') ? 1 : 0) - (this.keys.has('KeyD') ? 1 : 0);
+      const kbThrottle = (this.keys.has('KeyW') ? 1 : 0) - (this.keys.has('KeyS') ? 1 : 0);
+      const kbSteer = (this.keys.has('KeyA') ? 1 : 0) - (this.keys.has('KeyD') ? 1 : 0);
+      const padThrottle = pad?.connected ? pad.rt - pad.lt : 0;
+      const padSteer = pad?.connected ? -pad.moveX : 0;
+      const throttle = THREE.MathUtils.clamp(kbThrottle + padThrottle, -1, 1);
+      const steer = THREE.MathUtils.clamp(kbSteer + padSteer, -1, 1);
 
-      if (throttle > 0) this.speed += 15.5 * clampedDt;
-      else if (throttle < 0) this.speed -= 14.0 * clampedDt;
+      if (throttle > 0.05) this.speed += 15.5 * throttle * clampedDt;
+      else if (throttle < -0.05) this.speed += 14.0 * throttle * clampedDt;
       else this.speed *= Math.exp(-1.6 * clampedDt);
 
       this.speed = THREE.MathUtils.clamp(this.speed, -6.5, 22.0);

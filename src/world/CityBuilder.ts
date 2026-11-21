@@ -33,6 +33,7 @@ export interface MiamiWorld {
   isInSafehouseGarage: (pos: THREE.Vector3) => boolean;
   isNearSafehouseLounge: (pos: THREE.Vector3) => boolean;
   isNearSafehouseWardrobe: (pos: THREE.Vector3) => boolean;
+  isNearSafehouseFridge: (pos: THREE.Vector3) => boolean;
   isNearClubBar: (pos: THREE.Vector3) => boolean;
   getClubProximity: (pos: THREE.Vector3) => number;
   getGroundHeight: (x: number, z: number) => number;
@@ -715,6 +716,7 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
     isInSafehouseGarage: (pos: THREE.Vector3) => safehouse.isInGarage(pos),
     isNearSafehouseLounge: (pos: THREE.Vector3) => safehouse.isNearLounge(pos),
     isNearSafehouseWardrobe: (pos: THREE.Vector3) => safehouse.isNearWardrobe(pos),
+    isNearSafehouseFridge: (pos: THREE.Vector3) => safehouse.isNearFridge(pos),
     isNearClubBar: (pos: THREE.Vector3) => neonClub.isNearBar(pos),
     getClubProximity: (pos: THREE.Vector3) => neonClub.getProximity(pos),
     getGroundHeight: (x: number, z: number) => getBeachHeight(x, z),

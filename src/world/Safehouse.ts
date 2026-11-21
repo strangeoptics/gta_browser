@@ -8,6 +8,7 @@ export interface SafehouseHandle {
   isInGarage: (pos: THREE.Vector3) => boolean;
   isNearLounge: (pos: THREE.Vector3) => boolean;
   isNearWardrobe: (pos: THREE.Vector3) => boolean;
+  isNearFridge: (pos: THREE.Vector3) => boolean;
   update: (elapsed: number, dt: number, playerPos?: THREE.Vector3) => void;
 }
 
@@ -286,6 +287,142 @@ export function buildSafehouse(
   scene.add(vaultDial);
 
   // ---------------------------------------------------------------------------
+  // 80s Pastel Kitchenette & Openable Retro Fridge Stocked with Food (SE Lounge)
+  // ---------------------------------------------------------------------------
+  const kitchenZ = cz + 1.65; // right along the south partition wall (z = -38.35)
+  const mintCabMat = new THREE.MeshStandardMaterial({ color: '#9de0d2', roughness: 0.5 });
+  const counterTopMat = new THREE.MeshStandardMaterial({ color: '#faf3eb', roughness: 0.3 });
+  const chromeMat = new THREE.MeshStandardMaterial({ color: '#dce4ef', metalness: 0.9, roughness: 0.15 });
+
+  // Kitchen Counter (x: 42.6 .. 46.8)
+  addBox(4.2, 0.96, 1.05, 44.7, 0.2 + 0.48, kitchenZ, mintCabMat);
+  const counterTop = new THREE.Mesh(new THREE.BoxGeometry(4.3, 0.08, 1.12), counterTopMat);
+  counterTop.position.set(44.7, 0.2 + 1.0, kitchenZ);
+  scene.add(counterTop);
+
+  // Sink basin & chrome faucet
+  const sink = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.06, 0.62), chromeMat);
+  sink.position.set(43.7, 1.23, kitchenZ);
+  scene.add(sink);
+  const faucet = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.34, 6), chromeMat);
+  faucet.position.set(43.7, 1.4, kitchenZ + 0.26);
+  scene.add(faucet);
+
+  // Retro 2-burner stovetop & Miami Pizza Box on the counter
+  const burnerMat = new THREE.MeshStandardMaterial({ color: '#1b1622', roughness: 0.4 });
+  for (const bx of [45.2, 45.8]) {
+    const burner = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.04, 12), burnerMat);
+    burner.position.set(bx, 1.25, kitchenZ);
+    scene.add(burner);
+  }
+  const pizzaBox = new THREE.Mesh(
+    new THREE.BoxGeometry(0.62, 0.09, 0.62),
+    new THREE.MeshStandardMaterial({ color: '#f5d2a4', roughness: 0.8 }),
+  );
+  pizzaBox.position.set(46.3, 1.28, kitchenZ - 0.05);
+  pizzaBox.rotation.y = 0.2;
+  scene.add(pizzaBox);
+
+  // Retro Pastel-Mint Refrigerator with Hollow Lit Interior & Stocked Food (x = 48.0, z = -38.4)
+  const fridgeX = 48.0;
+  const fridgeZ = kitchenZ;
+  const fridgeOuterMat = new THREE.MeshStandardMaterial({ color: '#bce8de', roughness: 0.28, metalness: 0.2 });
+  const fridgeInnerMat = new THREE.MeshStandardMaterial({
+    color: '#f2f9fc',
+    emissive: '#cceeff',
+    emissiveIntensity: 0.45,
+    roughness: 0.35,
+  });
+
+  // Hollow fridge shell (back, left, right, top, bottom — open toward -Z into the lounge!)
+  addBox(1.24, 2.25, 0.14, fridgeX, 0.2 + 1.125, fridgeZ + 0.5, fridgeOuterMat); // back
+  addBox(0.12, 2.25, 1.1, fridgeX - 0.56, 0.2 + 1.125, fridgeZ, fridgeOuterMat); // west side
+  addBox(0.12, 2.25, 1.1, fridgeX + 0.56, 0.2 + 1.125, fridgeZ, fridgeOuterMat); // east side
+  addBox(1.24, 0.14, 1.12, fridgeX, 0.2 + 2.2, fridgeZ, fridgeOuterMat); // top
+  addBox(1.24, 0.14, 1.12, fridgeX, 0.2 + 0.07, fridgeZ, fridgeOuterMat); // bottom
+
+  // Lit white interior back panel
+  const innerBack = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 2.02), fridgeInnerMat);
+  innerBack.rotation.y = Math.PI;
+  innerBack.position.set(fridgeX, 0.2 + 1.12, fridgeZ + 0.41);
+  scene.add(innerBack);
+
+  // 3 Glass shelves inside the fridge + visible 3D food & drinks!
+  const shelfMat = new THREE.MeshStandardMaterial({
+    color: '#d8f4ff',
+    transparent: true,
+    opacity: 0.55,
+    roughness: 0.1,
+  });
+  for (const sy of [0.85, 1.4, 1.9]) {
+    const shelf = new THREE.Mesh(new THREE.BoxGeometry(0.98, 0.04, 0.84), shelfMat);
+    shelf.position.set(fridgeX, sy, fridgeZ + 0.02);
+    scene.add(shelf);
+  }
+
+  // Top Shelf (y = 1.92): Golden Pizza Slice & Takeout Container
+  const pizzaSlice = new THREE.Mesh(
+    new THREE.ConeGeometry(0.22, 0.36, 3),
+    new THREE.MeshStandardMaterial({ color: '#ffbe4f', roughness: 0.65 }),
+  );
+  pizzaSlice.rotation.x = Math.PI / 2;
+  pizzaSlice.position.set(fridgeX - 0.22, 1.98, fridgeZ);
+  scene.add(pizzaSlice);
+  const takeout = new THREE.Mesh(
+    new THREE.BoxGeometry(0.32, 0.16, 0.32),
+    new THREE.MeshStandardMaterial({ color: '#ff6f91', roughness: 0.6 }),
+  );
+  takeout.position.set(fridgeX + 0.22, 2.0, fridgeZ + 0.04);
+  scene.add(takeout);
+
+  // Middle Shelf (y = 1.42): 4 Neon Soda Cans & Milk Carton
+  const canColors = ['#36f1e6', '#ff4fa3', '#ffd15c', '#52f29c'];
+  canColors.forEach((col, i) => {
+    const can = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.055, 0.055, 0.22, 8),
+      new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 0.25, metalness: 0.6, roughness: 0.25 }),
+    );
+    can.position.set(fridgeX - 0.34 + i * 0.16, 1.54, fridgeZ - 0.04);
+    scene.add(can);
+  });
+  const milk = new THREE.Mesh(
+    new THREE.BoxGeometry(0.16, 0.34, 0.16),
+    new THREE.MeshStandardMaterial({ color: '#f7f4f0', roughness: 0.5 }),
+  );
+  milk.position.set(fridgeX + 0.32, 1.6, fridgeZ + 0.06);
+  scene.add(milk);
+
+  // Bottom Shelf (y = 0.87): Tropical Watermelon, Oranges & Green Salad Bowl
+  const melon = new THREE.Mesh(
+    new THREE.SphereGeometry(0.19, 10, 8),
+    new THREE.MeshStandardMaterial({ color: '#2d8a56', roughness: 0.55 }),
+  );
+  melon.position.set(fridgeX - 0.22, 1.07, fridgeZ + 0.04);
+  scene.add(melon);
+  for (const ox of [0.1, 0.28]) {
+    const orange = new THREE.Mesh(
+      new THREE.SphereGeometry(0.09, 8, 8),
+      new THREE.MeshStandardMaterial({ color: '#ff8c2b', roughness: 0.6 }),
+    );
+    orange.position.set(fridgeX + ox, 0.98, fridgeZ - 0.05);
+    scene.add(orange);
+  }
+
+  // Hinged Fridge Door (swings open smoothly toward east when player approaches!)
+  const fridgeDoorPivot = new THREE.Group();
+  fridgeDoorPivot.position.set(fridgeX + 0.56, 0.2 + 1.125, fridgeZ - 0.54);
+  const fridgeDoorMesh = new THREE.Mesh(new THREE.BoxGeometry(1.18, 2.22, 0.1), fridgeOuterMat);
+  fridgeDoorMesh.position.set(-0.56, 0, 0);
+  fridgeDoorMesh.castShadow = true;
+  fridgeDoorPivot.add(fridgeDoorMesh);
+  const fridgeHandle = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.65, 0.12), chromeMat);
+  fridgeHandle.position.set(-1.02, 0.18, -0.08);
+  fridgeDoorPivot.add(fridgeHandle);
+  scene.add(fridgeDoorPivot);
+
+  let fridgeOpenT = 0;
+
+  // ---------------------------------------------------------------------------
   // Walkable Exterior Staircase up to the Rooftop Penthouse Pool Terrace
   // ---------------------------------------------------------------------------
   const stairMat = new THREE.MeshStandardMaterial({ color: '#eedccf', roughness: 0.6 });
@@ -410,21 +547,29 @@ export function buildSafehouse(
       pos.y < 2.2,
     isNearWardrobe: (pos: THREE.Vector3) =>
       Math.hypot(pos.x - (cx - 5.5), pos.z - (cz - 7.0)) < 2.4 && pos.y < 2.2,
+    isNearFridge: (pos: THREE.Vector3) =>
+      Math.hypot(pos.x - fridgeX, pos.z - (fridgeZ - 1.3)) < 2.2 && pos.y < 2.2,
     update: (elapsed: number, dt: number, playerPos?: THREE.Vector3) => {
       const blend = 1 - Math.exp(-6.5 * Math.min(dt, 0.05));
 
-      // Automatic Garage Door & Sliding Doors proximity sensors
+      // Automatic Garage Door, Sliding Doors & Fridge Door proximity sensors
       const distGarage = playerPos ? Math.hypot(playerPos.x - (cx + 10.0), playerPos.z - (cz + 5.7)) : 99;
       const distFront = playerPos ? Math.hypot(playerPos.x - (cx + 10.0), playerPos.z - (cz - 3.0)) : 99;
       const distInner = playerPos ? Math.hypot(playerPos.x - (cx - 5.0), playerPos.z - (cz + 2.5)) : 99;
+      const distFridge = playerPos ? Math.hypot(playerPos.x - fridgeX, playerPos.z - (fridgeZ - 1.3)) : 99;
 
       const wantGarage = distGarage < 11.5 && (playerPos?.y ?? 0) < 4.5 ? 1 : 0;
       const wantFront = distFront < 4.5 && (playerPos?.y ?? 0) < 4.5 ? 1 : 0;
       const wantInner = distInner < 4.0 && (playerPos?.y ?? 0) < 4.5 ? 1 : 0;
+      const wantFridge = distFridge < 2.6 && (playerPos?.y ?? 0) < 2.2 ? 1 : 0;
 
       garageOpenT += (wantGarage - garageOpenT) * blend;
       frontOpenT += (wantFront - frontOpenT) * blend;
       innerOpenT += (wantInner - innerOpenT) * blend;
+      fridgeOpenT += (wantFridge - fridgeOpenT) * blend;
+
+      // Swing fridge door smoothly open to reveal the lit food shelves!
+      fridgeDoorPivot.rotation.y = -fridgeOpenT * 1.85;
 
       // Roll garage door cleanly upward into lintel
       garageDoorGroup.scale.y = Math.max(0.06, 1 - garageOpenT * 0.94);

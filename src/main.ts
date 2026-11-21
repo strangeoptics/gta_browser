@@ -632,6 +632,14 @@ window.addEventListener('keydown', (e) => {
       audio.playPurchase();
       persistProgress();
       showQuickToast(`OUTFIT · ${outfitName}`);
+    } else if (world.isNearSafehouseFridge(player.position)) {
+      if (playerHp >= 100) {
+        showQuickToast('KÜHLSCHRANK · DU BIST SCHON SATT (100% HP)');
+      } else {
+        playerHp = Math.min(100, playerHp + 25);
+        audio.playPurchase();
+        showQuickToast('KÜHLSCHRANK-SNACK · +25 HP');
+      }
     } else if (world.isNearSafehouseLounge(player.position)) {
       playerHp = 100;
       weapons.refillAllAmmo();
@@ -1096,6 +1104,9 @@ function animate(now: number): void {
       interactPromptEl.classList.add('visible');
     } else if (world.isNearSafehouseWardrobe(player.position)) {
       interactPromptEl.textContent = '[F] KLEIDERSCHRANK · OUTFIT WECHSELN';
+      interactPromptEl.classList.add('visible');
+    } else if (world.isNearSafehouseFridge(player.position)) {
+      interactPromptEl.textContent = '[F] KÜHLSCHRANK · SNACK ESSEN (+25 HP)';
       interactPromptEl.classList.add('visible');
     } else if (world.isNearSafehouseLounge(player.position)) {
       interactPromptEl.textContent = '[F] SAFEHOUSE · HEILEN, MUNITION VOLL & SPEICHERN';

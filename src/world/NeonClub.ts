@@ -175,24 +175,24 @@ export function buildNeonClub(
   }
   scene.add(discoGroup);
 
-  // 4 Sweeping Volumetric Effect-Spotlight Cones mounted in ceiling corners
-  const beamConfigs: { x: number; z: number; color: string; phase: number }[] = [
-    { x: clubX - 5.5, z: clubZ - 5.5, color: '#ff4fa3', phase: 0 },
-    { x: clubX + 6.5, z: clubZ - 5.5, color: '#36f1e6', phase: 1.5 },
-    { x: clubX - 5.5, z: clubZ + 5.5, color: '#a86bff', phase: 3.1 },
-    { x: clubX + 6.5, z: clubZ + 5.5, color: '#ffd15c', phase: 4.7 },
+  // 4 Sweeping Volumetric Effect-Spotlight Cones mounted well inside the ceiling above the dancefloor
+  const beamConfigs: { x: number; z: number; baseRx: number; baseRz: number; color: string; phase: number }[] = [
+    { x: clubX - 2.6, z: clubZ - 3.6, baseRx: 0.22, baseRz: 0.22, color: '#ff4fa3', phase: 0 },
+    { x: clubX + 4.4, z: clubZ - 3.6, baseRx: 0.22, baseRz: -0.22, color: '#36f1e6', phase: 1.5 },
+    { x: clubX - 2.6, z: clubZ + 3.6, baseRx: -0.22, baseRz: 0.22, color: '#a86bff', phase: 3.1 },
+    { x: clubX + 4.4, z: clubZ + 3.6, baseRx: -0.22, baseRz: -0.22, color: '#ffd15c', phase: 4.7 },
   ];
-  const effectBeams: { pivot: THREE.Group; phase: number }[] = [];
-  const beamConeGeo = new THREE.ConeGeometry(1.75, 6.8, 16, 1, true);
-  beamConeGeo.translate(0, -3.4, 0); // apex at pivot!
+  const effectBeams: { pivot: THREE.Group; baseRx: number; baseRz: number; phase: number }[] = [];
+  const beamConeGeo = new THREE.ConeGeometry(1.15, 5.4, 16, 1, true);
+  beamConeGeo.translate(0, -2.7, 0); // apex at pivot, stays 100% inside the club walls!
 
   for (const cfg of beamConfigs) {
     const pivot = new THREE.Group();
-    pivot.position.set(cfg.x, 6.05, cfg.z);
+    pivot.position.set(cfg.x, 5.95, cfg.z);
 
     // Lamp housing fixture
     const lamp = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.16, 0.22, 0.35, 8),
+      new THREE.CylinderGeometry(0.14, 0.2, 0.32, 8),
       new THREE.MeshStandardMaterial({ color: '#1b1824', metalness: 0.7, roughness: 0.3 }),
     );
     pivot.add(lamp);
@@ -209,7 +209,7 @@ export function buildNeonClub(
     pivot.add(cone);
 
     scene.add(pivot);
-    effectBeams.push({ pivot, phase: cfg.phase });
+    effectBeams.push({ pivot, baseRx: cfg.baseRx, baseRz: cfg.baseRz, phase: cfg.phase });
   }
 
   // Orbiting dynamic club point lights
@@ -356,6 +356,15 @@ export function buildNeonClub(
     ch.group.position.set(dx, 0.24, dz);
     scene.add(ch.group);
     dancers.push({ char: ch, baseY: 0.24, phase: idx * 1.4 });
+    colliders.push({
+      minX: dx - 0.34,
+      maxX: dx + 0.34,
+      minY: 0.2,
+      maxY: 2.0,
+      minZ: dz - 0.34,
+      maxZ: dz + 0.34,
+      tag: 'club-dancer',
+    });
   });
 
   // 126 BPM = 2.1 beats per second -> beat angular speed = 2.1 * 2 * PI
@@ -388,10 +397,10 @@ export function buildNeonClub(
       // Rotate mirror Disco Ball
       discoGroup.rotation.y = elapsed * 0.95;
 
-      // Sweep the 4 volumetric Effect-Spotlights across the dancefloor
+      // Sweep the 4 volumetric Effect-Spotlights inward across the dancefloor (never clipping walls)
       for (const b of effectBeams) {
-        b.pivot.rotation.x = Math.sin(elapsed * 1.15 + b.phase) * 0.52;
-        b.pivot.rotation.z = Math.cos(elapsed * 0.9 + b.phase) * 0.52;
+        b.pivot.rotation.x = b.baseRx + Math.sin(elapsed * 1.15 + b.phase) * 0.24;
+        b.pivot.rotation.z = b.baseRz + Math.cos(elapsed * 0.9 + b.phase) * 0.24;
       }
 
       // Orbiting disco lights

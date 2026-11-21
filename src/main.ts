@@ -736,7 +736,11 @@ function animate(now: number): void {
   let headingYaw = player.getYaw();
 
   if (!inAnyCraft) {
-    const allColliders = [...world.colliders, ...vehicles.getVehicleColliders()];
+    const allColliders = [
+      ...world.colliders,
+      ...vehicles.getVehicleColliders(),
+      ...npcs.getNpcColliders(),
+    ];
     const status = player.update(
       dt,
       allColliders,

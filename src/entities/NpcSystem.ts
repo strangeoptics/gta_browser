@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { AABB } from '../types';
 import type { ShootableTarget } from '../combat/WeaponSystem';
 import { BLOCK_CENTERS } from '../world/CityLayout';
 import { getFaceTexture, getOutfitTexture } from './CharacterTextures';
@@ -137,6 +138,27 @@ export class NpcSystem {
           }
           return false;
         },
+      });
+    }
+    return out;
+  }
+
+  /**
+   * Returns solid AABB colliders for all living NPCs so the player cannot walk through people.
+   */
+  public getNpcColliders(): AABB[] {
+    const out: AABB[] = [];
+    const halfW = 0.34;
+    for (const npc of this.npcs) {
+      if (!npc.alive) continue;
+      out.push({
+        minX: npc.position.x - halfW,
+        maxX: npc.position.x + halfW,
+        minY: npc.position.y,
+        maxY: npc.position.y + 1.85,
+        minZ: npc.position.z - halfW,
+        maxZ: npc.position.z + halfW,
+        tag: 'npc',
       });
     }
     return out;
@@ -331,6 +353,35 @@ export class NpcSystem {
       npc.group.position.x = npc.position.x;
       npc.group.position.z = npc.position.z;
       npc.group.rotation.y = npc.yaw;
+    }
+
+    // Soft NPC-to-NPC separation so pedestrians & police don't overlap each other
+    const minSep = 0.82;
+    const minSepSq = minSep * minSep;
+    for (let i = 0; i < this.npcs.length; i++) {
+      const a = this.npcs[i];
+      if (!a.alive) continue;
+      for (let j = i + 1; j < this.npcs.length; j++) {
+        const b = this.npcs[j];
+        if (!b.alive) continue;
+        const dx = b.position.x - a.position.x;
+        const dz = b.position.z - a.position.z;
+        const dSq = dx * dx + dz * dz;
+        if (dSq < minSepSq && dSq > 0.0001) {
+          const d = Math.sqrt(dSq);
+          const push = (minSep - d) * 0.5;
+          const nx = dx / d;
+          const nz = dz / d;
+          a.position.x -= nx * push;
+          a.position.z -= nz * push;
+          b.position.x += nx * push;
+          b.position.z += nz * push;
+          a.group.position.x = a.position.x;
+          a.group.position.z = a.position.z;
+          b.group.position.x = b.position.x;
+          b.group.position.z = b.position.z;
+        }
+      }
     }
 
     // Update enemy tracers

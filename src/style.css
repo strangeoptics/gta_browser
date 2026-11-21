@@ -802,6 +802,80 @@ body,
   height: 15px;
 }
 
+/* Mobile / Tablet Touch Controls (hidden on desktop) */
+#touch-controls {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  display: none;
+  z-index: 15;
+}
+
+#touch-controls.touch-enabled {
+  display: block;
+}
+
+#touch-stick-zone {
+  position: absolute;
+  left: 24px;
+  bottom: 205px;
+  width: 112px;
+  height: 112px;
+  border-radius: 50%;
+  background: rgba(16, 10, 26, 0.45);
+  border: 2px solid rgba(54, 241, 230, 0.5);
+  pointer-events: auto;
+  touch-action: none;
+}
+
+#touch-stick-knob {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(54, 241, 230, 0.72);
+  box-shadow: 0 0 14px rgba(54, 241, 230, 0.6);
+}
+
+.touch-actions {
+  position: absolute;
+  right: 20px;
+  bottom: 130px;
+  display: grid;
+  grid-template-columns: repeat(2, 58px);
+  gap: 10px;
+  pointer-events: auto;
+}
+
+.touch-btn {
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.35);
+  background: rgba(16, 10, 26, 0.65);
+  color: #fff6f0;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  touch-action: none;
+}
+
+.touch-btn.touch-pink {
+  grid-column: span 2;
+  width: 100%;
+  border-radius: 28px;
+  background: rgba(255, 79, 163, 0.75);
+  border-color: #ff4fa3;
+}
+
+.touch-btn.touch-cyan {
+  border-color: #36f1e6;
+  color: #36f1e6;
+}
+
 /* Pointer-Lock Overlay */
 #overlay {
   position: fixed;

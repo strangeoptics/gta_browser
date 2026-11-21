@@ -21,6 +21,7 @@ import { PayNSpray } from './gameplay/PayNSpray';
 import { Minimap } from './hud/Minimap';
 import { AudioEngine } from './audio/AudioEngine';
 import { GamepadInput } from './engine/GamepadInput';
+import { TouchControls } from './engine/TouchControls';
 import {
   clearProgress,
   loadProgress,
@@ -138,6 +139,8 @@ const payNSpray = new PayNSpray(scene);
 const minimap = new Minimap(minimapCanvas);
 const audio = new AudioEngine();
 const gamepad = new GamepadInput();
+const touchControlsEl = document.getElementById('touch-controls') as HTMLDivElement;
+const touch = new TouchControls(touchControlsEl, canvas);
 let padConnectedToastShown = false;
 objectives.startNextObjective(npcs, wanted);
 
@@ -679,13 +682,14 @@ function animate(now: number): void {
     }
   }
 
-  const pad = gamepad.poll();
-  if (pad.connected && !padConnectedToastShown) {
+  const rawPad = gamepad.poll();
+  if (rawPad.connected && !padConnectedToastShown) {
     padConnectedToastShown = true;
     showQuickToast('GAMEPAD VERBUNDEN · CONTROLLER AKTIV');
-  } else if (!pad.connected) {
+  } else if (!rawPad.connected) {
     padConnectedToastShown = false;
   }
+  const pad = touch.mergeInto(rawPad);
 
   if (pad.connected && pad.startPressed) {
     if (shopOpen) closeShop();

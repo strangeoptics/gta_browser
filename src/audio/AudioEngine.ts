@@ -281,6 +281,41 @@ export class AudioEngine {
     osc.stop(now + 0.24);
   }
 
+  public playCrash(intensity: number): void {
+    if (!this.ctx || !this.masterGain || !this.noiseBuffer || this.muted) return;
+    const clamped = Math.max(0.15, Math.min(1, intensity));
+    const now = this.ctx.currentTime;
+
+    // Metallic crunch noise
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = this.noiseBuffer;
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(700 + clamped * 600, now);
+    filter.Q.value = 1.1;
+    const nGain = this.ctx.createGain();
+    nGain.gain.setValueAtTime(0.45 * clamped, now);
+    nGain.gain.exponentialRampToValueAtTime(0.001, now + 0.18 + clamped * 0.16);
+    noise.connect(filter);
+    filter.connect(nGain);
+    nGain.connect(this.masterGain);
+    noise.start(now);
+    noise.stop(now + 0.38);
+
+    // Heavy body thud
+    const osc = this.ctx.createOscillator();
+    const oGain = this.ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(115 + clamped * 35, now);
+    osc.frequency.exponentialRampToValueAtTime(34, now + 0.16 + clamped * 0.1);
+    oGain.gain.setValueAtTime(0.55 * clamped, now);
+    oGain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+    osc.connect(oGain);
+    oGain.connect(this.masterGain);
+    osc.start(now);
+    osc.stop(now + 0.3);
+  }
+
   private playWetFootstep(): void {
     if (!this.ctx || !this.masterGain || !this.noiseBuffer || this.muted) return;
     const now = this.ctx.currentTime;

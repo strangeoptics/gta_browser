@@ -48,6 +48,7 @@ const interactPromptEl = document.getElementById('interact-prompt') as HTMLDivEl
 const vehiclePanelEl = document.getElementById('vehicle-panel') as HTMLDivElement;
 const vehicleNameEl = document.getElementById('vehicle-name') as HTMLDivElement;
 const vehicleSpeedEl = document.getElementById('vehicle-speed') as HTMLSpanElement;
+const vehicleHpFillEl = document.getElementById('vehicle-hp-fill') as HTMLDivElement;
 const vehicleCamHintEl = document.getElementById('vehicle-cam-hint') as HTMLDivElement;
 const toastBannerEl = document.getElementById('toast-banner') as HTMLDivElement;
 const damageVignetteEl = document.getElementById('damage-vignette') as HTMLDivElement;
@@ -177,6 +178,23 @@ vehicles.onVehicleExploded = (origin, radius, maxDamage) => {
 
 vehicles.onPoliceRamPlayer = (dmg) => {
   applyPlayerDamage(dmg);
+};
+
+vehicles.onCarCrash = (intensity, playerInvolved) => {
+  audio.playCrash(intensity);
+  if (playerInvolved && intensity > 0.45) {
+    wanted.addHeat(12);
+  }
+};
+
+vehicles.onActiveVehicleDestroyed = () => {
+  const exitPos = vehicles.exitVehicle();
+  if (exitPos) {
+    player.setSpawn(exitPos.x, exitPos.y, exitPos.z, exitPos.yaw);
+    camera.fov = 75;
+    camera.updateProjectionMatrix();
+    weapons.setEnabled(true);
+  }
 };
 
 npcs.onPlayerDamaged = (dmg) => {
@@ -417,7 +435,8 @@ function animate(now: number): void {
   let headingYaw = player.getYaw();
 
   if (!inVehicle) {
-    const status = player.update(dt, world.colliders);
+    const allColliders = [...world.colliders, ...vehicles.getVehicleColliders()];
+    const status = player.update(dt, allColliders);
     playerSpeed = status.speed;
     playerGrounded = status.grounded;
   } else {
@@ -516,6 +535,8 @@ function animate(now: number): void {
   if (driveHud.inVehicle) {
     vehicleNameEl.textContent = driveHud.vehicleName;
     vehicleSpeedEl.textContent = `${driveHud.speedKmh}`;
+    vehicleHpFillEl.style.width = `${driveHud.hpPct}%`;
+    vehicleHpFillEl.classList.toggle('low', driveHud.hpPct < 35);
     vehicleCamHintEl.textContent = `[V] ${driveHud.firstPersonCam ? 'COCKPIT' : 'CHASE'} · [E] AUSSTEIGEN`;
     interactPromptEl.classList.remove('visible');
   } else {

@@ -468,6 +468,25 @@ body,
   color: #d9c5d8;
 }
 
+.vehicle-hp-bar {
+  height: 6px;
+  margin-top: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.14);
+  overflow: hidden;
+}
+
+#vehicle-hp-fill {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(90deg, #52f29c, #36f1e6);
+  transition: width 0.12s ease;
+}
+
+#vehicle-hp-fill.low {
+  background: linear-gradient(90deg, #ff3355, #ff9944);
+}
+
 /* Damage Vignette & Wasted Overlay */
 #damage-vignette {
   position: fixed;

@@ -36,6 +36,7 @@ export interface DrivingHudState {
   inVehicle: boolean;
   vehicleName: string;
   speedKmh: number;
+  hpPct: number;
   firstPersonCam: boolean;
   nearbyVehicleName: string | null;
 }
@@ -84,7 +85,10 @@ export class VehicleSystem {
   public onVehicleHitNpc?: (vehiclePos: THREE.Vector3, speed: number) => void;
   public onVehicleExploded?: (pos: THREE.Vector3, radius: number, maxDamage: number) => void;
   public onPoliceRamPlayer?: (damage: number) => void;
+  public onCarCrash?: (intensity: number, playerInvolved: boolean) => void;
+  public onActiveVehicleDestroyed?: () => void;
   private ramCooldown = 0;
+  private crashSoundCooldown = 0;
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
@@ -197,6 +201,31 @@ export class VehicleSystem {
       }));
   }
 
+  /**
+   * Returns AABB colliders for all non-driven vehicles so the player on foot
+   * cannot walk through cars (and can jump onto their hoods/roofs).
+   */
+  public getVehicleColliders(): AABB[] {
+    const out: AABB[] = [];
+    for (const v of this.vehicles) {
+      if (v === this.activeVehicle) continue;
+      const cos = Math.abs(Math.cos(v.yaw));
+      const sin = Math.abs(Math.sin(v.yaw));
+      const halfX = 1.05 * cos + 2.15 * sin;
+      const halfZ = 1.05 * sin + 2.15 * cos;
+      out.push({
+        minX: v.position.x - halfX,
+        maxX: v.position.x + halfX,
+        minY: 0,
+        maxY: 1.4,
+        minZ: v.position.z - halfZ,
+        maxZ: v.position.z + halfZ,
+        tag: 'vehicle',
+      });
+    }
+    return out;
+  }
+
   public damageVehicle(v: Vehicle, damage: number): void {
     if (v.destroyed) return;
     v.hp = Math.max(0, v.hp - damage);
@@ -267,9 +296,178 @@ export class VehicleSystem {
     v.bodyMat.color.set('#1b171d');
     v.bodyMat.roughness = 0.95;
 
+    if (v === this.activeVehicle) {
+      this.onActiveVehicleDestroyed?.();
+    }
+
     const blastPos = v.position.clone();
     this.spawnExplosionVfx(blastPos);
     this.onVehicleExploded?.(blastPos, 10.5, 110);
+  }
+
+  private spawnCrashSparks(origin: THREE.Vector3, count: number): void {
+    for (let i = 0; i < count; i++) {
+      const mat = new THREE.MeshBasicMaterial({
+        color: i % 2 === 0 ? '#ffd27d' : '#ff7b33',
+        transparent: true,
+        opacity: 0.95,
+      });
+      const mesh = new THREE.Mesh(this.smokeGeo, mat);
+      mesh.scale.setScalar(0.32);
+      mesh.position.set(origin.x, 0.72, origin.z);
+      this.scene.add(mesh);
+
+      const angle = Math.random() * Math.PI * 2;
+      const spd = 2.5 + Math.random() * 5.5;
+      this.smokeParticles.push({
+        mesh,
+        vel: new THREE.Vector3(Math.cos(angle) * spd, 2.2 + Math.random() * 3.5, Math.sin(angle) * spd),
+        life: 0.32 + Math.random() * 0.2,
+        maxLife: 0.52,
+      });
+    }
+  }
+
+  /**
+   * Resolves pairwise car-to-car collisions using a 2-sphere bumper capsule per car.
+   * Applies separation, momentum knockback, sparks, crash audio, and speed-scaled damage.
+   */
+  private resolveCarToCarCollisions(
+    solidColliders: AABB[],
+    bounds: { minX: number; maxX: number; minZ: number; maxZ: number },
+  ): void {
+    const sphereRadius = 1.08;
+    const minDist = sphereRadius * 2;
+    const minDistSq = minDist * minDist;
+    const offsets = [-1.05, 1.05];
+
+    for (let i = 0; i < this.vehicles.length; i++) {
+      const a = this.vehicles[i];
+      const aFwdX = Math.sin(a.yaw);
+      const aFwdZ = Math.cos(a.yaw);
+
+      for (let j = i + 1; j < this.vehicles.length; j++) {
+        const b = this.vehicles[j];
+        // Quick broad-phase skip
+        const roughDx = b.position.x - a.position.x;
+        const roughDz = b.position.z - a.position.z;
+        if (roughDx * roughDx + roughDz * roughDz > 25) continue;
+
+        const bFwdX = Math.sin(b.yaw);
+        const bFwdZ = Math.cos(b.yaw);
+
+        let deepestOverlap = 0;
+        let hitNx = 0;
+        let hitNz = 0;
+        let hitPointX = 0;
+        let hitPointZ = 0;
+
+        for (const oa of offsets) {
+          const ax = a.position.x + aFwdX * oa;
+          const az = a.position.z + aFwdZ * oa;
+          for (const ob of offsets) {
+            const bx = b.position.x + bFwdX * ob;
+            const bz = b.position.z + bFwdZ * ob;
+
+            const dx = bx - ax;
+            const dz = bz - az;
+            const dSq = dx * dx + dz * dz;
+            if (dSq < minDistSq && dSq > 0.0001) {
+              const dist = Math.sqrt(dSq);
+              const overlap = minDist - dist;
+              if (overlap > deepestOverlap) {
+                deepestOverlap = overlap;
+                hitNx = dx / dist;
+                hitNz = dz / dist;
+                hitPointX = (ax + bx) * 0.5;
+                hitPointZ = (az + bz) * 0.5;
+              }
+            }
+          }
+        }
+
+        if (deepestOverlap <= 0) continue;
+
+        // Separate the two vehicles cleanly
+        const pushA = a.destroyed ? 0.2 : 0.5;
+        const pushB = b.destroyed ? 0.2 : 0.5;
+        a.position.x = THREE.MathUtils.clamp(a.position.x - hitNx * deepestOverlap * pushA, bounds.minX + 1.5, bounds.maxX - 4.0);
+        a.position.z = THREE.MathUtils.clamp(a.position.z - hitNz * deepestOverlap * pushA, bounds.minZ + 1.5, bounds.maxZ - 1.5);
+        b.position.x = THREE.MathUtils.clamp(b.position.x + hitNx * deepestOverlap * pushB, bounds.minX + 1.5, bounds.maxX - 4.0);
+        b.position.z = THREE.MathUtils.clamp(b.position.z + hitNz * deepestOverlap * pushB, bounds.minZ + 1.5, bounds.maxZ - 1.5);
+
+        // Keep separated cars out of buildings
+        this.clampCarAgainstBuildings(a, solidColliders);
+        this.clampCarAgainstBuildings(b, solidColliders);
+
+        a.mesh.position.x = a.position.x;
+        a.mesh.position.z = a.position.z;
+        b.mesh.position.x = b.position.x;
+        b.mesh.position.z = b.position.z;
+
+        // Relative velocity along impact normal (a -> b)
+        const vAx = aFwdX * a.speed;
+        const vAz = aFwdZ * a.speed;
+        const vBx = bFwdX * b.speed;
+        const vBz = bFwdZ * b.speed;
+        const closingSpeed = (vAx - vBx) * hitNx + (vAz - vBz) * hitNz;
+
+        if (closingSpeed > 0.6) {
+          // Momentum exchange & bounce
+          const impulse = closingSpeed * 0.65;
+          a.speed -= impulse * (aFwdX * hitNx + aFwdZ * hitNz);
+          b.speed += impulse * (bFwdX * hitNx + bFwdZ * hitNz);
+
+          // Slight lateral spin on hard off-center impacts
+          if (closingSpeed > 5.0) {
+            const spin = Math.min(0.32, closingSpeed * 0.014);
+            if (!a.destroyed) a.yaw += (Math.random() - 0.5) * spin;
+            if (!b.destroyed) b.yaw += (Math.random() - 0.5) * spin;
+          }
+
+          // Severity-based crash damage
+          if (closingSpeed > 3.2) {
+            const baseDmg = (closingSpeed - 2.8) * 5.2;
+            const playerInvolved = a === this.activeVehicle || b === this.activeVehicle;
+            const dmgA = a === this.activeVehicle ? baseDmg * 0.55 : baseDmg;
+            const dmgB = b === this.activeVehicle ? baseDmg * 0.55 : baseDmg;
+
+            this.damageVehicle(a, dmgA);
+            this.damageVehicle(b, dmgB);
+
+            const contact = new THREE.Vector3(hitPointX, 0.7, hitPointZ);
+            this.spawnCrashSparks(contact, Math.min(14, Math.round(closingSpeed * 0.8)));
+
+            if (this.crashSoundCooldown <= 0) {
+              this.crashSoundCooldown = 0.22;
+              this.onCarCrash?.(Math.min(1, closingSpeed / 18), playerInvolved);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  private clampCarAgainstBuildings(v: Vehicle, solidColliders: AABB[]): void {
+    const carRadius = 1.45;
+    for (const box of solidColliders) {
+      if (
+        v.position.x + carRadius > box.minX &&
+        v.position.x - carRadius < box.maxX &&
+        v.position.z + carRadius > box.minZ &&
+        v.position.z - carRadius < box.maxZ
+      ) {
+        const pLeft = box.minX - (v.position.x + carRadius);
+        const pRight = box.maxX - (v.position.x - carRadius);
+        const pBack = box.minZ - (v.position.z + carRadius);
+        const pFront = box.maxZ - (v.position.z - carRadius);
+        const minAbs = Math.min(Math.abs(pLeft), Math.abs(pRight), Math.abs(pBack), Math.abs(pFront));
+        if (minAbs === Math.abs(pLeft)) v.position.x += pLeft;
+        else if (minAbs === Math.abs(pRight)) v.position.x += pRight;
+        else if (minAbs === Math.abs(pBack)) v.position.z += pBack;
+        else v.position.z += pFront;
+      }
+    }
   }
 
   public update(
@@ -284,6 +482,7 @@ export class VehicleSystem {
   ): DrivingHudState {
     const clampedDt = Math.min(dt, 0.05);
     this.ramCooldown = Math.max(0, this.ramCooldown - clampedDt);
+    this.crashSoundCooldown = Math.max(0, this.crashSoundCooldown - clampedDt);
 
     const solidColliders = worldColliders.filter((c) => c.maxY > 0.45);
 
@@ -349,6 +548,9 @@ export class VehicleSystem {
       }
     }
 
+    // Resolve solid car-to-car collisions & severity-based crash damage
+    this.resolveCarToCarCollisions(solidColliders, bounds);
+
     this.updateExplosionVfx(clampedDt);
 
     // Update camera if player is driving
@@ -396,6 +598,7 @@ export class VehicleSystem {
         inVehicle: true,
         vehicleName: v.name,
         speedKmh: Math.round(Math.abs(v.speed) * 3.6),
+        hpPct: Math.round((v.hp / v.maxHp) * 100),
         firstPersonCam: this.firstPersonCam,
         nearbyVehicleName: null,
       };
@@ -406,6 +609,7 @@ export class VehicleSystem {
       inVehicle: false,
       vehicleName: '',
       speedKmh: 0,
+      hpPct: 100,
       firstPersonCam: this.firstPersonCam,
       nearbyVehicleName: nearby ? nearby.name : null,
     };
@@ -575,6 +779,16 @@ export class VehicleSystem {
     }
 
     if (collided) {
+      const impactSpeed = Math.abs(v.speed);
+      if (impactSpeed > 8.5) {
+        const wallDmg = (impactSpeed - 7.5) * 3.4;
+        this.damageVehicle(v, wallDmg);
+        this.spawnCrashSparks(new THREE.Vector3(nextX, 0.7, nextZ), 6);
+        if (this.crashSoundCooldown <= 0) {
+          this.crashSoundCooldown = 0.25;
+          this.onCarCrash?.(Math.min(1, impactSpeed / 20), v === this.activeVehicle);
+        }
+      }
       v.speed *= -0.22;
     }
 

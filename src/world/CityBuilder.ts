@@ -17,6 +17,7 @@ import {
 } from './Textures';
 import { buildBeachHighlights } from './BeachProps';
 import { buildNeonClub } from './NeonClub';
+import { buildSafehouse } from './Safehouse';
 import { buildStuntRamps, type StuntRamp } from './StuntRamps';
 import { buildTrafficLights } from './TrafficLights';
 
@@ -28,6 +29,7 @@ export interface MiamiWorld {
   cycleTimeOfDay: () => string;
   toggleRain: () => boolean;
   isInsideClub: (pos: THREE.Vector3) => boolean;
+  isInsideSafehouse: (pos: THREE.Vector3) => boolean;
   isNearClubBar: (pos: THREE.Vector3) => boolean;
   getClubProximity: (pos: THREE.Vector3) => number;
   getGroundHeight: (x: number, z: number) => number;
@@ -360,9 +362,10 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
   });
 
   // ---------------------------------------------------------------------------
-  // 4b) Walk-In Interior: Elaborate NEON CLUB (Disco Ball, Effect Beams, Bar, Bartender & DJ)
+  // 4b) Walk-In Interiors: NEON CLUB (40, 0) & VICE SAFEHOUSE Villa (40, -40)
   // ---------------------------------------------------------------------------
   const neonClub = buildNeonClub(scene, colliders, worldMeshes);
+  const safehouse = buildSafehouse(scene, colliders, worldMeshes);
 
   // ---------------------------------------------------------------------------
   // 5) Verticality: Walkable Exterior Art-Deco Rooftop Stairs & Neon Terraces
@@ -705,6 +708,7 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
       return rainActive;
     },
     isInsideClub: (pos: THREE.Vector3) => neonClub.isInside(pos),
+    isInsideSafehouse: (pos: THREE.Vector3) => safehouse.isInside(pos),
     isNearClubBar: (pos: THREE.Vector3) => neonClub.isNearBar(pos),
     getClubProximity: (pos: THREE.Vector3) => neonClub.getProximity(pos),
     getGroundHeight: (x: number, z: number) => getBeachHeight(x, z),
@@ -713,6 +717,7 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
       oceanUniforms.uTime.value = elapsed;
       beachHighlights.update(elapsed);
       neonClub.update(elapsed);
+      safehouse.update(elapsed);
       trafficLights.update(elapsed);
       palmGroup.children.forEach((palm, idx) => {
         const crown = palm.userData.crown as THREE.Object3D | undefined;

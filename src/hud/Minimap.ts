@@ -117,6 +117,12 @@ export class Minimap {
     ctx.fillStyle = '#ff4fa3';
     ctx.fillText('C', cx, cz);
 
+    // VICE SAFEHOUSE Villa marker (⌂) on North Ocean Drive (40, -40)
+    const shX = (40 - playerX) * scale;
+    const shZ = (-40 - playerZ) * scale;
+    ctx.fillStyle = '#36f1e6';
+    ctx.fillText('⌂', shX, shZ);
+
     // Ocean Club Heist Start marker (★) at (60, -26) when idle
     if (!heistTarget) {
       const hstX = (60 - playerX) * scale;

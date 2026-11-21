@@ -89,9 +89,10 @@ export function generateCityLayout(): CityLayout {
       const isOceanFront = col === 2;
       const isCenterPlaza = row === 1 && col === 1;
       const isNeonClubBlock = row === 1 && col === 2;
+      const isSafehouseBlock = row === 0 && col === 2;
 
-      if (isNeonClubBlock) {
-        // Reserved for the hollow walk-in NEON CLUB interior built in CityBuilder.ts
+      if (isNeonClubBlock || isSafehouseBlock) {
+        // Reserved for hollow walk-in interiors (NEON CLUB & VICE SAFEHOUSE) built in CityBuilder.ts
         continue;
       }
 

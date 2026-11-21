@@ -10,8 +10,10 @@ export interface Vehicle {
   name: string;
   isPolice: boolean;
   isPursuitUnit: boolean;
+  isBike: boolean;
   mesh: THREE.Group;
   bodyMat: THREE.MeshStandardMaterial;
+  riderMesh?: THREE.Group;
   originalColor: string;
   position: THREE.Vector3;
   spawnX: number;
@@ -63,15 +65,16 @@ interface SmokeParticle {
 }
 
 const CAR_SPECS = [
-  { name: 'CHEETAH GT', color: '#ff4fa3', neon: '#ff4fa3', x: 56.8, z: 16, yaw: Math.PI, ai: false, police: false, pursuit: false },
-  { name: 'INFERNUS 86', color: '#36f1e6', neon: '#36f1e6', x: 63.2, z: -12, yaw: 0, ai: false, police: false, pursuit: false },
-  { name: 'SOLARIS CABRIO', color: '#ff9f43', neon: '#ff9f43', x: 16.8, z: 6, yaw: Math.PI, ai: false, police: false, pursuit: false },
-  { name: 'PALM COUPE', color: '#f5e6d3', neon: '#36f1e6', x: -23.2, z: -14, yaw: 0, ai: false, police: false, pursuit: false },
-  { name: 'VICE PD CRUISER', color: '#1b1b26', neon: '#36f1e6', x: -16.8, z: 24, yaw: Math.PI, ai: false, police: true, pursuit: true },
-  { name: 'VICE PD INTERCEPTOR', color: '#1b1b26', neon: '#ff3355', x: 20, z: 58, yaw: Math.PI, ai: true, police: true, pursuit: true },
+  { name: 'CHEETAH GT', color: '#ff4fa3', neon: '#ff4fa3', x: 56.8, z: 16, yaw: Math.PI, ai: false, police: false, pursuit: false, bike: false },
+  { name: 'PCJ-86 NEON BIKE', color: '#36f1e6', neon: '#ff4fa3', x: 63.2, z: 20, yaw: Math.PI, ai: false, police: false, pursuit: false, bike: true },
+  { name: 'INFERNUS 86', color: '#36f1e6', neon: '#36f1e6', x: 63.2, z: -12, yaw: 0, ai: false, police: false, pursuit: false, bike: false },
+  { name: 'SOLARIS CABRIO', color: '#ff9f43', neon: '#ff9f43', x: 16.8, z: 6, yaw: Math.PI, ai: false, police: false, pursuit: false, bike: false },
+  { name: 'PALM COUPE', color: '#f5e6d3', neon: '#36f1e6', x: -23.2, z: -14, yaw: 0, ai: false, police: false, pursuit: false, bike: false },
+  { name: 'VICE PD CRUISER', color: '#1b1b26', neon: '#36f1e6', x: -16.8, z: 24, yaw: Math.PI, ai: false, police: true, pursuit: true, bike: false },
+  { name: 'VICE PD INTERCEPTOR', color: '#1b1b26', neon: '#ff3355', x: 20, z: 58, yaw: Math.PI, ai: true, police: true, pursuit: true, bike: false },
   // Cruising traffic cars on the road grid
-  { name: 'BANSHEE TURBO', color: '#ff5e7e', neon: '#ff4fa3', x: 20, z: -48, yaw: 0, ai: true, police: false, pursuit: false },
-  { name: 'OCEAN CRUISER', color: '#bce0d8', neon: '#36f1e6', x: -60, z: 20, yaw: Math.PI / 2, ai: true, police: false, pursuit: false },
+  { name: 'BANSHEE TURBO', color: '#ff5e7e', neon: '#ff4fa3', x: 20, z: -48, yaw: 0, ai: true, police: false, pursuit: false, bike: false },
+  { name: 'OCEAN CRUISER', color: '#bce0d8', neon: '#36f1e6', x: -60, z: 20, yaw: Math.PI / 2, ai: true, police: false, pursuit: false, bike: false },
 ];
 
 export class VehicleSystem {
@@ -115,7 +118,9 @@ export class VehicleSystem {
     this.scene.add(this.headlightTarget);
 
     CAR_SPECS.forEach((spec, idx) => {
-      const built = this.createCarMesh(spec.color, spec.neon, spec.police);
+      const built = spec.bike
+        ? this.createBikeMesh(spec.color, spec.neon)
+        : this.createCarMesh(spec.color, spec.neon, spec.police);
       built.group.position.set(spec.x, 0, spec.z);
       built.group.rotation.y = spec.yaw;
       scene.add(built.group);
@@ -125,8 +130,10 @@ export class VehicleSystem {
         name: spec.name,
         isPolice: spec.police,
         isPursuitUnit: spec.pursuit,
+        isBike: spec.bike,
         mesh: built.group,
         bodyMat: built.bodyMat,
+        riderMesh: built.riderMesh,
         originalColor: spec.color,
         position: new THREE.Vector3(spec.x, 0, spec.z),
         spawnX: spec.x,
@@ -194,12 +201,15 @@ export class VehicleSystem {
     if (v.destroyed) return;
     this.activeVehicle = v;
     v.isAiControlled = false;
+    if (v.riderMesh) v.riderMesh.visible = true;
     this.camInitialized = false;
   }
 
   public exitVehicle(): { x: number; y: number; z: number; yaw: number } | null {
     if (!this.activeVehicle) return null;
     const v = this.activeVehicle;
+    if (v.riderMesh) v.riderMesh.visible = false;
+    v.mesh.rotation.z = 0;
     const sideX = Math.cos(v.yaw) * -2.2;
     const sideZ = -Math.sin(v.yaw) * -2.2;
     const out = {
@@ -474,7 +484,7 @@ export class VehicleSystem {
   }
 
   private clampCarAgainstBuildings(v: Vehicle, solidColliders: AABB[]): void {
-    const carRadius = 1.45;
+    const carRadius = v.isBike ? 0.78 : 1.45;
     for (const box of solidColliders) {
       if (
         v.position.x + carRadius > box.minX &&
@@ -772,11 +782,11 @@ export class VehicleSystem {
     const steerInput = isActive ? THREE.MathUtils.clamp(kbSteer + padSteer, -1, 1) : 0;
     const handbrake = isActive && (this.keys.has('Space') || Boolean(pad?.connected && pad.handbrake));
 
-    const maxForward = 24.5;
-    const maxReverse = -9.0;
+    const maxForward = v.isBike ? 29.5 : 24.5;
+    const maxReverse = v.isBike ? -6.5 : -9.0;
 
     if (accelInput > 0.05) {
-      v.speed += 18.5 * accelInput * dt;
+      v.speed += (v.isBike ? 23.0 : 18.5) * accelInput * dt;
     } else if (accelInput < -0.05) {
       v.speed += (v.speed > 0.5 ? 28.0 : 12.0) * accelInput * dt;
     } else {
@@ -788,6 +798,12 @@ export class VehicleSystem {
     }
 
     v.speed = THREE.MathUtils.clamp(v.speed, maxReverse, maxForward);
+
+    // Realistic banking lean into turns for the PCJ-86 Neon Bike!
+    if (v.isBike) {
+      const targetLean = -steerInput * 0.42 * Math.min(1, Math.abs(v.speed) / 14);
+      v.mesh.rotation.z += (targetLean - v.mesh.rotation.z) * (1 - Math.exp(-10 * dt));
+    }
 
     // Emit white-cyan tire drift smoke when handbraking at speed
     this.isDrifting = handbrake && Math.abs(v.speed) > 5.5;
@@ -824,7 +840,7 @@ export class VehicleSystem {
 
     const speedFactor = Math.min(1, Math.abs(v.speed) / 4.5);
     const dirSign = v.speed >= 0 ? 1 : -1;
-    const turnRate = (handbrake ? 2.75 : 2.15) * speedFactor * dirSign;
+    const turnRate = (handbrake ? 2.75 : v.isBike ? 2.65 : 2.15) * speedFactor * dirSign;
     v.yaw += steerInput * turnRate * dt;
 
     this.moveVehicleWithCollision(v, dt, solidColliders, bounds);
@@ -899,7 +915,7 @@ export class VehicleSystem {
     let nextX = THREE.MathUtils.clamp(v.position.x + dx, bounds.minX + 1.5, bounds.maxX - 4.0);
     let nextZ = THREE.MathUtils.clamp(v.position.z + dz, bounds.minZ + 1.5, bounds.maxZ - 1.5);
 
-    const carRadius = 1.45;
+    const carRadius = v.isBike ? 0.78 : 1.45;
     let collided = false;
 
     for (const box of solidColliders) {
@@ -1007,6 +1023,7 @@ export class VehicleSystem {
     wheels: THREE.Mesh[];
     lightbarRed?: THREE.Mesh;
     lightbarBlue?: THREE.Mesh;
+    riderMesh?: THREE.Group;
   } {
     const group = new THREE.Group();
 
@@ -1113,6 +1130,109 @@ export class VehicleSystem {
       wheels.push(wheel);
     }
 
-    return { group, bodyMat, wheels, lightbarRed, lightbarBlue };
+    return { group, bodyMat, wheels, lightbarRed, lightbarBlue, riderMesh: undefined as THREE.Group | undefined };
+  }
+
+  private createBikeMesh(
+    bodyColor: string,
+    neonColor: string,
+  ): {
+    group: THREE.Group;
+    bodyMat: THREE.MeshStandardMaterial;
+    wheels: THREE.Mesh[];
+    lightbarRed?: THREE.Mesh;
+    lightbarBlue?: THREE.Mesh;
+    riderMesh: THREE.Group;
+  } {
+    const group = new THREE.Group();
+    const bodyMat = new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 0.22, metalness: 0.65 });
+    const darkMat = new THREE.MeshStandardMaterial({ color: '#1b1624', roughness: 0.55, metalness: 0.6 });
+    const neonMat = new THREE.MeshStandardMaterial({
+      color: neonColor,
+      emissive: neonColor,
+      emissiveIntensity: 2.6,
+    });
+
+    // Sleek sportbike fairing & fuel tank
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.42, 1.55), bodyMat);
+    frame.position.set(0, 0.64, 0.05);
+    frame.castShadow = true;
+    group.add(frame);
+
+    const cowl = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.34, 0.55), bodyMat);
+    cowl.position.set(0, 0.88, 0.62);
+    cowl.rotation.x = 0.42;
+    group.add(cowl);
+
+    // Handlebars
+    const bars = new THREE.Mesh(new THREE.BoxGeometry(0.86, 0.06, 0.08), darkMat);
+    bars.position.set(0, 1.04, 0.52);
+    group.add(bars);
+
+    // Headlight & neon side trim
+    const head = new THREE.Mesh(
+      new THREE.BoxGeometry(0.28, 0.14, 0.08),
+      new THREE.MeshStandardMaterial({ color: '#fff4d4', emissive: '#ffdf9e', emissiveIntensity: 3.4 }),
+    );
+    head.position.set(0, 0.86, 0.92);
+    group.add(head);
+
+    const trim = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.06, 1.35), neonMat);
+    trim.position.set(0, 0.62, 0.05);
+    group.add(trim);
+
+    // 2 Sportbike Wheels with glowing neon rim rings
+    const wheelGeo = new THREE.CylinderGeometry(0.35, 0.35, 0.18, 14);
+    wheelGeo.rotateZ(Math.PI / 2);
+    const wheels: THREE.Mesh[] = [];
+    for (const wz of [0.88, -0.82]) {
+      const w = new THREE.Mesh(wheelGeo, darkMat);
+      w.position.set(0, 0.35, wz);
+      w.castShadow = true;
+      group.add(w);
+      wheels.push(w);
+    }
+
+    // Stylized 80s Miami Rider visible while riding the PCJ-86
+    const riderMesh = new THREE.Group();
+    const blazerMat = new THREE.MeshStandardMaterial({ color: '#f2e8e1', roughness: 0.6 });
+    const pantsMat = new THREE.MeshStandardMaterial({ color: '#272c42', roughness: 0.78 });
+    const skinMat = new THREE.MeshStandardMaterial({ color: '#e2b192', roughness: 0.7 });
+    const helmetMat = new THREE.MeshStandardMaterial({
+      color: '#1b1426',
+      emissive: '#36f1e6',
+      emissiveIntensity: 0.35,
+      roughness: 0.15,
+      metalness: 0.8,
+    });
+
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.54, 0.28), blazerMat);
+    torso.position.set(0, 1.18, -0.1);
+    torso.rotation.x = 0.38;
+    riderMesh.add(torso);
+
+    const headMesh = new THREE.Mesh(new THREE.SphereGeometry(0.18, 10, 8), helmetMat);
+    headMesh.position.set(0, 1.54, 0.08);
+    riderMesh.add(headMesh);
+
+    for (const side of [-0.26, 0.26]) {
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.44, 0.12), blazerMat);
+      arm.position.set(side, 1.15, 0.25);
+      arm.rotation.x = 1.1;
+      riderMesh.add(arm);
+
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.5, 0.16), pantsMat);
+      leg.position.set(side * 0.9, 0.72, -0.15);
+      leg.rotation.x = -0.35;
+      riderMesh.add(leg);
+    }
+    const hands = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.08, 0.08), skinMat);
+    hands.position.set(0, 1.04, 0.5);
+    riderMesh.add(hands);
+
+    riderMesh.visible = false;
+    group.add(riderMesh);
+
+    return { group, bodyMat, wheels, riderMesh };
   }
 }

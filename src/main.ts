@@ -12,6 +12,7 @@ import { VehicleSystem } from './vehicles/VehicleSystem';
 import { BoatSystem } from './vehicles/BoatSystem';
 import { DestructibleProps } from './world/DestructibleProps';
 import { DecalSystem } from './world/DecalSystem';
+import { RoadblockSystem } from './world/RoadblockSystem';
 import { NpcSystem } from './entities/NpcSystem';
 import { HelicopterSystem } from './entities/HelicopterSystem';
 import { WantedSystem } from './gameplay/WantedSystem';
@@ -127,6 +128,7 @@ composer.addPass(new OutputPass());
 const world = buildMiamiCity(scene, renderer);
 const destructibles = new DestructibleProps(scene);
 const decals = new DecalSystem(scene);
+const roadblocks = new RoadblockSystem(scene);
 const weapons = new WeaponSystem(scene, camera);
 const vehicles = new VehicleSystem(scene);
 const boat = new BoatSystem(scene);
@@ -374,7 +376,13 @@ vehicles.onVehicleHitNpc = (vPos, speed) => {
   const car = vehicles.getActiveVehicle();
   if (car) {
     destructibles.handleVehicleImpact(vPos, car.yaw, speed);
+    roadblocks.handleVehicleImpact(vPos, car.yaw, speed);
   }
+};
+
+roadblocks.onBarricadeSmashed = () => {
+  audio.playCrash(0.5);
+  addCameraShake(0.28);
 };
 
 destructibles.onPropSmashed = (kind) => {
@@ -792,7 +800,7 @@ function animate(now: number): void {
     player.position,
     wanted.stars,
     camera,
-    world.colliders,
+    [...world.colliders, ...roadblocks.getActiveColliders()],
     world.layout.playableBounds,
     pad,
     world.stuntRamps,
@@ -802,6 +810,7 @@ function animate(now: number): void {
 
   world.update(elapsed, dt, player.position);
   destructibles.update(dt);
+  roadblocks.update(dt, elapsed, wanted.stars);
   shop.update(elapsed);
   payNSpray.update(dt, elapsed);
   wanted.update(dt);

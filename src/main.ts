@@ -14,6 +14,14 @@ import { ObjectiveSystem } from './gameplay/ObjectiveSystem';
 import { ShopSystem } from './gameplay/ShopSystem';
 import { Minimap } from './hud/Minimap';
 import { AudioEngine } from './audio/AudioEngine';
+import {
+  clearProgress,
+  loadProgress,
+  loadSettings,
+  saveProgress,
+  saveSettings,
+  type GameSettings,
+} from './engine/Storage';
 
 const canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
 const overlay = document.getElementById('overlay') as HTMLDivElement;
@@ -64,6 +72,18 @@ const buyArmorBtn = document.getElementById('buy-armor') as HTMLButtonElement;
 const buyLauncherBtn = document.getElementById('buy-launcher') as HTMLButtonElement;
 const shopCloseBtn = document.getElementById('shop-close') as HTMLButtonElement;
 
+// Pause Settings & Saved Stats UI
+const statCashEl = document.getElementById('stat-cash') as HTMLElement;
+const statMissionsEl = document.getElementById('stat-missions') as HTMLElement;
+const resetSaveBtn = document.getElementById('reset-save-btn') as HTMLButtonElement;
+const optSensInput = document.getElementById('opt-sens') as HTMLInputElement;
+const optSensValEl = document.getElementById('opt-sens-val') as HTMLSpanElement;
+const optSfxInput = document.getElementById('opt-sfx') as HTMLInputElement;
+const optSfxValEl = document.getElementById('opt-sfx-val') as HTMLSpanElement;
+const optMusicInput = document.getElementById('opt-music') as HTMLInputElement;
+const optMusicValEl = document.getElementById('opt-music-val') as HTMLSpanElement;
+const optPerfInput = document.getElementById('opt-perf') as HTMLInputElement;
+
 // Renderer
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -107,13 +127,77 @@ const b = world.layout.playableBounds;
 player.setWorldBounds(b.minX, b.maxX, b.minZ, b.maxZ);
 player.setSpawn(60, 0.2, 24, 0.12);
 
-// Player Health, Armor & Shop State
+// Player Health, Armor & Shop State (restored from localStorage)
+const savedProgress = loadProgress();
+let settings: GameSettings = loadSettings();
 let playerHp = 100;
-let playerArmor = 0;
+let playerArmor = savedProgress.armor;
 let damageFlash = 0;
 let wastedTimer = 0;
-let lastCompletedCount = 0;
+let lastCompletedCount = savedProgress.completedMissions;
 let shopOpen = false;
+
+objectives.cash = savedProgress.cash;
+objectives.completedCount = savedProgress.completedMissions;
+if (savedProgress.launcherUnlocked) {
+  weapons.unlockLauncher();
+  weapons.switchWeapon(0);
+  slotEls[3].classList.remove('locked');
+}
+
+function persistProgress(): void {
+  saveProgress({
+    cash: objectives.cash,
+    completedMissions: objectives.completedCount,
+    launcherUnlocked: weapons.isLauncherUnlocked(),
+    armor: Math.round(playerArmor),
+  });
+  statCashEl.textContent = `$${objectives.cash.toLocaleString('en-US')}`;
+  statMissionsEl.textContent = String(objectives.completedCount);
+}
+
+function applySettings(next: GameSettings): void {
+  settings = next;
+  player.setSensitivityMultiplier(settings.mouseSensitivity);
+  audio.setSfxVolume(settings.sfxVolume);
+  audio.setMusicVolume(settings.musicVolume);
+  renderer.shadowMap.enabled = !settings.performanceMode;
+  renderer.setPixelRatio(settings.performanceMode ? 1 : Math.min(window.devicePixelRatio, 2));
+  bloomPass.enabled = !settings.performanceMode;
+
+  optSensInput.value = String(settings.mouseSensitivity);
+  optSensValEl.textContent = `${settings.mouseSensitivity.toFixed(1)}×`;
+  optSfxInput.value = String(settings.sfxVolume);
+  optSfxValEl.textContent = `${Math.round(settings.sfxVolume * 100)}%`;
+  optMusicInput.value = String(settings.musicVolume);
+  optMusicValEl.textContent = `${Math.round(settings.musicVolume * 100)}%`;
+  optPerfInput.checked = settings.performanceMode;
+  saveSettings(settings);
+}
+
+applySettings(settings);
+persistProgress();
+
+optSensInput.addEventListener('input', () => {
+  applySettings({ ...settings, mouseSensitivity: parseFloat(optSensInput.value) });
+});
+optSfxInput.addEventListener('input', () => {
+  applySettings({ ...settings, sfxVolume: parseFloat(optSfxInput.value) });
+});
+optMusicInput.addEventListener('input', () => {
+  applySettings({ ...settings, musicVolume: parseFloat(optMusicInput.value) });
+});
+optPerfInput.addEventListener('change', () => {
+  applySettings({ ...settings, performanceMode: optPerfInput.checked });
+});
+resetSaveBtn.addEventListener('click', () => {
+  clearProgress();
+  objectives.cash = 0;
+  objectives.completedCount = 0;
+  lastCompletedCount = 0;
+  playerArmor = 0;
+  persistProgress();
+});
 
 function applyPlayerDamage(amount: number): void {
   if (wastedTimer > 0) return;
@@ -257,6 +341,7 @@ buyMedkitBtn.addEventListener('click', () => {
   objectives.cash -= 250;
   playerHp = Math.min(100, playerHp + 50);
   audio.playPurchase();
+  persistProgress();
   refreshShopUi();
 });
 
@@ -265,6 +350,7 @@ buyArmorBtn.addEventListener('click', () => {
   objectives.cash -= 400;
   playerArmor = 100;
   audio.playPurchase();
+  persistProgress();
   refreshShopUi();
 });
 
@@ -275,12 +361,14 @@ buyLauncherBtn.addEventListener('click', () => {
     weapons.unlockLauncher();
     slotEls[3].classList.remove('locked');
     audio.playPurchase();
+    persistProgress();
     refreshShopUi();
   } else {
     if (objectives.cash < 200) return;
     objectives.cash -= 200;
     weapons.refillAllAmmo();
     audio.playPurchase();
+    persistProgress();
     refreshShopUi();
   }
 });
@@ -372,6 +460,7 @@ function startGame(): void {
 function pauseGame(): void {
   if (shopOpen) return;
   player.setActive(false);
+  persistProgress();
   overlay.classList.remove('hidden');
 }
 
@@ -479,6 +568,7 @@ function animate(now: number): void {
   if (objHud.completedCount > lastCompletedCount) {
     lastCompletedCount = objHud.completedCount;
     audio.playMissionPassed();
+    persistProgress();
   }
 
   audio.update(

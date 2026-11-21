@@ -118,13 +118,44 @@
           <h1 class="game-title">VICE DUSK</h1>
           <p class="subtitle">Miami Coastal District · Golden Hour Post-Rain FPS &amp; Driving</p>
           <button id="play-btn" type="button">KLICKEN ZUM STARTEN</button>
+
+          <!-- Saved Progress Summary -->
+          <div class="stats-bar">
+            <span>CASH: <strong id="stat-cash">$0</strong></span>
+            <span>ZIELE: <strong id="stat-missions">0</strong></span>
+            <button id="reset-save-btn" type="button" title="Gespeicherten Fortschritt löschen">RESET</button>
+          </div>
+
+          <!-- Live Settings Panel -->
+          <div class="settings-panel">
+            <label class="setting-row">
+              <span>Maus-Sensitivität</span>
+              <input id="opt-sens" type="range" min="0.5" max="2.0" step="0.1" value="1.0" />
+              <span id="opt-sens-val" class="opt-val">1.0×</span>
+            </label>
+            <label class="setting-row">
+              <span>Effekte (SFX)</span>
+              <input id="opt-sfx" type="range" min="0" max="1" step="0.05" value="0.75" />
+              <span id="opt-sfx-val" class="opt-val">75%</span>
+            </label>
+            <label class="setting-row">
+              <span>Radio / Musik</span>
+              <input id="opt-music" type="range" min="0" max="1" step="0.05" value="0.70" />
+              <span id="opt-music-val" class="opt-val">70%</span>
+            </label>
+            <label class="setting-toggle">
+              <input id="opt-perf" type="checkbox" />
+              <span>Performance-Modus (Bloom &amp; Schatten aus)</span>
+            </label>
+          </div>
+
           <div class="controls-grid">
             <div><kbd>W A S D</kbd> Laufen / Fahren</div>
             <div><kbd>LMB</kbd> / <kbd>RMB</kbd> Schießen / ADS</div>
             <div><kbd>E</kbd> Auto ein-/aussteigen</div>
-            <div><kbd>V</kbd> Auto-Kamera wechseln</div>
-            <div><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> / <kbd>R</kbd> Waffen / Laden</div>
-            <div><kbd>M</kbd> Audio stummschalten</div>
+            <div><kbd>Q</kbd> / <kbd>V</kbd> Radio / Auto-Kamera</div>
+            <div><kbd>1–4</kbd> / <kbd>R</kbd> Waffen / Laden</div>
+            <div><kbd>B</kbd> / <kbd>M</kbd> Shop / Audio Stumm</div>
           </div>
         </div>
       </div>

@@ -1,0 +1,96 @@
+export interface GameSettings {
+  mouseSensitivity: number; // 0.5 .. 2.0
+  sfxVolume: number; // 0 .. 1
+  musicVolume: number; // 0 .. 1
+  performanceMode: boolean;
+}
+
+export interface SaveProgress {
+  cash: number;
+  completedMissions: number;
+  launcherUnlocked: boolean;
+  armor: number;
+}
+
+const SETTINGS_KEY = 'vice_dusk_settings_v1';
+const PROGRESS_KEY = 'vice_dusk_progress_v1';
+
+export const DEFAULT_SETTINGS: GameSettings = {
+  mouseSensitivity: 1.0,
+  sfxVolume: 0.75,
+  musicVolume: 0.7,
+  performanceMode: false,
+};
+
+export const DEFAULT_PROGRESS: SaveProgress = {
+  cash: 0,
+  completedMissions: 0,
+  launcherUnlocked: false,
+  armor: 0,
+};
+
+export function loadSettings(): GameSettings {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (!raw) return { ...DEFAULT_SETTINGS };
+    const parsed = JSON.parse(raw) as Partial<GameSettings>;
+    return {
+      mouseSensitivity:
+        typeof parsed.mouseSensitivity === 'number'
+          ? Math.max(0.5, Math.min(2.0, parsed.mouseSensitivity))
+          : DEFAULT_SETTINGS.mouseSensitivity,
+      sfxVolume:
+        typeof parsed.sfxVolume === 'number'
+          ? Math.max(0, Math.min(1, parsed.sfxVolume))
+          : DEFAULT_SETTINGS.sfxVolume,
+      musicVolume:
+        typeof parsed.musicVolume === 'number'
+          ? Math.max(0, Math.min(1, parsed.musicVolume))
+          : DEFAULT_SETTINGS.musicVolume,
+      performanceMode: Boolean(parsed.performanceMode),
+    };
+  } catch {
+    return { ...DEFAULT_SETTINGS };
+  }
+}
+
+export function saveSettings(settings: GameSettings): void {
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  } catch {
+    // ignore storage quota / private mode errors
+  }
+}
+
+export function loadProgress(): SaveProgress {
+  try {
+    const raw = localStorage.getItem(PROGRESS_KEY);
+    if (!raw) return { ...DEFAULT_PROGRESS };
+    const parsed = JSON.parse(raw) as Partial<SaveProgress>;
+    return {
+      cash: typeof parsed.cash === 'number' ? Math.max(0, Math.floor(parsed.cash)) : 0,
+      completedMissions:
+        typeof parsed.completedMissions === 'number' ? Math.max(0, Math.floor(parsed.completedMissions)) : 0,
+      launcherUnlocked: Boolean(parsed.launcherUnlocked),
+      armor: typeof parsed.armor === 'number' ? Math.max(0, Math.min(100, parsed.armor)) : 0,
+    };
+  } catch {
+    return { ...DEFAULT_PROGRESS };
+  }
+}
+
+export function saveProgress(progress: SaveProgress): void {
+  try {
+    localStorage.setItem(PROGRESS_KEY, JSON.stringify(progress));
+  } catch {
+    // ignore storage quota / private mode errors
+  }
+}
+
+export function clearProgress(): void {
+  try {
+    localStorage.removeItem(PROGRESS_KEY);
+  } catch {
+    // ignore
+  }
+}

@@ -23,6 +23,8 @@ export class AudioEngine {
   private readonly stations = ['VICE FM', 'DUSK CHILL', 'OUTRUN TURBO', 'RADIO AUS'];
   private stationIndex = 0;
   private muted = false;
+  private sfxScale = 0.75;
+  private musicScale = 0.7;
   private beatTimer = 0;
   private beatStep = 0;
   private stepTimer = 0;
@@ -109,9 +111,20 @@ export class AudioEngine {
   public toggleMute(): boolean {
     this.muted = !this.muted;
     if (this.masterGain && this.ctx) {
-      this.masterGain.gain.setTargetAtTime(this.muted ? 0 : 0.55, this.ctx.currentTime, 0.04);
+      this.masterGain.gain.setTargetAtTime(this.muted ? 0 : 0.7 * this.sfxScale, this.ctx.currentTime, 0.04);
     }
     return this.muted;
+  }
+
+  public setSfxVolume(vol: number): void {
+    this.sfxScale = Math.max(0, Math.min(1, vol));
+    if (this.masterGain && this.ctx && !this.muted) {
+      this.masterGain.gain.setTargetAtTime(0.7 * this.sfxScale, this.ctx.currentTime, 0.04);
+    }
+  }
+
+  public setMusicVolume(vol: number): void {
+    this.musicScale = Math.max(0, Math.min(1, vol));
   }
 
   public isMuted(): boolean {
@@ -447,8 +460,8 @@ export class AudioEngine {
 
     // 5) Car Radio / Ambient Synthwave
     const station = this.stations[this.stationIndex];
-    if (isActive && !this.muted && station !== 'RADIO AUS') {
-      const volScale = inVehicle ? 1.15 : 0.6;
+    if (isActive && !this.muted && station !== 'RADIO AUS' && this.musicScale > 0.01) {
+      const volScale = (inVehicle ? 1.15 : 0.6) * (this.musicScale / Math.max(0.15, this.sfxScale));
       this.beatTimer -= dt;
       if (this.beatTimer <= 0) {
         if (station === 'VICE FM') {

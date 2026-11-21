@@ -9,6 +9,7 @@ export class PlayerController {
 
   private yaw = 0;
   private pitch = 0;
+  private sensitivityMult = 1.0;
 
   private readonly keys = new Set<string>();
   private isLocked = false;
@@ -88,6 +89,10 @@ export class PlayerController {
     this.pitch = 0;
   }
 
+  public setSensitivityMultiplier(mult: number): void {
+    this.sensitivityMult = THREE.MathUtils.clamp(mult, 0.4, 2.5);
+  }
+
   public setWorldBounds(minX: number, maxX: number, minZ: number, maxZ: number): void {
     this.worldBounds = { minX, maxX, minZ, maxZ };
   }
@@ -122,7 +127,7 @@ export class PlayerController {
   };
 
   private onMouseMove = (e: MouseEvent): void => {
-    const sensitivity = 0.0022;
+    const sensitivity = 0.0022 * this.sensitivityMult;
     const maxPitch = Math.PI / 2 - 0.04;
 
     if (this.isLocked) {

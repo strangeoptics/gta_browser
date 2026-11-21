@@ -25,6 +25,7 @@ export class Minimap {
     objective: ActiveObjective | null,
     elapsed: number,
     heliPos?: { x: number; z: number } | null,
+    heistTarget?: { x: number; z: number } | null,
   ): void {
     const ctx = this.ctx;
     const half = this.half;
@@ -110,6 +111,14 @@ export class Minimap {
     ctx.fillStyle = '#ff9f43';
     ctx.fillText('P', px, pz);
 
+    // Ocean Club Heist Start marker (★) at (60, -26) when idle
+    if (!heistTarget) {
+      const hstX = (60 - playerX) * scale;
+      const hstZ = (-26 - playerZ) * scale;
+      ctx.fillStyle = '#ffd15c';
+      ctx.fillText('★', hstX, hstZ);
+    }
+
     // Vice PD Chopper marker (H) when deployed
     if (heliPos) {
       const hx = (heliPos.x - playerX) * scale;
@@ -136,10 +145,11 @@ export class Minimap {
 
     ctx.restore(); // end rotated map layer
 
-    // Objective marker (clamped to radar edge if outside radius)
-    if (objective && objective.kind !== 'survive') {
-      const dx = objective.targetPos.x - playerX;
-      const dz = objective.targetPos.z - playerZ;
+    // Objective or Active Heist marker (clamped to radar edge if outside radius)
+    const activeTargetPos = heistTarget ?? (objective && objective.kind !== 'survive' ? objective.targetPos : null);
+    if (activeTargetPos) {
+      const dx = activeTargetPos.x - playerX;
+      const dz = activeTargetPos.z - playerZ;
       const cos = Math.cos(headingYaw);
       const sin = Math.sin(headingYaw);
       let rx = (dx * cos - dz * sin) * scale;
@@ -152,12 +162,13 @@ export class Minimap {
         rz = (rz / dist) * maxR;
       }
 
-      const color =
-        objective.kind === 'stash'
+      const color = heistTarget
+        ? '#ffd15c'
+        : objective?.kind === 'stash'
           ? '#36f1e6'
-          : objective.kind === 'race'
+          : objective?.kind === 'race'
             ? '#ffbe3b'
-            : objective.kind === 'dropoff'
+            : objective?.kind === 'dropoff'
               ? '#ff9f43'
               : '#ff4fa3';
 

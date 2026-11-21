@@ -269,6 +269,11 @@ body,
   color: #36f1e6;
 }
 
+.obj-tag.heist {
+  color: #ffd15c;
+  text-shadow: 0 0 8px rgba(255, 209, 92, 0.7);
+}
+
 #obj-dist {
   color: #ff9f43;
 }

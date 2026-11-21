@@ -14,6 +14,7 @@ import { NpcSystem } from './entities/NpcSystem';
 import { HelicopterSystem } from './entities/HelicopterSystem';
 import { WantedSystem } from './gameplay/WantedSystem';
 import { ObjectiveSystem } from './gameplay/ObjectiveSystem';
+import { HeistSystem } from './gameplay/HeistSystem';
 import { ShopSystem } from './gameplay/ShopSystem';
 import { PayNSpray } from './gameplay/PayNSpray';
 import { Minimap } from './hud/Minimap';
@@ -42,11 +43,14 @@ const ammoMaxEl = document.getElementById('ammo-max') as HTMLSpanElement;
 const reloadBarEl = document.getElementById('reload-bar') as HTMLDivElement;
 const reloadFillEl = document.getElementById('reload-fill') as HTMLDivElement;
 const slotEls = [
+  document.getElementById('slot-0') as HTMLSpanElement,
   document.getElementById('slot-1') as HTMLSpanElement,
   document.getElementById('slot-2') as HTMLSpanElement,
   document.getElementById('slot-3') as HTMLSpanElement,
   document.getElementById('slot-4') as HTMLSpanElement,
 ];
+
+const objTagEl = document.querySelector('.obj-tag') as HTMLSpanElement;
 
 const starsEl = document.getElementById('wanted-stars') as HTMLDivElement;
 const cashEl = document.getElementById('cash-display') as HTMLDivElement;
@@ -124,6 +128,7 @@ const npcs = new NpcSystem(scene);
 const heli = new HelicopterSystem(scene);
 const wanted = new WantedSystem();
 const objectives = new ObjectiveSystem(scene);
+const heist = new HeistSystem(scene);
 const shop = new ShopSystem(scene);
 const payNSpray = new PayNSpray(scene);
 const minimap = new Minimap(minimapCanvas);
@@ -152,8 +157,8 @@ objectives.cash = savedProgress.cash;
 objectives.completedCount = savedProgress.completedMissions;
 if (savedProgress.launcherUnlocked) {
   weapons.unlockLauncher();
-  weapons.switchWeapon(0);
-  slotEls[3].classList.remove('locked');
+  weapons.switchWeapon(1);
+  slotEls[4].classList.remove('locked');
 }
 
 function persistProgress(): void {
@@ -253,6 +258,10 @@ function triggerWorldExplosion(origin: THREE.Vector3, radius: number, maxDamage:
 
 // Wire system callbacks
 weapons.onShotFired = (weaponId, origin) => {
+  if (weaponId === 'katana') {
+    audio.playKatanaSlash();
+    return;
+  }
   audio.playShot(weaponId);
   npcs.alertNearbyCivilians(origin, 28);
 };
@@ -396,7 +405,7 @@ buyLauncherBtn.addEventListener('click', () => {
     if (objectives.cash < 900) return;
     objectives.cash -= 900;
     weapons.unlockLauncher();
-    slotEls[3].classList.remove('locked');
+    slotEls[4].classList.remove('locked');
     audio.playPurchase();
     persistProgress();
     refreshShopUi();
@@ -486,6 +495,14 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyY' && player.getIsActive() && !shopOpen) {
     const raining = world.toggleRain();
     showQuickToast(raining ? 'WETTER · TROPENSCHAUER' : 'WETTER · NACH DEM REGEN');
+    return;
+  }
+
+  if (e.code === 'KeyH' && player.getIsActive() && !shopOpen && wastedTimer <= 0) {
+    if (!heist.isActive()) {
+      heist.startHeist();
+      audio.playCheckpoint();
+    }
     return;
   }
 
@@ -614,6 +631,7 @@ function animate(now: number): void {
       wanted.reset();
       npcs.clearPolice();
       heli.clear();
+      if (heist.isActive()) heist.failHeist();
       player.setSpawn(60, 0.2, 24, 0.12);
     }
   }
@@ -691,7 +709,24 @@ function animate(now: number): void {
   wanted.update(dt);
   npcs.update(dt, player.position, wanted.stars);
   heli.update(dt, elapsed, player.position, wanted.stars);
+  const heistHud = heist.update(elapsed, player.position, vehicles, boat, npcs, wanted);
   const objHud = objectives.update(dt, elapsed, player.position, vehicles, npcs, wanted);
+
+  if (heistHud.stageToast) {
+    showQuickToast(heistHud.stageToast);
+    if (heistHud.justCompleted) {
+      objectives.cash += heist.reward;
+      objectives.completedCount++;
+      lastCompletedCount = objectives.completedCount;
+      wanted.reset();
+      npcs.clearPolice();
+      heli.clear();
+      audio.playMissionPassed();
+      persistProgress();
+    } else {
+      audio.playCheckpoint();
+    }
+  }
 
   if (objHud.completedCount > lastCompletedCount) {
     lastCompletedCount = objHud.completedCount;
@@ -735,6 +770,7 @@ function animate(now: number): void {
     objectives.current,
     elapsed,
     heli.active ? heli.position : null,
+    heistHud.targetPos,
   );
 
   // --- HUD Updates ---
@@ -754,14 +790,24 @@ function animate(now: number): void {
   starsEl.classList.toggle('active', wanted.stars > 0);
   cashEl.textContent = `$${objHud.cash.toLocaleString('en-US')}`;
 
-  objTitleEl.textContent = objHud.title;
-  objDescEl.textContent = objHud.description;
-  if (objHud.timerText && objHud.distanceM > 0) {
-    objDistEl.textContent = `${objHud.timerText} · ${objHud.distanceM} m`;
-  } else if (objHud.timerText) {
-    objDistEl.textContent = objHud.timerText;
+  if (heistHud.active) {
+    objTagEl.textContent = '★ HEIST';
+    objTagEl.classList.add('heist');
+    objTitleEl.textContent = heistHud.title;
+    objDescEl.textContent = heistHud.description;
+    objDistEl.textContent = `${heistHud.distanceM} m`;
   } else {
-    objDistEl.textContent = objHud.distanceM > 0 ? `${objHud.distanceM} m` : '';
+    objTagEl.textContent = 'ZIEL · [H] HEIST';
+    objTagEl.classList.remove('heist');
+    objTitleEl.textContent = objHud.title;
+    objDescEl.textContent = objHud.description;
+    if (objHud.timerText && objHud.distanceM > 0) {
+      objDistEl.textContent = `${objHud.timerText} · ${objHud.distanceM} m`;
+    } else if (objHud.timerText) {
+      objDistEl.textContent = objHud.timerText;
+    } else {
+      objDistEl.textContent = objHud.distanceM > 0 ? `${objHud.distanceM} m` : '';
+    }
   }
 
   if (objHud.toastText) {
@@ -797,8 +843,8 @@ function animate(now: number): void {
     }
   } else {
     weaponNameEl.textContent = wHud.name;
-    ammoCurrentEl.textContent = wHud.reloading ? 'RLD' : String(wHud.ammo);
-    ammoMaxEl.textContent = `/ ${wHud.magSize}`;
+    ammoCurrentEl.textContent = wHud.isMelee ? '∞' : wHud.reloading ? 'RLD' : String(wHud.ammo);
+    ammoMaxEl.textContent = wHud.isMelee ? 'MELEE' : `/ ${wHud.magSize}`;
     reloadBarEl.classList.toggle('visible', wHud.reloading);
     reloadFillEl.style.width = `${Math.round(wHud.reloadProgress * 100)}%`;
     slotEls.forEach((el, idx) => el.classList.toggle('active', idx === wHud.slotIndex));
@@ -812,6 +858,9 @@ function animate(now: number): void {
 
     if (shop.isPlayerNear(player.position) && !shopOpen) {
       interactPromptEl.textContent = '[B] AMMU-NEON SHOP ÖFFNEN ($)';
+      interactPromptEl.classList.add('visible');
+    } else if (heistHud.nearStartMarker && !heistHud.active) {
+      interactPromptEl.textContent = '[H] OCEAN CLUB HEIST STARTEN (+$3.500)';
       interactPromptEl.classList.add('visible');
     } else if (boatHud.nearbyBoat) {
       interactPromptEl.textContent = '[E] EINSTEIGEN · STINGER SPEEDBOAT';

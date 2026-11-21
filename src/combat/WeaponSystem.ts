@@ -12,6 +12,7 @@ export interface WeaponHudState {
   name: string;
   ammo: number;
   magSize: number;
+  isMelee: boolean;
   reloading: boolean;
   reloadProgress: number;
   ads: boolean;
@@ -53,6 +54,24 @@ interface SparkParticle {
 }
 
 const WEAPONS: WeaponDef[] = [
+  {
+    id: 'katana',
+    name: 'NEON KATANA',
+    auto: false,
+    fireRate: 2.6,
+    damage: 65,
+    pellets: 1,
+    spreadHip: 0,
+    spreadAds: 0,
+    magSize: 1,
+    reloadTime: 0.1,
+    recoilKick: 0.04,
+    recoilPitch: 0.04,
+    range: 3.4,
+    hipPos: new THREE.Vector3(0.32, -0.26, -0.44),
+    adsPos: new THREE.Vector3(0.24, -0.22, -0.42),
+    tracerColor: 0x36f1e6,
+  },
   {
     id: 'pistol',
     name: 'VICE 9MM',
@@ -136,9 +155,10 @@ export class WeaponSystem {
   private readonly muzzleFlash: THREE.Mesh;
   private readonly muzzleLight: THREE.PointLight;
 
-  private slotIndex = 0;
+  private slotIndex = 1; // start with Vice 9mm (slot 0 = Katana, 1 = 9mm, 2 = SMG, 3 = 12G, 4 = RPG)
   private ammo: number[] = WEAPONS.map((w) => w.magSize);
   private fireCooldown = 0;
+  private slashAnimTimer = 0;
   private reloading = false;
   private reloadTimer = 0;
   private triggerDown = false;
@@ -177,13 +197,14 @@ export class WeaponSystem {
     this.scene.add(this.camera);
 
     // Build procedural 3D weapon viewmodels
+    const katana = this.buildKatanaModel();
     const pistol = this.buildPistolModel();
     const smg = this.buildSmgModel();
     const shotgun = this.buildShotgunModel();
     const launcher = this.buildLauncherModel();
 
-    this.weaponModels.push(pistol.group, smg.group, shotgun.group, launcher.group);
-    this.muzzleTips.push(pistol.muzzleLocal, smg.muzzleLocal, shotgun.muzzleLocal, launcher.muzzleLocal);
+    this.weaponModels.push(katana.group, pistol.group, smg.group, shotgun.group, launcher.group);
+    this.muzzleTips.push(katana.muzzleLocal, pistol.muzzleLocal, smg.muzzleLocal, shotgun.muzzleLocal, launcher.muzzleLocal);
     this.weaponModels.forEach((m, i) => {
       m.visible = i === this.slotIndex;
       this.rig.add(m);
@@ -216,8 +237,8 @@ export class WeaponSystem {
 
   public unlockLauncher(): void {
     this.launcherUnlocked = true;
-    this.ammo[3] = WEAPONS[3].magSize;
-    this.switchWeapon(3);
+    this.ammo[4] = WEAPONS[4].magSize;
+    this.switchWeapon(4);
   }
 
   public isLauncherUnlocked(): boolean {
@@ -249,7 +270,7 @@ export class WeaponSystem {
     const wantsDriveBy = this.triggerDown || Boolean(pad?.connected && pad.nextWeaponPressed);
     if (!isPlaying || !wantsDriveBy || this.fireCooldown > 0) return;
 
-    const smg = WEAPONS[1];
+    const smg = WEAPONS[2];
     this.fireCooldown = 1 / smg.fireRate;
     const origin = new THREE.Vector3(carPos.x, carPos.y + 1.18, carPos.z);
     this.onShotFired?.('smg', origin);
@@ -322,10 +343,11 @@ export class WeaponSystem {
 
     window.addEventListener('keydown', (e) => {
       if (!this.enabled) return;
-      if (e.code === 'Digit1') this.switchWeapon(0);
-      else if (e.code === 'Digit2') this.switchWeapon(1);
-      else if (e.code === 'Digit3') this.switchWeapon(2);
-      else if (e.code === 'Digit4' && this.launcherUnlocked) this.switchWeapon(3);
+      if (e.code === 'Digit0') this.switchWeapon(0);
+      else if (e.code === 'Digit1') this.switchWeapon(1);
+      else if (e.code === 'Digit2') this.switchWeapon(2);
+      else if (e.code === 'Digit3') this.switchWeapon(3);
+      else if (e.code === 'Digit4' && this.launcherUnlocked) this.switchWeapon(4);
       else if (e.code === 'KeyR') this.startReload();
     });
 
@@ -333,7 +355,7 @@ export class WeaponSystem {
       'wheel',
       (e) => {
         if (!this.enabled) return;
-        const count = this.launcherUnlocked ? WEAPONS.length : 3;
+        const count = this.launcherUnlocked ? WEAPONS.length : 4;
         const dir = e.deltaY > 0 ? 1 : -1;
         const next = (this.slotIndex + dir + count) % count;
         this.switchWeapon(next);
@@ -344,7 +366,7 @@ export class WeaponSystem {
 
   public switchWeapon(index: number): void {
     if (index === this.slotIndex || index < 0 || index >= WEAPONS.length) return;
-    if (index === 3 && !this.launcherUnlocked) return;
+    if (index === 4 && !this.launcherUnlocked) return;
     this.slotIndex = index;
     this.reloading = false;
     this.reloadTimer = 0;
@@ -374,20 +396,22 @@ export class WeaponSystem {
 
     // Gamepad weapon switch & reload
     if (this.enabled && isActive && pad?.connected) {
-      const count = this.launcherUnlocked ? WEAPONS.length : 3;
+      const count = this.launcherUnlocked ? WEAPONS.length : 4;
       if (pad.nextWeaponPressed) this.switchWeapon((this.slotIndex + 1) % count);
       else if (pad.prevWeaponPressed) this.switchWeapon((this.slotIndex - 1 + count) % count);
       if (pad.reloadOrSprayPressed) this.startReload();
     }
 
     const def = WEAPONS[this.slotIndex];
+    const isMelee = def.id === 'katana';
     const padTrigger = Boolean(pad?.connected && pad.rt > 0.35);
     const padAds = Boolean(pad?.connected && pad.lt > 0.35);
-    const effectiveAds = this.ads || padAds;
+    const effectiveAds = !isMelee && (this.ads || padAds);
     const effectiveTrigger = this.triggerDown || padTrigger;
     if (!effectiveTrigger) this.semiConsumed = false;
 
     this.fireCooldown = Math.max(0, this.fireCooldown - clampedDt);
+    this.slashAnimTimer = Math.max(0, this.slashAnimTimer - clampedDt);
     this.hitmarkerAlpha = Math.max(0, this.hitmarkerAlpha - clampedDt * 4.5);
 
     // Reload timer
@@ -399,10 +423,13 @@ export class WeaponSystem {
       }
     }
 
-    // Firing logic
+    // Firing / Melee Slash logic
     if (this.enabled && isActive && effectiveTrigger && !this.reloading && this.fireCooldown <= 0) {
       if (def.auto || !this.semiConsumed) {
-        if (this.ammo[this.slotIndex] > 0) {
+        if (isMelee) {
+          this.performKatanaSlash(def, targets);
+          this.semiConsumed = true;
+        } else if (this.ammo[this.slotIndex] > 0) {
           this.fireWeapon(def, worldMeshes, targets);
           this.semiConsumed = true;
         } else {
@@ -457,24 +484,64 @@ export class WeaponSystem {
     this.rig.rotation.x = this.recoilRotX - reloadDip * 2.2;
     this.rig.rotation.z = this.reloading ? -reloadDip * 2.6 : -this.swayX * 2.2;
 
+    // Diagonal neon katana slash swing
+    if (isMelee && this.slashAnimTimer > 0) {
+      const p = 1 - this.slashAnimTimer / 0.24;
+      const swing = Math.sin(p * Math.PI);
+      this.rig.position.x -= swing * 0.42;
+      this.rig.position.y -= swing * 0.14;
+      this.rig.rotation.z += swing * 1.45;
+      this.rig.rotation.x -= swing * 0.85;
+    }
+
     // Update tracers & sparks
     this.updateEffects(clampedDt);
 
-    const spreadRad = (this.ads ? def.spreadAds : def.spreadHip) + this.recoilRotX * 0.18;
-    const spreadPx = Math.round(10 + spreadRad * 420 + (playerSpeed > 1 ? 4 : 0));
+    const spreadRad = (effectiveAds ? def.spreadAds : def.spreadHip) + this.recoilRotX * 0.18;
+    const spreadPx = isMelee ? 12 : Math.round(10 + spreadRad * 420 + (playerSpeed > 1 ? 4 : 0));
 
     return {
       slotIndex: this.slotIndex,
       name: def.name,
       ammo: this.ammo[this.slotIndex],
       magSize: def.magSize,
+      isMelee,
       reloading: this.reloading,
       reloadProgress: this.reloading ? 1 - this.reloadTimer / def.reloadTime : 0,
-      ads: this.ads,
+      ads: effectiveAds,
       spreadPx,
       hitmarkerAlpha: this.hitmarkerAlpha,
       hitmarkerKill: this.hitmarkerKill,
     };
+  }
+
+  private performKatanaSlash(def: WeaponDef, targets: ShootableTarget[]): void {
+    this.fireCooldown = 1 / def.fireRate;
+    this.slashAnimTimer = 0.24;
+
+    const camOrigin = new THREE.Vector3();
+    this.camera.getWorldPosition(camOrigin);
+    this.onShotFired?.('katana', camOrigin);
+
+    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion);
+    const targetPos = new THREE.Vector3();
+
+    for (const t of targets) {
+      t.mesh.getWorldPosition(targetPos);
+      // Aim roughly at torso height
+      targetPos.y += 1.0;
+      const toTarget = targetPos.clone().sub(camOrigin);
+      const dist = toTarget.length();
+      if (dist <= def.range) {
+        toTarget.normalize();
+        if (toTarget.dot(forward) > 0.35) {
+          const killed = t.onHit(def.damage, targetPos, forward.clone().negate());
+          this.hitmarkerAlpha = 1.0;
+          this.hitmarkerKill = this.hitmarkerKill || killed;
+          this.spawnSparks(targetPos, forward.clone().negate(), killed ? 0xff4fa3 : 0x36f1e6, 10);
+        }
+      }
+    }
   }
 
   private fireWeapon(
@@ -636,6 +703,47 @@ export class WeaponSystem {
   // ---------------------------------------------------------------------------
   // Procedural 3D Weapon Viewmodels
   // ---------------------------------------------------------------------------
+  private buildKatanaModel(): { group: THREE.Group; muzzleLocal: THREE.Vector3 } {
+    const group = new THREE.Group();
+    const gripMat = new THREE.MeshStandardMaterial({ color: '#1b1624', roughness: 0.85 });
+    const guardMat = new THREE.MeshStandardMaterial({ color: '#ffd15c', metalness: 0.85, roughness: 0.2 });
+    const bladeMat = new THREE.MeshStandardMaterial({
+      color: '#e6ffff',
+      emissive: '#36f1e6',
+      emissiveIntensity: 2.2,
+      metalness: 0.9,
+      roughness: 0.15,
+    });
+    const edgeMat = new THREE.MeshStandardMaterial({
+      color: '#ff4fa3',
+      emissive: '#ff4fa3',
+      emissiveIntensity: 2.4,
+    });
+
+    const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.02, 0.22, 8), gripMat);
+    grip.position.set(0, -0.08, 0.04);
+    grip.rotation.x = 0.25;
+    group.add(grip);
+
+    const tsuba = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.014, 10), guardMat);
+    tsuba.position.set(0, 0.03, 0.01);
+    tsuba.rotation.x = 0.25;
+    group.add(tsuba);
+
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.62, 0.038), bladeMat);
+    blade.position.set(0, 0.34, -0.07);
+    blade.rotation.x = 0.25;
+    group.add(blade);
+
+    const neonEdge = new THREE.Mesh(new THREE.BoxGeometry(0.016, 0.6, 0.01), edgeMat);
+    neonEdge.position.set(0, 0.34, -0.09);
+    neonEdge.rotation.x = 0.25;
+    group.add(neonEdge);
+
+    group.rotation.z = 0.22;
+    return { group, muzzleLocal: new THREE.Vector3(0, 0.5, -0.15) };
+  }
+
   private buildPistolModel(): { group: THREE.Group; muzzleLocal: THREE.Vector3 } {
     const group = new THREE.Group();
     const chromeMat = new THREE.MeshStandardMaterial({ color: '#d8dde6', roughness: 0.25, metalness: 0.88 });

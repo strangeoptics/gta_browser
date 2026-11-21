@@ -734,8 +734,8 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
     obj.matrixAutoUpdate = false;
   }
 
-  // Pre-filter static world colliders once at startup so VehicleSystem & NpcSystem never re-filter every frame!
-  const solidVehicleColliders = colliders.filter((c) => c.maxY > 0.45);
+  // Pre-filter static world colliders once at startup (exclude overhead lintels & roofs with minY >= 2.9m!)
+  const solidVehicleColliders = colliders.filter((c) => c.maxY > 0.45 && c.minY < 2.9);
   const solidNpcColliders = colliders.filter((c) => c.maxY > 0.45 && c.minY < 1.85);
 
   const worldHandle: MiamiWorld = {

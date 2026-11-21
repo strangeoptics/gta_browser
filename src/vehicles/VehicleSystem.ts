@@ -537,8 +537,10 @@ export class VehicleSystem {
   }
 
   private clampCarAgainstBuildings(v: Vehicle, solidColliders: AABB[]): void {
-    const carRadius = v.isBike ? 0.78 : 1.45;
+    const carRadius = v.isBike ? 0.72 : 1.45;
+    const vehTop = v.position.y + (v.isRv ? 2.75 : 1.55);
     for (const box of solidColliders) {
+      if (v.position.y >= box.maxY || vehTop <= box.minY) continue;
       if (
         v.position.x + carRadius > box.minX &&
         v.position.x - carRadius < box.maxX &&
@@ -991,10 +993,12 @@ export class VehicleSystem {
     let nextX = THREE.MathUtils.clamp(v.position.x + dx, bounds.minX + 1.5, bounds.maxX - 4.0);
     let nextZ = THREE.MathUtils.clamp(v.position.z + dz, bounds.minZ + 1.5, bounds.maxZ - 1.5);
 
-    const carRadius = v.isBike ? 0.78 : 1.45;
+    const carRadius = v.isBike ? 0.72 : 1.45;
+    const vehTop = v.position.y + (v.isRv ? 2.75 : 1.55);
     let collided = false;
 
     for (const box of solidColliders) {
+      if (v.position.y >= box.maxY || vehTop <= box.minY) continue;
       if (
         nextX + carRadius > box.minX &&
         nextX - carRadius < box.maxX &&

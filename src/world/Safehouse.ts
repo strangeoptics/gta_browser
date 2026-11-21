@@ -874,8 +874,9 @@ export function buildSafehouse(
 
       // Automatic Garage Door, Sliding Doors, Fridge Door & Gun Cabinet Doors proximity sensors
       const inGarageDoorZone = playerPos
-        ? Math.abs(playerPos.x - (cx + 10.0)) < 4.2 &&
-          Math.abs(playerPos.z - (cz + 5.7)) < 3.5 &&
+        ? playerPos.x > cx - 9.5 &&
+          playerPos.x < cx + 14.5 &&
+          Math.abs(playerPos.z - (cz + 5.7)) < 3.6 &&
           playerPos.y < 4.5
         : false;
       const distFront = playerPos ? Math.hypot(playerPos.x - (cx + 10.0), playerPos.z - (cz - 3.0)) : 99;

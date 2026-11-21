@@ -18,6 +18,7 @@ import { RoadblockSystem } from './world/RoadblockSystem';
 import { NpcSystem } from './entities/NpcSystem';
 import { HelicopterSystem } from './entities/HelicopterSystem';
 import { SafehousePets, PET_CATALOG, type PetId, type PetInteractable } from './entities/SafehousePets';
+import { WildlifeSystem } from './entities/WildlifeSystem';
 import { WantedSystem } from './gameplay/WantedSystem';
 import { ObjectiveSystem } from './gameplay/ObjectiveSystem';
 import { HeistSystem } from './gameplay/HeistSystem';
@@ -154,6 +155,7 @@ const maverick = new PlayerHelicopterSystem(scene, world.maverickSpawn);
 const npcs = new NpcSystem(scene);
 const heli = new HelicopterSystem(scene);
 const pets = new SafehousePets(scene);
+const wildlife = new WildlifeSystem(scene);
 const wanted = new WantedSystem();
 const objectives = new ObjectiveSystem(scene);
 const heist = new HeistSystem(scene);
@@ -541,6 +543,16 @@ destructibles.onPropSmashed = (kind) => {
 
 world.onThunder = () => {
   audio.playThunder();
+};
+
+wildlife.onRoosterSpooked = () => {
+  audio.playRoosterCluck();
+};
+
+wildlife.onSharkNipPlayer = () => {
+  audio.playWaterSplash();
+  applyPlayerDamage(8);
+  showQuickToast('VORSICHT · RIFFHAI IM TIEFEN MEER!');
 };
 
 heli.onPlayerDamaged = (dmg) => {
@@ -1408,6 +1420,7 @@ function animate(now: number): void {
   world.update(elapsed, dt, player.position, objectives.cash, wanted.stars);
   const inSafehouse = world.isInsideSafehouse(player.position);
   pets.update(dt, elapsed, player.position, inSafehouse);
+  wildlife.update(dt, elapsed, player.position, playerSwimming && !inAnyCraft);
   destructibles.update(dt);
   roadblocks.update(dt, elapsed, wanted.stars);
   shop.update(elapsed);

@@ -452,6 +452,32 @@ export class AudioEngine {
     growl.stop(now + 0.6);
   }
 
+  public playRoosterCluck(): void {
+    if (!this.ctx || !this.masterGain || this.muted) return;
+    const now = this.ctx.currentTime;
+    // Quick startled 3-note "Bawk-bawk-BAWK!" cluck
+    const pitches = [620, 660, 920];
+    pitches.forEach((f, idx) => {
+      const t = now + idx * 0.085;
+      const osc = this.ctx!.createOscillator();
+      const gain = this.ctx!.createGain();
+      const bp = this.ctx!.createBiquadFilter();
+      osc.type = 'triangle';
+      bp.type = 'bandpass';
+      bp.frequency.value = 1100;
+      bp.Q.value = 2.5;
+      osc.frequency.setValueAtTime(f, t);
+      osc.frequency.exponentialRampToValueAtTime(f * 0.65, t + 0.065);
+      gain.gain.setValueAtTime(idx === 2 ? 0.2 : 0.13, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.075);
+      osc.connect(bp);
+      bp.connect(gain);
+      gain.connect(this.masterGain!);
+      osc.start(t);
+      osc.stop(t + 0.08);
+    });
+  }
+
   public playCheckpoint(): void {
     if (!this.ctx || !this.masterGain || this.muted) return;
     const now = this.ctx.currentTime;

@@ -377,7 +377,7 @@ function applyPlayerDamage(amount: number): void {
   audio.playDamage();
 
   if (playerHp <= 0) {
-    if (wanted.stars >= 2) {
+    if (wanted.stars >= 2 && !maverick.isInHeli()) {
       triggerBusted();
       return;
     }
@@ -783,6 +783,34 @@ window.addEventListener('keydown', (e) => {
         car.destroyed = false;
         audio.playPurchase();
         showQuickToast(`PRIVATE GARAGE · ${car.name} REPARIERT (100%)`);
+      } else if (world.isCarInExportBay(car.position)) {
+        const exportSpec = world.canDeliverExportVehicle(car.name);
+        if (exportSpec) {
+          const { reward, allDoneBonus } = world.deliverExportVehicle(car.name);
+          objectives.cash += reward + allDoneBonus;
+          objectives.completedCount++;
+          lastCompletedCount = objectives.completedCount;
+          audio.playMissionPassed();
+          persistProgress();
+          const exitPos = vehicles.exitVehicle();
+          if (exitPos) {
+            player.setSpawn(46.5, 0.25, 92, Math.PI / 2);
+            weapons.setEnabled(true);
+          }
+          // Respawn delivered vehicle back at its original city spot
+          car.position.set(car.spawnX, 0, car.spawnZ);
+          car.yaw = car.spawnYaw;
+          car.speed = 0;
+          car.mesh.position.set(car.spawnX, 0, car.spawnZ);
+          car.mesh.rotation.y = car.spawnYaw;
+          showQuickToast(
+            allDoneBonus > 0
+              ? `IMPORT/EXPORT KOMPLETT! · +$${reward + allDoneBonus} (INKL. $5.000 BONUS!)`
+              : `IMPORT/EXPORT · ${car.name} GELIEFERT (+$${reward})`,
+          );
+        } else {
+          showQuickToast(`IMPORT/EXPORT · ${car.name} AKTUELL NICHT AUF DER LISTE`);
+        }
       } else {
         tryUsePayNSpray();
       }
@@ -1224,8 +1252,8 @@ function animate(now: number): void {
     ...rbColliders,
   ]);
 
-  // GTA-style close-range arrest ("BUSTED") when cornered by Vice PD at 2+ stars
-  if (isPlaying && wanted.stars >= 2 && !inBoat) {
+  // GTA-style close-range arrest ("BUSTED") when cornered by Vice PD at 2+ stars (never while flying in the Maverick!)
+  if (isPlaying && wanted.stars >= 2 && !inBoat && !inHeli) {
     const activeCar = vehicles.getActiveVehicle();
     const slowInCar = activeCar ? Math.abs(activeCar.speed) < 2.6 : false;
     const bustRange = activeCar ? (slowInCar ? 3.2 : 0) : 2.3;
@@ -1470,6 +1498,11 @@ function animate(now: number): void {
     setText(vehicleCamHintEl, `[LMB] DRIVE-BY · [Q] ${audio.getRadioStation()}${vigHint} · [V] CAM · [E] AUS`);
     if (car && world.isInSafehouseGarage(car.position)) {
       nextPrompt = '[F] PRIVATE GARAGE · GRATIS REPARATUR (100%)';
+    } else if (car && world.isCarInExportBay(car.position)) {
+      const exportSpec = world.canDeliverExportVehicle(car.name);
+      nextPrompt = exportSpec
+        ? `[F] IMPORT / EXPORT · ${car.name} ABLIEFERN (+$${exportSpec.reward})`
+        : `[IMPORT / EXPORT] ${car.name} NICHT GESUCHT (SIEHE TAFEL)`;
     } else if (car && payNSpray.isCarInBay(car.position)) {
       nextPrompt = `[F] PAY 'N' SPRAY · $${payNSpray.cost} (REPARATUR & STERNE WEG)`;
     }

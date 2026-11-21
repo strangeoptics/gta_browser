@@ -23,6 +23,7 @@ import { buildSafehouse, type CabinetWeapon, type FoodItem } from './Safehouse';
 import { buildStarfishIsland } from './StarfishIsland';
 import { buildStuntRamps, type StuntRamp } from './StuntRamps';
 import { buildTrafficLights } from './TrafficLights';
+import { buildVicePort, type ImportExportSpec } from './VicePort';
 
 export interface MiamiWorld {
   colliders: AABB[];
@@ -37,6 +38,9 @@ export interface MiamiWorld {
   isNearYachtLoot: (pos: THREE.Vector3) => boolean;
   takeIslandVault: () => void;
   takeYachtLoot: () => void;
+  isCarInExportBay: (pos: THREE.Vector3) => boolean;
+  canDeliverExportVehicle: (vehicleName: string) => ImportExportSpec | null;
+  deliverExportVehicle: (vehicleName: string) => { reward: number; allDoneBonus: number };
   cycleTimeOfDay: () => string;
   toggleRain: () => boolean;
   isInsideClub: (pos: THREE.Vector3) => boolean;
@@ -621,12 +625,15 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
 
   const palms = buildPalmTrees(scene, palmPositions);
 
+  // 6c) Vice Port Industrial Container Docks, 26m Gantry Cranes, Cargo Freighter & Import/Export (z = 66..140)
+  const vicePort = buildVicePort(scene, colliders, worldMeshes, oceanMat);
+
   // ---------------------------------------------------------------------------
   // 7) Coastal Streetlights (Fixed 4-Light Nearest Pool -> Zero Shader Recompiles!), Traffic Lights & Stunt Ramps
   // ---------------------------------------------------------------------------
   const streetLights = buildStreetlights(scene);
   const trafficLights = buildTrafficLights(scene);
-  const stuntRamps = buildStuntRamps(scene);
+  const stuntRamps = [...buildStuntRamps(scene), ...vicePort.stuntRamps];
 
   // ---------------------------------------------------------------------------
   // 8) Subtle Post-Rain Mist / Lingering Drizzle Motes
@@ -765,6 +772,9 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
     isNearYachtLoot: (pos: THREE.Vector3) => starfish.isNearYachtLoot(pos),
     takeIslandVault: () => starfish.takeIslandVault(),
     takeYachtLoot: () => starfish.takeYachtLoot(),
+    isCarInExportBay: (pos: THREE.Vector3) => vicePort.isCarInExportBay(pos),
+    canDeliverExportVehicle: (name: string) => vicePort.canDeliverVehicle(name),
+    deliverExportVehicle: (name: string) => vicePort.markDelivered(name),
     cycleTimeOfDay: () => {
       timeIndex = (timeIndex + 1) % timePresets.length;
       return applyTimePreset(timeIndex);
@@ -808,6 +818,7 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
       oceanUniforms.uTime.value = elapsed;
       beachHighlights.update(elapsed);
       starfish.update(elapsed, dt);
+      vicePort.update(elapsed);
       neonClub.update(elapsed, playerPos);
       safehouse.update(elapsed, dt, playerPos, cash, wantedStars);
       policeStation.update(elapsed, dt, playerPos, cash, wantedStars);

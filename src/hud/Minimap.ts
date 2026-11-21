@@ -78,6 +78,12 @@ export class Minimap {
     ctx.fillStyle = 'rgba(245, 248, 255, 0.65)';
     ctx.fillRect((166 - playerX) * scale, (-6 - playerZ) * scale, 12 * scale, 42 * scale);
 
+    // Vice Port Industrial Docks (x = -68..78, z = 66..126) & Cargo Freighter (x = -21..37, z = 128..142)
+    ctx.fillStyle = 'rgba(92, 96, 110, 0.45)';
+    ctx.fillRect((-68 - playerX) * scale, (66 - playerZ) * scale, 146 * scale, 60 * scale);
+    ctx.fillStyle = 'rgba(184, 58, 48, 0.65)';
+    ctx.fillRect((-21 - playerX) * scale, (128 - playerZ) * scale, 58 * scale, 14 * scale);
+
     // Road grid highlights
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
     ctx.lineWidth = layout.roadWidth * scale;
@@ -149,6 +155,12 @@ export class Minimap {
     const pdZ = (0 - playerZ) * scale;
     ctx.fillStyle = '#33aaff';
     ctx.fillText('PD', pdX, pdZ);
+
+    // Vice Port Import / Export Garage marker (IE) at (58, 92)
+    const ieX = (58 - playerX) * scale;
+    const ieZ = (92 - playerZ) * scale;
+    ctx.fillStyle = '#ff9f43';
+    ctx.fillText('IE', ieX, ieZ);
 
     // Flyable Vice Maverick Helicopter marker (M)
     if (maverickPos) {

@@ -280,7 +280,7 @@ export class VehicleSystem {
     const out = {
       x: THREE.MathUtils.clamp(v.position.x + sideX, -65, 200),
       y: v.position.y + 0.25,
-      z: THREE.MathUtils.clamp(v.position.z + sideZ, -85, 65),
+      z: THREE.MathUtils.clamp(v.position.z + sideZ, -85, 124),
       yaw: v.yaw + Math.PI,
     };
     this.activeVehicle = null;
@@ -1017,9 +1017,15 @@ export class VehicleSystem {
     let nextX = THREE.MathUtils.clamp(v.position.x + dx, bounds.minX + 1.5, bounds.maxX - 4.0);
     let nextZ = THREE.MathUtils.clamp(v.position.z + dz, bounds.minZ + 1.5, bounds.maxZ - 1.5);
 
-    // Prevent driving into deep ocean off Miami Beach while allowing Causeway Bridge (z ~ -60) & Starfish Island (x >= 147)
+    // Prevent driving into deep ocean off Miami Beach or off the South Port Quay (z > 124.2)
     if (nextX > 103 && nextX < 147 && Math.abs(nextZ - -60) > 6.2) {
       nextX = 103;
+    }
+    if (nextZ > 68 && nextX > 76) {
+      nextX = 76;
+    }
+    if (nextZ > 124.2) {
+      nextZ = 124.2;
     }
     if (nextX >= 147 && (nextZ < -83 || nextZ > -21)) {
       nextZ = THREE.MathUtils.clamp(nextZ, -83, -21);

@@ -146,6 +146,7 @@ export class NpcSystem {
     const maxSq = maxDist * maxDist;
     for (const n of this.npcs) {
       if (!n.alive || n.role !== 'police') continue;
+      if (Math.abs(n.position.y - playerPos.y) > 2.4) continue;
       if (n.position.distanceToSquared(playerPos) < maxSq) {
         return true;
       }

@@ -218,7 +218,7 @@ export function generateCityLayout(): CityLayout {
       minX: -67,
       maxX: 204, // extends across the Causeway Bridge (x=66..148) & Starfish Island (x=148..198)
       minZ: -88,
-      maxZ: 67,
+      maxZ: 141, // extends south through Vice Port Docks (z=66..126) & Cargo Freighter (z=127..141)
     },
     buildings,
   };

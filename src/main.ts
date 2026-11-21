@@ -1025,12 +1025,12 @@ function animate(now: number): void {
 
   const isPlaying = player.getIsActive() && !shopOpen && wastedTimer <= 0;
 
-  // Gradually sober up over time; 1st cocktail keeps drunkLevel at 0, quadratic ramp for gentle tipsiness
+  // Gradually sober up over time; 1st cocktail keeps drunkLevel at 0
   if (cocktailScore > 0) {
-    cocktailScore = Math.max(0, cocktailScore - dt * 0.028);
+    cocktailScore = Math.max(0, cocktailScore - dt * 0.025);
   }
-  const rawDrunk = THREE.MathUtils.clamp((cocktailScore - 1.0) / 4.5, 0, 1);
-  const drunkLevel = rawDrunk * rawDrunk;
+  const rawDrunk = THREE.MathUtils.clamp((cocktailScore - 1.0) / 3.8, 0, 1);
+  const drunkLevel = Math.pow(rawDrunk, 1.25);
 
   if (isPlaying && pad.connected) {
     if (pad.interactPressed) tryToggleVehicleOrBoat();
@@ -1464,10 +1464,10 @@ function animate(now: number): void {
   }
 
   if (drunkLevel > 0.005) {
-    camera.rotation.z += Math.sin(elapsed * 1.55) * 0.055 * drunkLevel;
-    camera.rotation.x += Math.cos(elapsed * 1.15) * 0.014 * drunkLevel;
-    bloomPass.strength = 0.72 + drunkLevel * 0.25;
-    canvas.style.filter = `saturate(${(1 + drunkLevel * 0.3).toFixed(2)}) blur(${(drunkLevel * 0.75).toFixed(2)}px)`;
+    camera.rotation.z += Math.sin(elapsed * 1.65) * 0.125 * drunkLevel;
+    camera.rotation.x += Math.cos(elapsed * 1.2) * 0.032 * drunkLevel;
+    bloomPass.strength = 0.72 + drunkLevel * 0.45;
+    canvas.style.filter = `saturate(${(1 + drunkLevel * 0.48).toFixed(2)}) blur(${(drunkLevel * 1.35).toFixed(2)}px)`;
   } else {
     bloomPass.strength = 0.72;
     if (canvas.style.filter) canvas.style.filter = '';

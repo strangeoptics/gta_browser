@@ -222,9 +222,9 @@ export class PlayerController {
     // Drunken lateral stagger only while walking (keeps standing still steady & controllable)
     if (drunkLevel > 0.005 && active && this.wishDir.lengthSq() > 0.05) {
       const t = performance.now() * 0.001;
-      const stagger = (Math.sin(t * 2.0) * 0.65 + Math.cos(t * 3.3) * 0.35) * drunkLevel;
-      this.wishDir.addScaledVector(this.rightVec, stagger * 0.22);
-      this.yaw += Math.sin(t * 1.35) * drunkLevel * 0.045 * clampedDt;
+      const stagger = (Math.sin(t * 2.15) * 0.65 + Math.cos(t * 3.45) * 0.35) * drunkLevel;
+      this.wishDir.addScaledVector(this.rightVec, stagger * 0.42);
+      this.yaw += Math.sin(t * 1.45) * drunkLevel * 0.14 * clampedDt;
     }
 
     const targetSpeed = this.crouching

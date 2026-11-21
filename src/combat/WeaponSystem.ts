@@ -518,8 +518,8 @@ export class WeaponSystem {
       ? Math.sin((1 - this.reloadTimer / def.reloadTime) * Math.PI) * 0.14
       : 0;
 
-    const drunkWobbleX = Math.sin(this.drunkTime * 2.1) * 0.026 * this.drunkLevel;
-    const drunkWobbleY = Math.cos(this.drunkTime * 1.65) * 0.018 * this.drunkLevel;
+    const drunkWobbleX = Math.sin(this.drunkTime * 2.2) * 0.042 * this.drunkLevel;
+    const drunkWobbleY = Math.cos(this.drunkTime * 1.75) * 0.028 * this.drunkLevel;
 
     this.rig.position.x += this.swayX + bobX + drunkWobbleX;
     this.rig.position.y += this.swayY + bobY + drunkWobbleY - reloadDip;
@@ -624,7 +624,7 @@ export class WeaponSystem {
     this.camera.getWorldPosition(camOrigin);
     this.onShotFired?.(def.id, camOrigin);
 
-    const spread = (this.ads ? def.spreadAds : def.spreadHip) + this.drunkLevel * 0.065;
+    const spread = (this.ads ? def.spreadAds : def.spreadHip) + this.drunkLevel * 0.095;
 
     // Build combined raycast list + map mesh -> ShootableTarget
     const targetMap = new Map<THREE.Object3D, ShootableTarget>();

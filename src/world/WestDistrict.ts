@@ -5,6 +5,7 @@ import { createNeonSignTexture } from './Textures';
 export interface WestDistrictHandle {
   isCarInTuningBay: (pos: THREE.Vector3) => boolean;
   isNearDinerCounter: (pos: THREE.Vector3) => boolean;
+  isNearPetShop: (pos: THREE.Vector3) => boolean;
   isNearBankVault: (pos: THREE.Vector3) => boolean;
   takeBankVault: () => void;
   isInsideInterior: (pos: THREE.Vector3) => boolean;
@@ -614,10 +615,11 @@ export function buildWestDistrict(
   scene.add(plazaFloor);
 
   // 3 Colorful Cuban Colonial Shopfronts along South Edge of Plaza (z = 10.6)
+  // East shop (-76.5) is the "HAVANA PETS & EXOTICS" boutique where players adopt Safehouse pets!
   const havanaSpecs = [
     { x: -97.5, w: 9.2, h: 8.6, wall: '#f2b880', shutter: '#1d7a74', awning: '#d9483b', sign: 'CAFE HABANA', neon: '#ff9f43' },
     { x: -87.0, w: 9.6, h: 10.2, wall: '#e89cb0', shutter: '#265c8a', awning: '#2a8f7c', sign: 'CIGAR LOUNGE', neon: '#36f1e6' },
-    { x: -76.5, w: 9.2, h: 8.2, wall: '#f4dc94', shutter: '#8f3138', awning: '#d4822a', sign: 'MERCADO LATINO', neon: '#ff4fa3' },
+    { x: -76.5, w: 9.2, h: 8.2, wall: '#bce8dc', shutter: '#8f3138', awning: '#2a9d8f', sign: 'HAVANA PETS', neon: '#52f29c' },
   ];
   havanaSpecs.forEach((hs, idx) => {
     const fac = createHavanaFacadeTexture(hs.wall, hs.shutter, idx + 11);
@@ -684,6 +686,18 @@ export function buildWestDistrict(
     addVisual(new THREE.CylinderGeometry(0.05, 0.05, 2.4, 6), darkSteelMat, dx, 1.4, 3.8);
     addVisual(new THREE.ConeGeometry(1.45, 0.55, 8), dinerTealMat, dx, 2.65, 3.8, true);
   }
+
+  // "HAVANA PETS & EXOTICS" Storefront Perch, Golden Cage Display & Mint Beacon Ring (-76.5, 6.8)
+  addVisual(new THREE.CylinderGeometry(0.32, 0.32, 0.85, 12), woodMat, -74.6, 0.62, 7.6);
+  addVisual(new THREE.CylinderGeometry(0.28, 0.28, 0.55, 10), goldMat, -74.6, 1.32, 7.6);
+  addVisual(new THREE.SphereGeometry(0.28, 10, 8, 0, Math.PI * 2, 0, Math.PI / 2), goldMat, -74.6, 1.6, 7.6);
+  const petShopRing = new THREE.Mesh(
+    new THREE.RingGeometry(1.0, 1.32, 24),
+    new THREE.MeshBasicMaterial({ color: '#52f29c', side: THREE.DoubleSide }),
+  );
+  petShopRing.rotation.x = -Math.PI / 2;
+  petShopRing.position.set(-76.5, 0.23, 6.8);
+  scene.add(petShopRing);
 
   // ===========================================================================
   // 4) SOUTH BLOCK (-87, +40): WALK-IN "BANCO DE VICE" WITH BANK VAULT HEIST!
@@ -890,6 +904,9 @@ export function buildWestDistrict(
     isNearDinerCounter: (pos: THREE.Vector3) =>
       pos.x > -95.5 && pos.x < -81.5 && pos.z > -10.5 && pos.z < -6.5,
 
+    isNearPetShop: (pos: THREE.Vector3) =>
+      pos.distanceToSquared(new THREE.Vector3(-76.5, 0.3, 6.8)) < 8.5,
+
     isNearBankVault: (pos: THREE.Vector3) =>
       !bankVaultTaken && pos.x > -99.8 && pos.x < -91.5 && pos.z > 36.2 && pos.z < 43.8,
 
@@ -911,9 +928,10 @@ export function buildWestDistrict(
       // Spin 3D rooftop neon wheel on Vice Customs
       roofWheelGroup.rotation.y = elapsed * 0.9;
 
-      // Pulse Tuning Bay & Bank Vault rings
+      // Pulse Tuning Bay, Pet Shop & Bank Vault rings
       const s = 1 + Math.sin(elapsed * 4.2) * 0.05;
       tuningBayRing.scale.set(s, s, 1);
+      petShopRing.scale.set(s, s, 1);
       if (!bankVaultTaken) {
         bankLootRing.scale.set(s, s, 1);
       }

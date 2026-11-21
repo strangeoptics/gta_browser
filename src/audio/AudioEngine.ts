@@ -329,6 +329,129 @@ export class AudioEngine {
     });
   }
 
+  public playDogBark(): void {
+    if (!this.ctx || !this.masterGain || !this.noiseBuffer || this.muted) return;
+    const now = this.ctx.currentTime;
+    for (let b = 0; b < 2; b++) {
+      const t = now + b * 0.19;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      const filter = this.ctx.createBiquadFilter();
+      osc.type = 'sawtooth';
+      filter.type = 'bandpass';
+      filter.frequency.setValueAtTime(520, t);
+      filter.Q.value = 2.2;
+      osc.frequency.setValueAtTime(255 + b * 25, t);
+      osc.frequency.exponentialRampToValueAtTime(115, t + 0.13);
+      gain.gain.setValueAtTime(0.36, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.masterGain);
+      osc.start(t);
+      osc.stop(t + 0.16);
+    }
+  }
+
+  public playCatPurr(): void {
+    if (!this.ctx || !this.masterGain || this.muted) return;
+    const now = this.ctx.currentTime;
+    const meow = this.ctx.createOscillator();
+    const mGain = this.ctx.createGain();
+    meow.type = 'triangle';
+    meow.frequency.setValueAtTime(540, now);
+    meow.frequency.exponentialRampToValueAtTime(760, now + 0.11);
+    meow.frequency.exponentialRampToValueAtTime(480, now + 0.28);
+    mGain.gain.setValueAtTime(0.16, now);
+    mGain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+    meow.connect(mGain);
+    mGain.connect(this.masterGain);
+    meow.start(now);
+    meow.stop(now + 0.32);
+
+    const purr = this.ctx.createOscillator();
+    const lfo = this.ctx.createOscillator();
+    const lfoGain = this.ctx.createGain();
+    const pGain = this.ctx.createGain();
+    purr.type = 'sawtooth';
+    purr.frequency.setValueAtTime(56, now);
+    lfo.frequency.setValueAtTime(25, now);
+    lfoGain.gain.setValueAtTime(0.08, now);
+    pGain.gain.setValueAtTime(0.1, now + 0.1);
+    pGain.gain.exponentialRampToValueAtTime(0.001, now + 0.95);
+    const lp = this.ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 180;
+    lfo.connect(lfoGain);
+    lfoGain.connect(pGain.gain);
+    purr.connect(lp);
+    lp.connect(pGain);
+    pGain.connect(this.masterGain);
+    purr.start(now);
+    lfo.start(now);
+    purr.stop(now + 1.0);
+    lfo.stop(now + 1.0);
+  }
+
+  public playParrotSquawk(): void {
+    if (!this.ctx || !this.masterGain || this.muted) return;
+    const now = this.ctx.currentTime;
+    for (let s = 0; s < 2; s++) {
+      const t = now + s * 0.16;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'square';
+      const bp = this.ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = 1450;
+      bp.Q.value = 3.2;
+      osc.frequency.setValueAtTime(780 + s * 180, t);
+      osc.frequency.exponentialRampToValueAtTime(1520, t + 0.06);
+      osc.frequency.exponentialRampToValueAtTime(640, t + 0.13);
+      gain.gain.setValueAtTime(0.18, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
+      osc.connect(bp);
+      bp.connect(gain);
+      gain.connect(this.masterGain);
+      osc.start(t);
+      osc.stop(t + 0.15);
+    }
+  }
+
+  public playGatorSnap(): void {
+    if (!this.ctx || !this.masterGain || !this.noiseBuffer || this.muted) return;
+    const now = this.ctx.currentTime;
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = this.noiseBuffer;
+    const bp = this.ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = 900;
+    const nGain = this.ctx.createGain();
+    nGain.gain.setValueAtTime(0.38, now);
+    nGain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+    noise.connect(bp);
+    bp.connect(nGain);
+    nGain.connect(this.masterGain);
+    noise.start(now);
+    noise.stop(now + 0.1);
+
+    const growl = this.ctx.createOscillator();
+    const gGain = this.ctx.createGain();
+    const lp = this.ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 160;
+    growl.type = 'sawtooth';
+    growl.frequency.setValueAtTime(72, now + 0.08);
+    growl.frequency.exponentialRampToValueAtTime(44, now + 0.55);
+    gGain.gain.setValueAtTime(0.28, now + 0.08);
+    gGain.gain.exponentialRampToValueAtTime(0.001, now + 0.58);
+    growl.connect(lp);
+    lp.connect(gGain);
+    gGain.connect(this.masterGain);
+    growl.start(now + 0.08);
+    growl.stop(now + 0.6);
+  }
+
   public playCheckpoint(): void {
     if (!this.ctx || !this.masterGain || this.muted) return;
     const now = this.ctx.currentTime;

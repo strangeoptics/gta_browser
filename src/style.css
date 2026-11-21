@@ -642,8 +642,9 @@ body,
   text-decoration: line-through;
 }
 
-/* AMMU-NEON Shop Modal */
-#shop-overlay {
+/* AMMU-NEON & HAVANA PETS Shop Modals */
+#shop-overlay,
+#pet-shop-overlay {
   position: fixed;
   inset: 0;
   z-index: 22;
@@ -654,7 +655,8 @@ body,
   backdrop-filter: blur(6px);
 }
 
-#shop-overlay.visible {
+#shop-overlay.visible,
+#pet-shop-overlay.visible {
   display: flex;
 }
 

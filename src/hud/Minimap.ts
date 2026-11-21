@@ -218,11 +218,13 @@ export class Minimap {
     ctx.fillStyle = '#ff9f43';
     ctx.fillText('IE', ieX, ieZ);
 
-    // West District markers: Vice Customs Tuning (T), Starlight 80s Diner (D), Banco de Vice (B)
+    // West District markers: Vice Customs Tuning (T), Starlight 80s Diner (D), Havana Pets (🐾), Banco de Vice (B)
     ctx.fillStyle = '#36f1e6';
     ctx.fillText('T', (-85 - playerX) * scale, (-37.5 - playerZ) * scale);
     ctx.fillStyle = '#ff4fa3';
     ctx.fillText('D', (-88 - playerX) * scale, (-7 - playerZ) * scale);
+    ctx.fillStyle = '#52f29c';
+    ctx.fillText('🐾', (-76.5 - playerX) * scale, (9.5 - playerZ) * scale);
     ctx.fillStyle = '#ffd15c';
     ctx.fillText('B', (-88 - playerX) * scale, (40 - playerZ) * scale);
 

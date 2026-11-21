@@ -17,6 +17,7 @@ import { DecalSystem } from './world/DecalSystem';
 import { RoadblockSystem } from './world/RoadblockSystem';
 import { NpcSystem } from './entities/NpcSystem';
 import { HelicopterSystem } from './entities/HelicopterSystem';
+import { SafehousePets, PET_CATALOG, type PetId, type PetInteractable } from './entities/SafehousePets';
 import { WantedSystem } from './gameplay/WantedSystem';
 import { ObjectiveSystem } from './gameplay/ObjectiveSystem';
 import { HeistSystem } from './gameplay/HeistSystem';
@@ -92,6 +93,17 @@ const buyArmorBtn = document.getElementById('buy-armor') as HTMLButtonElement;
 const buyLauncherBtn = document.getElementById('buy-launcher') as HTMLButtonElement;
 const shopCloseBtn = document.getElementById('shop-close') as HTMLButtonElement;
 
+// HAVANA PETS & EXOTICS Modal
+const petShopOverlayEl = document.getElementById('pet-shop-overlay') as HTMLDivElement;
+const petShopCashEl = document.getElementById('pet-shop-cash') as HTMLSpanElement;
+const buyPetBtns: Record<PetId, HTMLButtonElement> = {
+  cleo: document.getElementById('buy-pet-cleo') as HTMLButtonElement,
+  rico: document.getElementById('buy-pet-rico') as HTMLButtonElement,
+  zeus: document.getElementById('buy-pet-zeus') as HTMLButtonElement,
+  elvis: document.getElementById('buy-pet-elvis') as HTMLButtonElement,
+};
+const petShopCloseBtn = document.getElementById('pet-shop-close') as HTMLButtonElement;
+
 // Pause Settings & Saved Stats UI
 const statCashEl = document.getElementById('stat-cash') as HTMLElement;
 const statMissionsEl = document.getElementById('stat-missions') as HTMLElement;
@@ -141,6 +153,7 @@ const boat = new BoatSystem(scene);
 const maverick = new PlayerHelicopterSystem(scene, world.maverickSpawn);
 const npcs = new NpcSystem(scene);
 const heli = new HelicopterSystem(scene);
+const pets = new SafehousePets(scene);
 const wanted = new WantedSystem();
 const objectives = new ObjectiveSystem(scene);
 const heist = new HeistSystem(scene);
@@ -197,6 +210,7 @@ function sendPoliceDispatch(message: string, force = false): void {
 }
 let lastCompletedCount = savedProgress.completedMissions;
 let shopOpen = false;
+let petShopOpen = false;
 let photoMode = false;
 let photoYaw = 0;
 let photoPitch = 0;
@@ -207,6 +221,7 @@ const camDirScratch = new THREE.Vector3();
 let lookedFood: FoodItem | null = null;
 let lookedCabinetWeapon: CabinetWeapon | null = null;
 let lookedAtTv = false;
+let lookedPet: PetInteractable | null = null;
 let handHoldTimer = 0;
 
 // Dirty-checked DOM write helpers to eliminate redundant style/layout work at 60-144 FPS
@@ -269,6 +284,7 @@ function eatLookedFood(): boolean {
 objectives.cash = savedProgress.cash;
 objectives.completedCount = savedProgress.completedMissions;
 playerAvatar.setOutfit(savedProgress.outfitIndex);
+pets.setOwnedPets((savedProgress.ownedPets ?? []) as PetId[]);
 if (savedProgress.launcherUnlocked) {
   weapons.unlockLauncher();
   weapons.switchWeapon(1);
@@ -282,6 +298,7 @@ function persistProgress(): void {
     launcherUnlocked: weapons.isLauncherUnlocked(),
     armor: Math.round(playerArmor),
     outfitIndex: playerAvatar.getOutfitIndex(),
+    ownedPets: pets.getOwnedPets(),
     starterBonusApplied: true,
   });
   statCashEl.textContent = `$${objectives.cash.toLocaleString('en-US')}`;
@@ -333,6 +350,7 @@ resetSaveBtn.addEventListener('click', () => {
   objectives.completedCount = 0;
   lastCompletedCount = 0;
   playerArmor = 0;
+  pets.setOwnedPets([]);
   persistProgress();
 });
 
@@ -617,6 +635,91 @@ shopCloseBtn.addEventListener('click', () => {
   closeShop();
 });
 
+// HAVANA PETS & EXOTICS UI Flow + Safehouse Pet Interaction
+function refreshPetShopUi(): void {
+  petShopCashEl.textContent = `$${objectives.cash.toLocaleString('en-US')}`;
+  for (const item of PET_CATALOG) {
+    const btn = buyPetBtns[item.id];
+    if (pets.ownsPet(item.id)) {
+      btn.textContent = `✓ ${item.name} · IM VICE SAFEHOUSE ZUHAUSE`;
+      btn.disabled = true;
+    } else {
+      btn.textContent = `${item.title} · $${item.price.toLocaleString('en-US')}`;
+      btn.disabled = objectives.cash < item.price;
+    }
+  }
+}
+
+function openPetShop(): void {
+  petShopOpen = true;
+  player.setActive(false);
+  if (document.pointerLockElement === canvas) {
+    document.exitPointerLock?.();
+  }
+  refreshPetShopUi();
+  petShopOverlayEl.classList.add('visible');
+}
+
+function closePetShop(): void {
+  petShopOpen = false;
+  petShopOverlayEl.classList.remove('visible');
+  overlay.classList.add('hidden');
+  player.setActive(true);
+  requestLockSafely();
+}
+
+for (const item of PET_CATALOG) {
+  buyPetBtns[item.id].addEventListener('click', () => {
+    if (pets.ownsPet(item.id) || objectives.cash < item.price) return;
+    objectives.cash -= item.price;
+    pets.adoptPet(item.id);
+    if (item.id === 'cleo') audio.playCatPurr();
+    else if (item.id === 'rico') audio.playParrotSquawk();
+    else if (item.id === 'zeus') audio.playDogBark();
+    else audio.playGatorSnap();
+    audio.playPurchase();
+    persistProgress();
+    refreshPetShopUi();
+    showQuickToast(
+      item.id === 'elvis'
+        ? 'ADOPTIERT! · ALLIGATOR „ELVIS“ WARTET AM SAFEHOUSE-DACHPOOL!'
+        : `ADOPTIERT! · ${item.name} WARTET JETZT IM VICE SAFEHOUSE AUF DICH!`,
+    );
+  });
+}
+
+petShopCloseBtn.addEventListener('click', () => {
+  closePetShop();
+});
+
+function interactWithLookedPet(): boolean {
+  if (!lookedPet) return false;
+  const p = lookedPet;
+  pets.triggerReaction(p.id);
+  weapons.triggerEatAnimation();
+  handHoldTimer = 0.55;
+
+  if (p.id === 'cleo') {
+    audio.playCatPurr();
+    playerHp = Math.min(100, playerHp + 15);
+    showQuickToast('KATZE „CLEO“ SCHNURRT ZUFRIEDEN · +15 HP');
+  } else if (p.id === 'rico') {
+    audio.playParrotSquawk();
+    const drunk = THREE.MathUtils.clamp((cocktailScore - 1.0) / 4.5, 0, 1);
+    showQuickToast(pets.getRicoQuip(objectives.cash, wanted.stars, drunk));
+  } else if (p.id === 'zeus') {
+    audio.playDogBark();
+    playerArmor = Math.min(100, playerArmor + 25);
+    persistProgress();
+    showQuickToast('DOBERMANN „ZEUS“ FREUT SICH RIESIG! · +25% KEVLAR-MORAL');
+  } else if (p.id === 'elvis') {
+    audio.playGatorSnap();
+    playerHp = Math.min(100, playerHp + 25);
+    showQuickToast('ALLIGATOR „ELVIS“ VERSCHLINGT DAS STEAK! · +25 HP');
+  }
+  return true;
+}
+
 function tryToggleVehicleOrBoat(): void {
   if (maverick.isInHeli()) {
     if (maverick.canExit(world.colliders, world.getGroundHeight)) {
@@ -685,13 +788,23 @@ window.addEventListener('keyup', (e) => {
 });
 
 window.addEventListener('mousedown', (e) => {
-  if (e.button === 0 && player.getIsActive() && !shopOpen && !photoMode && !vehicles.isInVehicle() && !boat.isInBoat()) {
+  if (
+    e.button === 0 &&
+    player.getIsActive() &&
+    !shopOpen &&
+    !petShopOpen &&
+    !photoMode &&
+    !vehicles.isInVehicle() &&
+    !boat.isInBoat()
+  ) {
     if (lookedFood && lookedFood.available) {
       eatLookedFood();
     } else if (lookedCabinetWeapon) {
       equipCabinetWeapon();
     } else if (lookedAtTv) {
       toggleSafehouseTv();
+    } else if (lookedPet) {
+      interactWithLookedPet();
     }
   }
 });
@@ -733,6 +846,10 @@ window.addEventListener('keydown', (e) => {
   }
 
   if (photoMode) return;
+  if (petShopOpen && (e.code === 'KeyF' || e.code === 'KeyB' || e.code === 'Escape')) {
+    closePetShop();
+    return;
+  }
   if (e.code === 'KeyM') {
     const muted = audio.toggleMute();
     audioStatusEl.textContent = muted ? 'AUDIO: STUMM [M]' : 'AUDIO: AN [M]';
@@ -842,6 +959,11 @@ window.addEventListener('keydown', (e) => {
       equipCabinetWeapon();
     } else if (lookedAtTv) {
       toggleSafehouseTv();
+    } else if (lookedPet) {
+      interactWithLookedPet();
+    } else if (world.isNearPetShop(player.position)) {
+      if (petShopOpen) closePetShop();
+      else openPetShop();
     } else if (world.isNearSafehouseWardrobe(player.position)) {
       const outfitName = playerAvatar.nextOutfit();
       audio.playPurchase();
@@ -995,14 +1117,19 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyB' && wastedTimer <= 0) {
     if (shopOpen) {
       closeShop();
+    } else if (petShopOpen) {
+      closePetShop();
     } else if (player.getIsActive() && !vehicles.isInVehicle() && shop.isPlayerNear(player.position)) {
       openShop();
+    } else if (player.getIsActive() && !vehicles.isInVehicle() && world.isNearPetShop(player.position)) {
+      openPetShop();
     }
     return;
   }
 
-  if (e.code === 'Escape' && shopOpen) {
-    closeShop();
+  if (e.code === 'Escape' && (shopOpen || petShopOpen)) {
+    if (shopOpen) closeShop();
+    if (petShopOpen) closePetShop();
     return;
   }
 
@@ -1057,7 +1184,7 @@ function startGame(): void {
 }
 
 function pauseGame(): void {
-  if (shopOpen) return;
+  if (shopOpen || petShopOpen) return;
   player.setActive(false);
   persistProgress();
   overlay.classList.remove('hidden');
@@ -1070,7 +1197,7 @@ playBtn.addEventListener('click', (e) => {
 
 canvas.addEventListener('click', () => {
   audio.unlock();
-  if (player.getIsActive() && !player.getIsLocked() && !shopOpen) {
+  if (player.getIsActive() && !player.getIsLocked() && !shopOpen && !petShopOpen) {
     requestLockSafely();
   }
 });
@@ -1081,7 +1208,7 @@ document.addEventListener('pointerlockchange', () => {
     pointerLockFallback = false;
     overlay.classList.add('hidden');
     player.setActive(true);
-  } else if (!pointerLockFallback && !shopOpen) {
+  } else if (!pointerLockFallback && !shopOpen && !petShopOpen) {
     pauseGame();
   }
 });
@@ -1091,7 +1218,7 @@ document.addEventListener('pointerlockerror', () => {
 });
 
 window.addEventListener('keydown', (e) => {
-  if (e.code === 'Escape' && player.getIsActive() && !player.getIsLocked() && !shopOpen) {
+  if (e.code === 'Escape' && player.getIsActive() && !player.getIsLocked() && !shopOpen && !petShopOpen) {
     pauseGame();
   }
 });
@@ -1279,12 +1406,13 @@ function animate(now: number): void {
   );
 
   world.update(elapsed, dt, player.position, objectives.cash, wanted.stars);
+  const inSafehouse = world.isInsideSafehouse(player.position);
+  pets.update(dt, elapsed, player.position, inSafehouse);
   destructibles.update(dt);
   roadblocks.update(dt, elapsed, wanted.stars);
   shop.update(elapsed);
   payNSpray.update(dt, elapsed);
-  const inSafehouse = world.isInsideSafehouse(player.position);
-  wanted.update(inSafehouse ? dt * 3.0 : dt);
+  wanted.update(inSafehouse ? dt * (pets.ownsPet('zeus') ? 4.2 : 3.0) : dt);
 
   // Vice PD Radio Dispatch triggers on Wanted star escalation
   if (dispatchCooldown > 0) dispatchCooldown -= dt;
@@ -1404,20 +1532,37 @@ function animate(now: number): void {
     ...destructibles.getShootableTargets(),
     ...heli.getShootableTargets(),
   ];
-  // Crosshair raycast for Safehouse food items, gun cabinet weapons & CRT TV -> switches weapon to open Hand!
+  // Crosshair raycast for Safehouse food items, gun cabinet weapons, CRT TV & Safehouse Pets -> switches weapon to open Hand!
   if (handHoldTimer > 0) handHoldTimer = Math.max(0, handHoldTimer - dt);
   lookedFood = null;
   lookedCabinetWeapon = null;
   lookedAtTv = false;
-  const inSafehouseOrPd = world.isInsideSafehouse(player.position) || world.isInsidePoliceStation(player.position);
+  lookedPet = null;
+  const onSafehouseLot =
+    player.position.x > 29 && player.position.x < 51 && player.position.z > -50 && player.position.z < -30 && player.position.y < 9.0;
+  const inSafehouseOrPd = onSafehouseLot || world.isInsidePoliceStation(player.position);
   if (isPlaying && !inAnyCraft && inSafehouseOrPd) {
     camera.getWorldPosition(camOriginScratch);
     camDirScratch.set(0, 0, -1).applyQuaternion(camera.quaternion);
     foodRaycaster.set(camOriginScratch, camDirScratch);
-    foodRaycaster.far = 3.2;
+    foodRaycaster.far = 3.6;
+
+    // Check adopted Safehouse pets first (Lounge + Rooftop Pool Alligator!)
+    if (onSafehouseLot) {
+      const petTargets = pets.getInteractables();
+      if (petTargets.length > 0) {
+        const petHits = foodRaycaster.intersectObjects(
+          petTargets.map((p) => p.hitbox),
+          false,
+        );
+        if (petHits.length > 0) {
+          lookedPet = petTargets.find((p) => p.hitbox === petHits[0].object) ?? null;
+        }
+      }
+    }
 
     const foods = world.getFoodItems();
-    if (foods.length > 0) {
+    if (!lookedPet && foods.length > 0) {
       const foodHits = foodRaycaster.intersectObjects(
         foods.map((f) => f.mesh),
         true,
@@ -1447,14 +1592,16 @@ function animate(now: number): void {
       }
     }
 
-    if (!lookedFood && !lookedCabinetWeapon) {
+    if (!lookedPet && !lookedFood && !lookedCabinetWeapon) {
       const tvHits = foodRaycaster.intersectObject(world.getTvMesh(), true);
       if (tvHits.length > 0) {
         lookedAtTv = true;
       }
     }
   }
-  weapons.setHandMode(Boolean(lookedFood) || Boolean(lookedCabinetWeapon) || lookedAtTv || handHoldTimer > 0);
+  weapons.setHandMode(
+    Boolean(lookedPet) || Boolean(lookedFood) || Boolean(lookedCabinetWeapon) || lookedAtTv || handHoldTimer > 0,
+  );
 
   const wHud = weapons.update(dt, isPlaying && !inAnyCraft && !playerSwimming, playerSpeed, world.worldMeshes, shootables, pad, drunkLevel);
   weapons.setViewmodelVisible(!inAnyCraft && !player.isThirdPerson() && !playerSwimming);
@@ -1604,7 +1751,9 @@ function animate(now: number): void {
     hitmarkerEl.style.opacity = wHud.hitmarkerAlpha > 0.01 ? wHud.hitmarkerAlpha.toFixed(2) : '0';
     hitmarkerEl.classList.toggle('kill', wHud.hitmarkerKill && wHud.hitmarkerAlpha > 0.05);
 
-    if (lookedFood) {
+    if (lookedPet) {
+      nextPrompt = `[LMB / F] ${lookedPet.promptLabel}`;
+    } else if (lookedFood) {
       nextPrompt = `[LMB / F] ${lookedFood.name} NEHMEN & ESSEN (+${lookedFood.heal} HP)`;
     } else if (lookedCabinetWeapon) {
       nextPrompt = `[LMB / F] ${lookedCabinetWeapon.name} AUS WAFFENSCHRANK NEHMEN`;
@@ -1614,6 +1763,8 @@ function animate(now: number): void {
         : '[LMB / F] FERNSEHER ANSCHALTEN · VICE CHANNEL 6';
     } else if (shop.isPlayerNear(player.position) && !shopOpen) {
       nextPrompt = '[B] AMMU-NEON SHOP ÖFFNEN ($)';
+    } else if (world.isNearPetShop(player.position) && !petShopOpen) {
+      nextPrompt = '[F / B] HAVANA PETS · SAFEHOUSE-HAUSTIER ADOPTIEREN (🐾)';
     } else if (world.isNearSafehouseWardrobe(player.position)) {
       nextPrompt = '[F] KLEIDERSCHRANK · OUTFIT WECHSELN';
     } else if (world.isNearSafehouseFridge(player.position)) {

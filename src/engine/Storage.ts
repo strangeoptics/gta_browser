@@ -12,6 +12,7 @@ export interface SaveProgress {
   launcherUnlocked: boolean;
   armor: number;
   outfitIndex: number;
+  ownedPets?: string[];
   starterBonusApplied?: boolean;
 }
 
@@ -32,6 +33,7 @@ export const DEFAULT_PROGRESS: SaveProgress = {
   launcherUnlocked: false,
   armor: 0,
   outfitIndex: 0,
+  ownedPets: [],
   starterBonusApplied: true,
 };
 
@@ -85,6 +87,9 @@ export function loadProgress(): SaveProgress {
       launcherUnlocked: Boolean(parsed.launcherUnlocked),
       armor: typeof parsed.armor === 'number' ? Math.max(0, Math.min(100, parsed.armor)) : 0,
       outfitIndex: typeof parsed.outfitIndex === 'number' ? Math.max(0, Math.floor(parsed.outfitIndex)) % 5 : 0,
+      ownedPets: Array.isArray(parsed.ownedPets)
+        ? parsed.ownedPets.filter((p): p is string => typeof p === 'string')
+        : [],
       starterBonusApplied: true,
     };
   } catch {

@@ -36,7 +36,7 @@ src/
 ├── engine/
 │   ├── GamepadInput.ts      # Browser Gamepad API poller returning GamepadSnapshot
 │   ├── Physics.ts           # AABB cylinder-approx player collision with wall-sliding, step-up (0.28m) & terrain height
-│   ├── Storage.ts           # localStorage persistence (starts at $300 cash, missions, armor, launcher, 5 outfits)
+│   ├── Storage.ts           # localStorage persistence ($300 cash, missions, armor, launcher, 5 outfits, invertMouseY & settings)
 │   └── TouchControls.ts     # Mobile/tablet virtual stick + buttons (merges into GamepadSnapshot; hidden on desktop)
 ├── entities/
 │   ├── CharacterTextures.ts # Cached 128×128 procedural face (sunglasses/mustache) & 80s outfit canvas textures
@@ -50,32 +50,34 @@ src/
 │   ├── VigilanteSystem.ts   # Police Vigilante mode ([G]) in Vice PD vehicles with escalating bounties
 │   └── WantedSystem.ts      # 0–5 star heat & decay system
 ├── hud/
-│   └── Minimap.ts           # 30-Hz rotating circular 2D-canvas radar (streets, Starfish Island, Yacht, Vice Port, $, P, C, ⌂, PD, IE, M, ★, H)
+│   └── Minimap.ts           # 30-Hz rotating circular 2D-canvas radar (all 4 expansion districts + $, P, C, ⌂, PD, IE, T, D, B, ⚓, L, M, ★, H)
 ├── player/
-│   ├── PlayerAvatar.ts      # 3rd-person 80s protagonist model with 5 switchable outfits (incl. Vice PD Uniform) & held weapon
-│   └── PlayerController.ts  # Pointer-Lock + drag/arrow fallback FPS & Over-the-Shoulder 3rd-person camera (with wall-clip raycast & drunk stagger)
+│   ├── PlayerAvatar.ts      # 3rd-person 80s protagonist model with 5 outfits, held weapon & freestyle/treading swimming animations
+│   └── PlayerController.ts  # Pointer-Lock + drag/arrow FPS & 3rd-person camera (invertMouseY, wall-clip raycast, ocean buoyancy & swimming)
 ├── vehicles/
 │   ├── BoatSystem.ts        # Drivable Stinger Speedboat (beach pier, Starfish Island & Superyacht docking)
 │   ├── CarBuilder.ts        # 8 detailed extruded 3D car models (DeLorean, Cybertruck, Trans Am K.I.T.T., Bounder RV, Monaco, Challenger, Police, Supercar)
 │   ├── MotorcycleBuilder.ts # Detailed procedural 80s superbike ("PCJ-86 NEON BIKE") with torus tires, forks, engine & rider
 │   ├── PlayerHelicopterSystem.ts # Flyable 80s executive helicopter ("VICE MAVERICK") stationed on Starfish Island Helipad
-│   └── VehicleSystem.ts     # Vehicle physics, height-aware building/bridge collisions, 2-sphere car collisions, pooled VFX & AI traffic/police
+│   └── VehicleSystem.ts     # Vehicle physics, Vice Customs Turbo/Underglow tuning, cliff launches, height-aware collisions, pooled VFX & AI traffic/police
 └── world/
     ├── BeachProps.ts        # Lifeguard tower, illuminated wooden pier, loungers, volleyball net, dune grass & circling seagulls
-    ├── CityBuilder.ts       # Sky dome, PMREM reflections, instanced palms, fixed PointLight pool, wet roads, beach, ocean shader & weather
-    ├── CityLayout.ts        # Deterministic 3×3 city grid, reserved walk-in blocks & expanded playableBounds (Starfish Island + Vice Port)
+    ├── CityBuilder.ts       # Sky dome, PMREM reflections, instanced palms (per-palm Y), world-space wet road shader, 6m ocean & weather
+    ├── CityLayout.ts        # Deterministic 3×3 city grid, reserved walk-in blocks & expanded playableBounds (all 4 cardinal districts)
     ├── DecalSystem.ts       # 3 InstancedMesh ring buffers (constant 3 draw calls) for skidmarks, scorches & bullet holes
     ├── DestructibleProps.ts # Smashable hydrants (water geyser), café tables & neon bins (with flat raycast hitboxes)
     ├── NeonClub.ts          # Walk-in NEON CLUB (40, 0): instanced bottles/disco tiles, spotlights, bar/cocktails (drunk system), bartender, DJ & dancers
+    ├── NorthPoint.ts        # North Coastal Highway (z=-66..-136), Vice Marina (3 piers, 4 bobbing yachts, +$2,000 stash) & 11m Cape Vice Sea Cliff with serpentine road & 26m Lighthouse
     ├── PoliceStation.ts     # Walk-in VICE PD PRECINCT 06 (-40, 0): lobby, Desk Sergeant, Wanted board, donuts, 2 cells, evidence armory (+$1,500), helipad
     ├── RoadblockSystem.ts   # Vice PD roadblocks at 3+ stars with smashable barricades
     ├── Safehouse.ts         # Walk-in 2-level VICE SAFEHOUSE (40, -40): tight-sensor garage, sliding doors, kitchenette/fridge, gun cabinet, TV, pool + unicorn float
     ├── StarfishIsland.ts    # Arched Neon Causeway Bridge (z=-60), Starfish Island Estate (+$2,500 vault), & 44m Superyacht "LADY VICE" (+$1,800 stash)
     ├── StuntRamps.ts        # Neon stunt ramps (beach & downtown)
-    ├── Textures.ts          # Procedural wet asphalt/puddle, beach sand, sidewalk, Art-Deco facade & neon sign textures
+    ├── Textures.ts          # Procedural seamless domain-warped wet asphalt/puddle, beach sand, sidewalk, Art-Deco facade & neon sign textures
     ├── TrafficLights.ts     # Working 3-phase traffic signals at the 4 central intersections
     ├── ViceNewsTv.ts        # Procedural 80s US news channel ("VICE 6 NEWS") with animated anchor, ticker & Web Speech API voice
-    └── VicePort.ts          # South Industrial Container Docks (z=66..140): 26m animated cranes, 58m freighter, stunt ramps & Import/Export warehouse (IE)
+    ├── VicePort.ts          # South Industrial Container Docks (z=66..140): 26m animated cranes, 58m freighter, stunt ramps & Import/Export warehouse (IE)
+    └── WestDistrict.ts      # West District (x=-66..-124): Little Havana Plaza, walk-in Starlight 80s Diner, Banco de Vice (+$3,000 vault) & Vice Customs Tuning Garage
 ```
 
 ---
@@ -87,11 +89,11 @@ Respect these coordinates when adding buildings, props, or spawn points:
 - **Road centers (X and Z):** `-60, -20, 20, 60` (`ROAD_WIDTH = 12`).
 - **Block centers (X and Z):** `-40, 0, 40` (`BLOCK_SIZE = 28`, sidewalks at `y = 0.18`).
 - **Ocean Drive Boardwalk:** `x = 66..74`, `y = 0.22`, seawall at `x = 73.7` with walkable openings.
-- **Sloping Beach & Ocean:**
-  - Beach spans `x = 74..120`, height defined by `getBeachHeight(x, z)` (`+0.20` at boardwalk sloping down to `-0.68` underwater).
-  - Ocean plane starts at `x = 94` (`y = -0.18`, transparent shallow wash).
+- **Sloping Beach & Deep Ocean (`-6.0m` seabed):**
+  - Beach spans `x = 74..112`, height defined by `getBeachHeight(x, z)` (`+0.20` at boardwalk sloping to `-0.22` at surf line `x = 98`, then dropping to `-6.0m` deep ocean; North Marina `z < -98.5` & South Port `z > 126.2` are also `-6.0m`).
+  - Ocean plane starts at `x = 94` (`y = -0.18`), with North/South bay extensions and opaque deep-water shader across all 3 coastlines.
   - Wooden pier at `z = 8` (`x = 87..108`) leads to the moored Speedboat at `(111, 8)`.
-- **Reserved Special Blocks in `CityLayout.ts`:**
+- **Reserved Special Blocks & Expansion Districts in `CityLayout.ts`:**
   - `row=1, col=0` `(-40, 0)`: Hollow walk-in **VICE PD · PRECINCT 06** Police Station (entrance faces `+X` Central Plaza, rooftop helipad).
   - `row=1, col=1` `(0, 0)`: Central Plaza + **AMMU-NEON Shop** at `(-4.5, 4.5)`.
   - `row=1, col=2` `(40, 0)`: Hollow walk-in **NEON CLUB** (entrance faces `+X` Ocean Drive).
@@ -100,6 +102,8 @@ Respect these coordinates when adding buildings, props, or spawn points:
   - **Heist Start Beacon:** Ocean Drive at `(60, -26)`.
   - **Starfish Island & Superyacht (East):** Arched Causeway Bridge at `z = -60` (`x = 66..148`), Starfish Island (`x = 148..198, z = -84..-20`, `y = 0.68`, Estate vault + Maverick helipad at `(162, -74)`), Superyacht `"LADY VICE"` (`x = 165..179, z = -7..38`).
   - **Vice Port Industrial Docks (South):** Concrete port apron (`x = -68..78, z = 66..126`), 58m freighter (`z = 135`), Import/Export Warehouse (`58, 92`).
+  - **West District (West, `x = -66..-124`):** Vice Customs Tuning Garage (`-85, -37.5`), Walk-in Starlight 80s Diner & Little Havana Plaza (`-87, 0`), Walk-in Banco de Vice (`-87, 40`, `+$3,000` vault), West Havana Blvd (`x = -112`).
+  - **North Point (North, `z = -66..-136`):** Coastal Highway (`z = -81`), Vice Marina (`x = -50..+36, z = -90..-126`, 3 piers, 4 bobbing yachts, `+$2,000` stash), and 11m Cape Vice Sea Cliff (`78, -114`) with winding serpentine road, 26m Lighthouse, Keeper's Cottage, Scenic Overlook & Cliff-Jump Ramp.
 
 ---
 

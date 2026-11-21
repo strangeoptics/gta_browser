@@ -6,20 +6,27 @@ Gebaut mit **Three.js**, **TypeScript**, **Vite** und der **Web Audio API** — 
 
 > **Live spielen (GitHub Pages):** `https://strangeoptics.github.io/gta_browser/` *(aktivierbar unter Repo Settings → Pages → Source: GitHub Actions)*
 
-![Ocean Drive FPS View — Neon Katana & NEON CLUB](docs/screenshot-fps.png)
-![Chase-Cam Driving — Vice PD Interceptor on Ocean Drive](docs/screenshot-driving.png)
+![Ocean Drive FPS View — Neon Katana, NEON CLUB & Wet Puddles](docs/screenshot-fps.png)
+![Chase-Cam Driving — DeLorean DMC-12 on Ocean Drive](docs/screenshot-driving.png)
 
 ---
 
 ## Features
 
-- **Miami Coastal District (3×3 Blocks + Strand, Starfish Island, Superyacht & Vice Port):**
-  - Prozedurale Art-Deco-Pastellfassaden, leuchtende Neon-Schilder, zwei **Aussichtsdecks**, funktionierende **Ampeln** an den 4 Hauptkreuzungen, Post-Rain-**Laternen-Dunst** und **Neon-Stunt-Rampen** (*INSANE STUNT BONUS!*).
-  - **Abschüssiger Miami Beach:** Sanft abfallende Dünen mit spiegelndem **nassem Ufersand**, halbtransparenter Brandung, **South-Beach-Lifeguard-Turm** (begehbar), beleuchtetem **Holzsteg zum Speedboat**, Sonnenliegen, Beachvolleyball-Netz, kreisenden **Möwen** & räumlichem **Meeresrauschen**.
-  - **Starfish Island, Küstenbrücke & 44 m Superyacht „LADY VICE“ (Osten):**
+- **Miami Coastal District (3×3 Blocks + 4 große Erweiterungsbezirke in alle Himmelsrichtungen):**
+  - Prozedurale Art-Deco-Pastellfassaden, leuchtende Neon-Schilder, organische, nicht-kachelnde **Post-Rain-Straßenpfützen** (Domain-Warped + Weltkoordinaten-Shader), zwei **Aussichtsdecks**, funktionierende **Ampeln** an den 4 Hauptkreuzungen, **Laternen-Dunst** und **Neon-Stunt-Rampen** (*INSANE STUNT BONUS!*).
+  - **Abschüssiger Miami Beach & 6 m tiefes Meer mit Schwimm-System:** Sanft abfallende Dünen mit spiegelndem **nassem Ufersand**, halbtransparenter Brandung, **South-Beach-Lifeguard-Turm** (begehbar), beleuchtetem **Holzsteg zum Speedboat**, Sonnenliegen, Beachvolleyball-Netz, kreisenden **Möwen** & räumlichem **Meeresrauschen**. Im tiefen 6-m-Meer (Strand, Marina & Hafen) schwimmt der Spieler per **Auftrieb** an der Oberfläche — inkl. **Kraul-Armzügen, Flatter-Beinschlag & Wassertreten** in 3rd-Person sowie Schwimm-Kamera in 1st-Person!
+  - **Osten — Starfish Island, Küstenbrücke & 44 m Superyacht „LADY VICE“:**
     - Befahrbare, geschwungene **Neon-Bogenbrücke (Causeway)** übers Meer (`z = -60`, Speedboat passt unten durch!) zur tropischen Privatinsel mit **Kartell-Anwesen „STARFISH ESTATE“** (`+$2.500` Goldtresor, bewacht von **6 Kartell-Sicherheitswachen**), Helipad mit **fliegbarem „VICE MAVERICK“-Helikopter (`M`)** sowie der begehbaren **44-Meter-Superyacht „LADY VICE“** (Planken-Teakdeck, Jacuzzi, Flybridge, drehendes Radar, Yacht-Helipad & `+$1.800` Kapitäns-Gold).
-  - **Vice Port — Container-Hafen & Industrie-Docks (Süden, `z = +66..+140`):**
+  - **Süden — Vice Port Container-Hafen & Industrie-Docks (`z = +66..+140`):**
     - Industrie-Kaimauer mit Warnstreifen & Pollern, **Wellblech-Container-Schluchten**, **2 animierte 26-Meter-Containerbrücken (Hafenkräne)**, **58-Meter-Frachtschiff „MV VICE TRADER“**, 4 Flutlichtmasten, 2 Hafen-Stunt-Rampen und die **Import-/Export-Halle (`IE`)** mit live aktualisierter 3D-Tafel für 6 gesuchte Kult-Autos (`+$1.500–$2.200` pro Fahrzeug + **`$5.000` Komplett-Bonus**).
+  - **Westen — Little Havana, Starlight 80s Diner, Banco de Vice & Vice Customs (`x = -66..-124`):**
+    - **VICE CUSTOMS (`T`):** Drive-In Tuning-Garage mit 2-Säulen-Hebebühne, rotierendem 3D-Neon-Felgen-Logo & echten Upgrades (`F` im Auto: **`$600` für Turbo +28 % Topspeed / +32 % Beschleunigung, +50 % Panzerung & permanente Neon-Unterbodenbeleuchtung**; `$400` für neue Neonfarbe & Reparatur).
+    - **STARLIGHT 80s DINER (`D`) & LITTLE HAVANA PLAZA:** Begehbares Chrom-Art-Deco-Diner mit Barhockern, roten Vinyl-Booths, farbwechselnder Jukebox & Tresen (`F`: Cuban Burger & Shake für `$40` → 100 % HP), direkt an der kubanischen Plaza mit Kolonial-Fassaden, Balkonen, Markisen, instanzierten Lichterketten & Domino-Tischen.
+    - **BANCO DE VICE (`B`):** Begehbare Marmor-Großbank mit 6 Säulen, Schalterhalle und gepanzertem Stahl-Tresorraum inkl. runder Stahltür — **Banküberfall (`F`: `+$3.000` Beute, Alarm-Stroboskop & `4★` Großfahndung)**.
+  - **Norden — North Point Küsten-Highway, Vice Marina & Cape Vice Steilküsten-Leuchtturm (`z = -66..-136`):**
+    - **North Point Coastal Highway** mit 2 Stunt-Rampen, Autobahn-Schilderbrücke und **Vice Marina (`⚓`)** (Yacht Club, 3 begehbare Holzstege, 4 auf den Wellen wippende Yachten & Segelboote, Schmuggler-Koffer `+$2.000`).
+    - **Cape Vice 11-m-Kalkstein-Steilküste & Serpentinen-Küstenstraße:** Gewundene, stufenlos befahrbare Panoramastraße mit Leitplanken & 80s-Kurvenwarnschildern (`<<<`) hoch zum Gipfel-Plateau mit dem **26-m-Leuchtturm (`L`, ~39 m Gesamthöhe, rotierender Doppellicht-Strahl)**, Wärterhaus, Aussichtsplattform (`F`: `+$1.000` Entdecker-Bonus & 100 % HP) und **Cliff-Jump-Stunt-Rampe**.
   - **Begehbarer NEON CLUB (`C`):** Rotierende **Spiegel-Discokugel**, 4 bis zum Boden reichende **Effektstrahler**, beleuchtete Bar mit **Barkeeper & Miami Vice Cocktails (`F`, `$50`, auch bei 100 % HP)** — ab dem 2. Cocktail treten **stufenweise Betrunkenheits-Effekte** beim Laufen, Schießen, Fahren und in der Kamera auf — plus DJ-Pult, Subwoofer-Türme, 5 Tänzer und **räumliche 126-BPM-Clubmusik**.
   - **Begehbare Polizeistation — VICE PD · PRECINCT 06 (`PD` in West Downtown `-40, 0`):**
     - Art-Deco-Revier mit blauen Kugellampen, automatischen Glasschiebetüren, begehbarer Außentreppe zum **Dach-Helipad (`H`)**, Empfangstresen mit Desk-Sergeant, dynamischer **„MOST WANTED“-Pinnwand**, **Donut-Bar** (3D-Hand) und **2 Gitterzellen** (mit automatischer Schiebe-Zellentür).
@@ -63,12 +70,12 @@ Gebaut mit **Three.js**, **TypeScript**, **Vite** und der **Web Audio API** — 
 | `E` | Auto, Motorrad, Speedboat oder Helikopter ein- / aussteigen |
 | `V` | Kamera wechseln (zu Fuß: 1st/3rd-Person · im Auto: Chase/Cockpit) |
 | `Q` | 80s-Radio-Sender wechseln |
-| `F` | Pay ’n’ Spray / Safehouse / Polizeiwache (Kaution, Asservaten, Uniform) / Club-Cocktail |
+| `F` | Interagieren: Pay ’n’ Spray / Vice Customs Tuning / Safehouse / PD / Diner / Bank / Marina / Leuchtturm / Club |
 | `B` | AMMU-NEON Shop öffnen (am Central Plaza) |
 | `T` / `Y` | Tageszeit wechseln / Tropenschauer an & aus |
 | `P` / `K` | Fotomodus an & aus / PNG-Screenshot im Fotomodus |
 | `M` | Audio stummschalten |
-| `ESC` | Pause & Einstellungen |
+| `ESC` | Pause & Einstellungen (inkl. Sensitivität, **Maus Y-Achse umkehren**, Lautstärke & Performance-Modus) |
 
 ### Gamepad-Steuerung (Xbox / PlayStation)
 - **Linker Stick / Rechter Stick:** Analoges Laufen & Lenken / Umsehen
@@ -138,15 +145,17 @@ src/
 │   ├── DecalSystem.ts         # 3 InstancedMesh-Ringbuffer für Skidmarks, Brandspuren & Einschusslöcher
 │   ├── DestructibleProps.ts   # Zerstörbare Hydranten (Wasserfontäne), Cafés & Mülltonnen
 │   ├── NeonClub.ts            # Begehbarer NEON CLUB (Discokugel, Strahler, Bar, Barkeeper, DJ)
+│   ├── NorthPoint.ts          # Küsten-Highway, Vice Marina (Yacht Club, Stege, Yachten) & 11m-Steilküsten-Leuchtturm mit Serpentine
 │   ├── PoliceStation.ts       # Begehbare VICE PD Polizeistation (Zellen, Asservaten, Helipad)
 │   ├── RoadblockSystem.ts     # Vice-PD-Straßensperren mit durchbrechbaren Barrikaden
 │   ├── Safehouse.ts           # Begehbare VICE SAFEHOUSE Villa (Garage, Küche, Waffenschrank, TV, Einhorn-Pool)
 │   ├── StarfishIsland.ts      # Neon-Küstenbrücke, Starfish Island (Kartell-Villa) & 44m Superyacht „LADY VICE“
 │   ├── StuntRamps.ts          # Neon-Stunt-Rampen für Insane Stunt Bonuses
-│   ├── Textures.ts            # Prozedurale Pfützen-, Sand-, Fassaden- & Neon-Texturen
+│   ├── Textures.ts            # Prozedurale Domain-Warped-Pfützen-, Sand-, Fassaden- & Neon-Texturen
 │   ├── TrafficLights.ts       # Funktionierende Ampeln an den 4 Hauptkreuzungen
 │   ├── ViceNewsTv.ts          # Prozeduraler 80s-US-Nachrichtensender (Canvas-Studio, Ticker & Speech API)
-│   └── VicePort.ts            # Container-Hafen, 26m Hafenkräne, 58m Frachter & Import/Export-Halle
+│   ├── VicePort.ts            # Container-Hafen, 26m Hafenkräne, 58m Frachter & Import/Export-Halle
+│   └── WestDistrict.ts        # Little Havana Plaza, Starlight 80s Diner, Banco de Vice & Vice Customs Tuning-Garage
 └── main.ts                    # Game-Loop, Post-Processing (Bloom) & HUD-Wiring
 ```
 

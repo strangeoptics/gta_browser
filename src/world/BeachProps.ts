@@ -233,6 +233,51 @@ export function buildBeachHighlights(
     grassTufts.push({ mesh: tuft, phase: gz * 0.4 });
   }
 
+  // ---------------------------------------------------------------------------
+  // 5) Circling Coastal Seagulls high over the Beach & Golden-Hour Surf
+  // ---------------------------------------------------------------------------
+  interface Seagull {
+    group: THREE.Group;
+    leftWing: THREE.Mesh;
+    rightWing: THREE.Mesh;
+    centerX: number;
+    centerZ: number;
+    radius: number;
+    altitude: number;
+    speed: number;
+    phase: number;
+  }
+  const gulls: Seagull[] = [];
+  const gullMat = new THREE.MeshStandardMaterial({ color: '#f7f4f0', roughness: 0.6 });
+  const wingGeo = new THREE.BoxGeometry(0.65, 0.04, 0.24);
+
+  for (let i = 0; i < 5; i++) {
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.14, 0.55), gullMat);
+    g.add(body);
+
+    const leftWing = new THREE.Mesh(wingGeo, gullMat);
+    leftWing.position.set(-0.36, 0.02, 0);
+    g.add(leftWing);
+
+    const rightWing = new THREE.Mesh(wingGeo, gullMat);
+    rightWing.position.set(0.36, 0.02, 0);
+    g.add(rightWing);
+
+    scene.add(g);
+    gulls.push({
+      group: g,
+      leftWing,
+      rightWing,
+      centerX: 96 + (i % 3) * 14,
+      centerZ: -38 + i * 20,
+      radius: 14 + (i % 3) * 6,
+      altitude: 14 + (i % 4) * 2.4,
+      speed: 0.26 + (i % 3) * 0.06,
+      phase: i * 1.4,
+    });
+  }
+
   return {
     update: (elapsed: number) => {
       for (const g of grassTufts) {
@@ -241,6 +286,18 @@ export function buildBeachHighlights(
       for (let i = 0; i < torchFlames.length; i++) {
         const s = 0.92 + Math.sin(elapsed * 8.5 + i * 1.7) * 0.14;
         torchFlames[i].scale.setScalar(s);
+      }
+      for (const gull of gulls) {
+        const a = elapsed * gull.speed + gull.phase;
+        const gx = gull.centerX + Math.cos(a) * gull.radius;
+        const gz = gull.centerZ + Math.sin(a) * gull.radius;
+        const gy = gull.altitude + Math.sin(elapsed * 0.9 + gull.phase) * 0.9;
+        gull.group.position.set(gx, gy, gz);
+        // Face tangent direction of the orbit
+        gull.group.rotation.y = -a;
+        const flap = Math.sin(elapsed * 6.5 + gull.phase * 2.0) * 0.42;
+        gull.leftWing.rotation.z = flap;
+        gull.rightWing.rotation.z = -flap;
       }
     },
   };

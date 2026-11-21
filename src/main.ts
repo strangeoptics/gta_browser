@@ -812,6 +812,7 @@ function animate(now: number): void {
     playerSpeed,
     playerGrounded,
     wanted.stars,
+    player.position.x,
   );
 
   const shootables = [

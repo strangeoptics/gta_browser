@@ -11,13 +11,15 @@ export class AudioEngine {
   private masterGain: GainNode | null = null;
   private noiseBuffer: AudioBuffer | null = null;
 
-  // Continuous engine, siren & tire screech nodes
+  // Continuous engine, siren, tire screech & coastal surf nodes
   private engineOsc: OscillatorNode | null = null;
   private engineGain: GainNode | null = null;
   private sirenOsc: OscillatorNode | null = null;
   private sirenGain: GainNode | null = null;
   private screechOsc: OscillatorNode | null = null;
   private screechGain: GainNode | null = null;
+  private surfGain: GainNode | null = null;
+  private surfFilter: BiquadFilterNode | null = null;
 
   // Car Radio & Synthwave state
   private readonly stations = ['VICE FM', 'DUSK CHILL', 'OUTRUN TURBO', 'RADIO AUS'];
@@ -90,6 +92,20 @@ export class AudioEngine {
       screechFilter.connect(this.screechGain);
       this.screechGain.connect(this.masterGain);
       this.screechOsc.start();
+
+      // Looping coastal ocean surf noise (scales with proximity to the beach!)
+      const surfSrc = this.ctx.createBufferSource();
+      surfSrc.buffer = this.noiseBuffer;
+      surfSrc.loop = true;
+      this.surfFilter = this.ctx.createBiquadFilter();
+      this.surfFilter.type = 'lowpass';
+      this.surfFilter.frequency.value = 380;
+      this.surfGain = this.ctx.createGain();
+      this.surfGain.gain.value = 0;
+      surfSrc.connect(this.surfFilter);
+      this.surfFilter.connect(this.surfGain);
+      this.surfGain.connect(this.masterGain);
+      surfSrc.start();
     }
 
     if (this.ctx.state === 'suspended') {
@@ -509,6 +525,7 @@ export class AudioEngine {
     onFootSpeed: number,
     grounded: boolean,
     wantedStars: number,
+    playerX = 0,
   ): void {
     if (
       !this.ctx ||
@@ -522,6 +539,15 @@ export class AudioEngine {
       return;
     }
     const now = this.ctx.currentTime;
+
+    // 0) Coastal ocean surf ambience (grows louder as player approaches the beach x > 56)
+    if (this.surfGain && this.surfFilter) {
+      const beachProximity = Math.max(0, Math.min(1, (playerX - 54) / 48));
+      const waveSwell = 0.55 + 0.45 * Math.sin(elapsed * 0.85);
+      const targetSurf = isActive ? beachProximity * waveSwell * 0.16 : 0;
+      this.surfGain.gain.setTargetAtTime(targetSurf, now, 0.15);
+      this.surfFilter.frequency.setTargetAtTime(240 + waveSwell * 320, now, 0.15);
+    }
 
     // 1) Engine hum while driving
     const targetEngineGain = isActive && inVehicle ? 0.14 + Math.min(0.12, speedKmh * 0.0015) : 0;

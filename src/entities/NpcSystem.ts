@@ -78,6 +78,18 @@ export class NpcSystem {
   }
 
   public spawnPoliceNear(playerPos: THREE.Vector3, blockers: AABB[] = []): NpcEntity {
+    // Dispatch reinforcements directly from Vice PD Precinct 06 (-40, 0) when within range!
+    const distToPrecinct = Math.hypot(playerPos.x - -40, playerPos.z - 0);
+    if (distToPrecinct < 65 && distToPrecinct > 14) {
+      const px = -27.2 + (Math.random() - 0.5) * 1.4;
+      const pz = (Math.random() - 0.5) * 5.0;
+      if (!this.overlapsAny(px, pz, NPC_RADIUS + 0.25, blockers)) {
+        const officer = this.createNpc('police', px, pz, '#1e325c', 75);
+        officer.state = 'pursue';
+        return officer;
+      }
+    }
+
     let x = THREE.MathUtils.clamp(playerPos.x + 28, -62, 66);
     let z = THREE.MathUtils.clamp(playerPos.z, -62, 62);
     for (let attempt = 0; attempt < 10; attempt++) {
@@ -94,6 +106,17 @@ export class NpcSystem {
     const officer = this.createNpc('police', x, z, '#1e325c', 75);
     officer.state = 'pursue';
     return officer;
+  }
+
+  public isPoliceBustingPlayer(playerPos: THREE.Vector3, maxDist: number): boolean {
+    const maxSq = maxDist * maxDist;
+    for (const n of this.npcs) {
+      if (!n.alive || n.role !== 'police') continue;
+      if (n.position.distanceToSquared(playerPos) < maxSq) {
+        return true;
+      }
+    }
+    return false;
   }
 
   public spawnBountyTarget(x: number, z: number): NpcEntity {

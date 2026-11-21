@@ -6,6 +6,7 @@ import type { FoodItem } from './Safehouse';
 export interface PoliceStationHandle {
   position: THREE.Vector3;
   isInside: (pos: THREE.Vector3) => boolean;
+  isNearDesk: (pos: THREE.Vector3) => boolean;
   isNearKevlar: (pos: THREE.Vector3) => boolean;
   isNearArmory: (pos: THREE.Vector3) => boolean;
   isNearUniform: (pos: THREE.Vector3) => boolean;
@@ -14,6 +15,7 @@ export interface PoliceStationHandle {
   getDonuts: () => FoodItem[];
   consumeDonut: (item: FoodItem) => void;
   triggerAlarm: () => void;
+  lockCellBriefly: () => void;
   update: (elapsed: number, dt: number, playerPos?: THREE.Vector3, cash?: number, wantedStars?: number) => void;
 }
 
@@ -410,6 +412,21 @@ export function buildPoliceStation(
   addBox(2.2, 0.5, 0.7, cx - 7.2, floorY + 0.25, cz - 8.8, steelMat);
   addBox(2.2, 0.5, 0.7, cx - 2.5, floorY + 0.25, cz - 8.8, steelMat);
 
+  // Sliding steel gate for Holding Cell 2 (closes briefly on BUSTED respawn, then slides open!)
+  const cellGate = new THREE.Group();
+  for (let gx = -0.58; gx <= 0.58; gx += 0.29) {
+    const gBar = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, floorH - 0.3, 6), steelMat);
+    gBar.position.set(gx, floorY + floorH / 2, 0);
+    cellGate.add(gBar);
+  }
+  const gateCross = new THREE.Mesh(new THREE.BoxGeometry(1.45, 0.08, 0.06), steelMat);
+  gateCross.position.set(0, floorY + 1.4, 0);
+  cellGate.add(gateCross);
+  cellGate.position.set(cx - 1.85, 0, cz - 4.8);
+  scene.add(cellGate);
+  let cellLockTimer = 0;
+  let cellGateOpenT = 1;
+
   // --- 5) Evidence & Armory Room (SW Wing: x: -49.5..-39.5, z: 1.5..9.5) ---
   const kevlarPos = new THREE.Vector3(cx - 6.8, floorY, cz + 3.6);
   const armoryPos = new THREE.Vector3(cx - 6.8, floorY, cz + 7.2);
@@ -475,6 +492,8 @@ export function buildPoliceStation(
       pos.z > cz - 10 &&
       pos.z < cz + 10 &&
       pos.y < roofY + 0.2,
+    isNearDesk: (pos: THREE.Vector3) =>
+      pos.x > cx + 3.8 && pos.x < cx + 7.2 && Math.abs(pos.z - cz) < 2.8 && pos.y < 2.5,
     isNearKevlar: (pos: THREE.Vector3) =>
       kevlarAvailable && Math.hypot(pos.x - kevlarPos.x, pos.z - kevlarPos.z) < 2.2 && pos.y < 2.5,
     isNearArmory: (pos: THREE.Vector3) =>
@@ -496,6 +515,10 @@ export function buildPoliceStation(
     },
     triggerAlarm: () => {
       alarmTimer = 20.0;
+    },
+    lockCellBriefly: () => {
+      cellLockTimer = 1.8;
+      cellGateOpenT = 0;
     },
     update: (elapsed: number, dt: number, playerPos?: THREE.Vector3, cash = 0, wantedStars = 0) => {
       const clampedDt = Math.min(dt, 0.05);
@@ -537,6 +560,12 @@ export function buildPoliceStation(
       frontDoorN.position.z = cz - 1.08 - frontOpenT * 1.95;
       frontDoorS.position.z = cz + 1.08 + frontOpenT * 1.95;
       evidenceDoor.position.z = cz + 5.5 + evidenceOpenT * 2.15;
+
+      // Animate Holding Cell 2 sliding gate (closed during brief post-busted release, then slides open)
+      if (cellLockTimer > 0) cellLockTimer = Math.max(0, cellLockTimer - clampedDt);
+      const wantCellOpen = cellLockTimer <= 0 ? 1 : 0;
+      cellGateOpenT += (wantCellOpen - cellGateOpenT) * (1 - Math.exp(-4.5 * clampedDt));
+      cellGate.position.x = cx - 1.85 - cellGateOpenT * 1.45;
 
       // Red flashing alarm beacon when Evidence Room is raided or player has Wanted stars inside
       if (alarmTimer > 0) alarmTimer = Math.max(0, alarmTimer - clampedDt);

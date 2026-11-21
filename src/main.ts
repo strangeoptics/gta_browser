@@ -168,6 +168,11 @@ let lastWantedStars = 0;
 let dispatchTimer = 0;
 let dispatchCooldown = 0;
 let wastedTimer = 0;
+let isBustedState = false;
+let bustProgress = 0;
+let lastBustedFine = 0;
+const wastedTextEl = wastedOverlayEl.querySelector<HTMLElement>('.wasted-text')!;
+const wastedSubEl = wastedOverlayEl.querySelector<HTMLElement>('.wasted-sub')!;
 
 function addCameraShake(amount: number): void {
   shakeTrauma = Math.min(1.0, shakeTrauma + amount);
@@ -298,6 +303,32 @@ resetSaveBtn.addEventListener('click', () => {
   persistProgress();
 });
 
+function triggerBusted(): void {
+  if (wastedTimer > 0) return;
+  isBustedState = true;
+  bustProgress = 0;
+  wastedTimer = 2.8;
+  const fine = Math.min(objectives.cash, 250 * Math.max(1, wanted.stars));
+  lastBustedFine = fine;
+  objectives.cash -= fine;
+  persistProgress();
+  wastedTextEl.textContent = 'VERHAFTET';
+  wastedSubEl.textContent =
+    fine > 0
+      ? `Vice PD Precinct 06 · -$${fine} Kaution (Waffen behalten)`
+      : 'Vice PD Precinct 06 · Überführung in die Zelle…';
+  wastedOverlayEl.classList.add('busted', 'visible');
+  audio.playWasted();
+  if (vehicles.isInVehicle()) {
+    vehicles.exitVehicle();
+    weapons.setEnabled(true);
+  }
+  if (boat.isInBoat()) {
+    boat.disembark();
+    weapons.setEnabled(true);
+  }
+}
+
 function applyPlayerDamage(amount: number): void {
   if (wastedTimer > 0) return;
   let dmg = vehicles.isInVehicle() ? amount * 0.55 : amount;
@@ -315,7 +346,15 @@ function applyPlayerDamage(amount: number): void {
   audio.playDamage();
 
   if (playerHp <= 0) {
+    if (wanted.stars >= 2) {
+      triggerBusted();
+      return;
+    }
+    isBustedState = false;
     wastedTimer = 2.6;
+    wastedTextEl.textContent = 'WASTED';
+    wastedSubEl.textContent = 'Respawn am Vice Safehouse…';
+    wastedOverlayEl.classList.remove('busted');
     wastedOverlayEl.classList.add('visible');
     audio.playWasted();
     if (vehicles.isInVehicle()) {
@@ -713,6 +752,20 @@ window.addEventListener('keydown', (e) => {
       audio.playPurchase();
       persistProgress();
       showQuickToast('SAFEHOUSE · 100% HP, MUNITION VOLL & GESPEICHERT');
+    } else if (world.isNearPdDesk(player.position) && wanted.stars >= 1) {
+      const bribeCost = wanted.stars * 200;
+      if (objectives.cash >= bribeCost) {
+        objectives.cash -= bribeCost;
+        wanted.reset();
+        npcs.clearPolice();
+        heli.clear();
+        audio.playPurchase();
+        persistProgress();
+        showQuickToast(`KAUTION GEZAHLT · -$${bribeCost} · ALLE STERNE GELÖSCHT`);
+        sendPoliceDispatch('Akten in Precinct 06 geschlossen — Fahndung aufgehoben.', true);
+      } else {
+        showQuickToast(`ZU WENIG CASH · KAUTION KOSTET $${bribeCost}`);
+      }
     } else if (world.isNearPdKevlar(player.position)) {
       world.takePdKevlar();
       playerArmor = 100;
@@ -888,18 +941,30 @@ function animate(now: number): void {
     return;
   }
 
-  // Handle Wasted respawn countdown
+  // Handle Wasted / Busted respawn countdown
   if (wastedTimer > 0) {
     wastedTimer -= dt;
     if (wastedTimer <= 0) {
-      wastedOverlayEl.classList.remove('visible');
+      wastedOverlayEl.classList.remove('visible', 'busted');
       playerHp = 100;
       wanted.reset();
       npcs.clearPolice();
       heli.clear();
       if (heist.isActive()) heist.failHeist();
-      // Respawn right outside your personal VICE SAFEHOUSE entrance!
-      player.setSpawn(53.5, 0.25, -43.0, -Math.PI / 2);
+      if (isBustedState) {
+        isBustedState = false;
+        // Respawn inside Holding Cell 2 of Vice PD Precinct 06; cell gate slides open after 1.8s!
+        player.setSpawn(-42.0, 0.25, -7.2, Math.PI);
+        world.lockPdCellBriefly();
+        showQuickToast(
+          lastBustedFine > 0
+            ? `FREIGELASSEN · -$${lastBustedFine} KAUTION · ZELLENTÜR ÖFFNET SICH`
+            : 'FREIGELASSEN · ZELLENTÜR ÖFFNET SICH',
+        );
+      } else {
+        // Respawn right outside your personal VICE SAFEHOUSE entrance!
+        player.setSpawn(53.5, 0.25, -43.0, -Math.PI / 2);
+      }
     }
   }
 
@@ -1026,6 +1091,23 @@ function animate(now: number): void {
     ...vehicles.getVehicleColliders(),
     ...roadblocks.getActiveColliders(),
   ]);
+
+  // GTA-style close-range arrest ("BUSTED") when cornered by Vice PD at 2+ stars
+  if (isPlaying && wanted.stars >= 2 && !inBoat) {
+    const activeCar = vehicles.getActiveVehicle();
+    const slowInCar = activeCar ? Math.abs(activeCar.speed) < 2.6 : false;
+    const bustRange = activeCar ? (slowInCar ? 3.2 : 0) : 2.3;
+    if (bustRange > 0 && npcs.isPoliceBustingPlayer(player.position, bustRange)) {
+      bustProgress += dt;
+      if (bustProgress >= 1.15) {
+        triggerBusted();
+      }
+    } else {
+      bustProgress = Math.max(0, bustProgress - dt * 1.5);
+    }
+  } else {
+    bustProgress = 0;
+  }
   heli.update(dt, elapsed, player.position, indoors ? 0 : wanted.stars);
   const heistHud = heist.update(elapsed, player.position, vehicles, boat, npcs, wanted);
   const objHud = objectives.update(dt, elapsed, player.position, vehicles, npcs, wanted);
@@ -1266,6 +1348,9 @@ function animate(now: number): void {
       interactPromptEl.classList.add('visible');
     } else if (world.isNearSafehouseLounge(player.position)) {
       interactPromptEl.textContent = '[F] SAFEHOUSE · HEILEN, MUNITION VOLL & SPEICHERN';
+      interactPromptEl.classList.add('visible');
+    } else if (world.isNearPdDesk(player.position) && wanted.stars >= 1) {
+      interactPromptEl.textContent = `[F] KAUTION / BESTECHUNG · $${wanted.stars * 200} (STERNE LÖSCHEN)`;
       interactPromptEl.classList.add('visible');
     } else if (world.isNearPdKevlar(player.position)) {
       interactPromptEl.textContent = '[F] KEVLAR-WESTE STEHLEN (100% ARMOR · ⚠ ALARM)';

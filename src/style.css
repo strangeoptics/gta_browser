@@ -557,6 +557,15 @@ body,
   opacity: 1;
 }
 
+#wasted-overlay.busted {
+  background: radial-gradient(circle, rgba(16, 46, 108, 0.72), rgba(8, 12, 28, 0.92));
+}
+
+#wasted-overlay.busted .wasted-text {
+  color: #38b6ff;
+  text-shadow: 0 0 28px rgba(56, 182, 255, 0.85), 0 0 60px rgba(255, 40, 80, 0.45);
+}
+
 .wasted-text {
   font-size: 64px;
   font-weight: 900;

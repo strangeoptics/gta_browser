@@ -74,7 +74,7 @@ const CAR_SPECS = [
   { name: 'INFERNUS 86', color: '#36f1e6', neon: '#36f1e6', x: 63.2, z: -12, yaw: 0, ai: false, police: false, pursuit: false, bike: false },
   { name: 'SOLARIS CABRIO', color: '#ff9f43', neon: '#ff9f43', x: 16.8, z: 6, yaw: Math.PI, ai: false, police: false, pursuit: false, bike: false },
   { name: 'PALM COUPE', color: '#f5e6d3', neon: '#36f1e6', x: -23.2, z: -14, yaw: 0, ai: false, police: false, pursuit: false, bike: false },
-  { name: 'VICE PD CRUISER', color: '#1b1b26', neon: '#36f1e6', x: -16.8, z: 24, yaw: Math.PI, ai: false, police: true, pursuit: true, bike: false },
+  { name: 'VICE PD CRUISER', color: '#1b1b26', neon: '#36f1e6', x: -26.8, z: 6.8, yaw: 0, ai: false, police: true, pursuit: true, bike: false },
   { name: 'VICE PD INTERCEPTOR', color: '#1b1b26', neon: '#ff3355', x: 20, z: 58, yaw: Math.PI, ai: true, police: true, pursuit: true, bike: false },
   // Cruising traffic cars on the road grid
   { name: 'BANSHEE TURBO', color: '#ff5e7e', neon: '#ff4fa3', x: 20, z: -48, yaw: 0, ai: true, police: false, pursuit: false, bike: false },

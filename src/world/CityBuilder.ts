@@ -32,11 +32,13 @@ export interface MiamiWorld {
   isInsideClub: (pos: THREE.Vector3) => boolean;
   isInsideSafehouse: (pos: THREE.Vector3) => boolean;
   isInsidePoliceStation: (pos: THREE.Vector3) => boolean;
+  isNearPdDesk: (pos: THREE.Vector3) => boolean;
   isNearPdKevlar: (pos: THREE.Vector3) => boolean;
   isNearPdArmory: (pos: THREE.Vector3) => boolean;
   isNearPdUniform: (pos: THREE.Vector3) => boolean;
   takePdKevlar: () => void;
   triggerPdAlarm: () => void;
+  lockPdCellBriefly: () => void;
   isInSafehouseGarage: (pos: THREE.Vector3) => boolean;
   isNearSafehouseLounge: (pos: THREE.Vector3) => boolean;
   isNearSafehouseWardrobe: (pos: THREE.Vector3) => boolean;
@@ -728,11 +730,13 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
     isInsideClub: (pos: THREE.Vector3) => neonClub.isInside(pos),
     isInsideSafehouse: (pos: THREE.Vector3) => safehouse.isInside(pos),
     isInsidePoliceStation: (pos: THREE.Vector3) => policeStation.isInside(pos),
+    isNearPdDesk: (pos: THREE.Vector3) => policeStation.isNearDesk(pos),
     isNearPdKevlar: (pos: THREE.Vector3) => policeStation.isNearKevlar(pos),
     isNearPdArmory: (pos: THREE.Vector3) => policeStation.isNearArmory(pos),
     isNearPdUniform: (pos: THREE.Vector3) => policeStation.isNearUniform(pos),
     takePdKevlar: () => policeStation.takeKevlar(),
     triggerPdAlarm: () => policeStation.triggerAlarm(),
+    lockPdCellBriefly: () => policeStation.lockCellBriefly(),
     isInSafehouseGarage: (pos: THREE.Vector3) => safehouse.isInGarage(pos),
     isNearSafehouseLounge: (pos: THREE.Vector3) => safehouse.isNearLounge(pos),
     isNearSafehouseWardrobe: (pos: THREE.Vector3) => safehouse.isNearWardrobe(pos),

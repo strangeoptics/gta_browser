@@ -5,35 +5,39 @@ function hash2D(x: number, y: number): number {
   return n - Math.floor(n);
 }
 
-function smoothNoise(x: number, y: number): number {
+function smoothNoisePeriodic(x: number, y: number, period: number): number {
   const ix = Math.floor(x);
   const iy = Math.floor(y);
   const fx = x - ix;
   const fy = y - iy;
   const ux = fx * fx * (3 - 2 * fx);
   const uy = fy * fy * (3 - 2 * fy);
-  const a = hash2D(ix, iy);
-  const b = hash2D(ix + 1, iy);
-  const c = hash2D(ix, iy + 1);
-  const d = hash2D(ix + 1, iy + 1);
+  const x0 = ((ix % period) + period) % period;
+  const y0 = ((iy % period) + period) % period;
+  const x1 = (x0 + 1) % period;
+  const y1 = (y0 + 1) % period;
+  const a = hash2D(x0, y0);
+  const b = hash2D(x1, y0);
+  const c = hash2D(x0, y1);
+  const d = hash2D(x1, y1);
   return a + (b - a) * ux + (c - a) * uy + (a - b - c + d) * ux * uy;
 }
 
-function fbm(x: number, y: number): number {
+function fbmPeriodic(x: number, y: number, basePeriod: number): number {
   let v = 0;
   let amp = 0.5;
   let freq = 1;
   for (let i = 0; i < 4; i++) {
-    v += amp * smoothNoise(x * freq, y * freq);
-    freq *= 2.02;
+    v += amp * smoothNoisePeriodic(x * freq, y * freq, basePeriod * freq);
+    freq *= 2;
     amp *= 0.5;
   }
   return v;
 }
 
 /**
- * Generates paired wet-asphalt albedo and puddle roughness maps.
- * Puddles have very low roughness (~0.05) so they sharply mirror the sunset sky & neon lights.
+ * Generates paired seamless wet-asphalt albedo and domain-warped organic puddle roughness maps.
+ * Puddles have very low roughness (~0.04) with soft damp rims so they organically mirror sunset & neon.
  */
 export function createWetAsphaltTextures(): {
   map: THREE.CanvasTexture;
@@ -53,27 +57,36 @@ export function createWetAsphaltTextures(): {
   const aImg = aCtx.createImageData(size, size);
   const rImg = rCtx.createImageData(size, size);
 
+  const period = 6;
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
-      // Seamless-friendly periodic coordinates
-      const u = (x / size) * 6.0;
-      const v = (y / size) * 6.0;
+      const u = (x / size) * period;
+      const v = (y / size) * period;
 
-      const puddleNoise = fbm(u, v);
-      const grain = hash2D(x * 0.7, y * 0.7) * 16;
+      // Domain-warping bends blobs into irregular, organic post-rain puddle pools
+      const warpX = (fbmPeriodic(u + 1.7, v + 3.1, period) - 0.5) * 1.85;
+      const warpY = (fbmPeriodic(u + 4.3, v + 0.9, period) - 0.5) * 1.85;
+      const puddleNoise = fbmPeriodic(u + warpX, v + warpY, period);
 
-      // Puddles appear where noise > 0.57
-      const isPuddle = puddleNoise > 0.57;
-      const puddleBlend = THREE.MathUtils.smoothstep(puddleNoise, 0.52, 0.61);
+      // Fine mineral asphalt aggregate grain + subtle tire-track variation
+      const grain = hash2D(x * 0.85, y * 0.85) * 18;
+      const micro = smoothNoisePeriodic((x / size) * 24, (y / size) * 24, 24) * 10;
 
-      // Darker wet tone inside puddles, damp charcoal outside
-      const base = isPuddle ? 20 : 34;
-      const r = Math.min(255, base + grain * (1 - puddleBlend * 0.75) + 4);
-      const g = Math.min(255, base + grain * (1 - puddleBlend * 0.75));
-      const b = Math.min(255, base + grain * (1 - puddleBlend * 0.75) + 8);
+      // Organic soft-edged puddle mask with wet halo rim
+      const dampRim = THREE.MathUtils.smoothstep(puddleNoise, 0.44, 0.56);
+      const puddleCore = THREE.MathUtils.smoothstep(puddleNoise, 0.54, 0.62);
 
-      // Roughness: 0.05 in puddles (~13/255), ~0.48 on damp asphalt (~122/255)
-      const roughVal = Math.round(THREE.MathUtils.lerp(128 + grain * 1.4, 14, puddleBlend));
+      // Darker wet tone inside puddles, damp charcoal rim, weathered asphalt outside
+      const base = THREE.MathUtils.lerp(42, 18, dampRim * 0.55 + puddleCore * 0.45);
+      const grainScale = 1 - puddleCore * 0.82;
+      const r = Math.min(255, base + (grain + micro * 0.5) * grainScale + 3);
+      const g = Math.min(255, base + (grain + micro * 0.5) * grainScale);
+      const b = Math.min(255, base + (grain + micro * 0.5) * grainScale + 7);
+
+      // Roughness: ~0.04 in mirror-like puddle core (~10/255), ~0.35 damp rim, ~0.62 dry-damp asphalt
+      const dryRough = 148 + grain * 1.5;
+      const rimRough = THREE.MathUtils.lerp(dryRough, 82, dampRim);
+      const roughVal = Math.round(THREE.MathUtils.lerp(rimRough, 10, puddleCore));
 
       const idx = (y * size + x) * 4;
       aImg.data[idx] = r;
@@ -95,12 +108,12 @@ export function createWetAsphaltTextures(): {
   map.colorSpace = THREE.SRGBColorSpace;
   map.wrapS = THREE.RepeatWrapping;
   map.wrapT = THREE.RepeatWrapping;
-  map.repeat.set(16, 16);
+  map.repeat.set(7, 7);
 
   const roughnessMap = new THREE.CanvasTexture(roughCanvas);
   roughnessMap.wrapS = THREE.RepeatWrapping;
   roughnessMap.wrapT = THREE.RepeatWrapping;
-  roughnessMap.repeat.set(16, 16);
+  roughnessMap.repeat.set(7, 7);
 
   return { map, roughnessMap };
 }

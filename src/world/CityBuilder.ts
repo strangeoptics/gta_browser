@@ -196,10 +196,34 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
   const roadMat = new THREE.MeshStandardMaterial({
     map: asphalt.map,
     roughnessMap: asphalt.roughnessMap,
-    roughness: 1.0, // modulated by roughnessMap (puddles ~0.05, damp asphalt ~0.5)
+    roughness: 1.0, // modulated by roughnessMap + world-space macro puddle variation
     metalness: 0.22,
-    envMapIntensity: 1.5,
+    envMapIntensity: 1.55,
   });
+  // Zero-cost world-space macro wetness modulation breaks up any visible tile repetition across the whole city!
+  roadMat.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vRoadWorldPos;')
+      .replace(
+        '#include <worldpos_vertex>',
+        '#include <worldpos_vertex>\nvRoadWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;',
+      );
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vRoadWorldPos;')
+      .replace(
+        '#include <roughnessmap_fragment>',
+        `#include <roughnessmap_fragment>
+        {
+          vec2 wp = vRoadWorldPos.xz;
+          float macro =
+            sin(wp.x * 0.047 + wp.y * 0.031) * 0.42 +
+            cos(wp.x * 0.023 - wp.y * 0.061) * 0.36 +
+            sin(wp.x * 0.113 + wp.y * 0.089) * 0.22;
+          float dryPatch = smoothstep(-0.15, 0.55, macro);
+          roughnessFactor = clamp(mix(roughnessFactor * 0.85, max(roughnessFactor, 0.58), dryPatch * 0.82), 0.03, 0.88);
+        }`,
+      );
+  };
 
   const roadBase = new THREE.Mesh(new THREE.PlaneGeometry(144, 144), roadMat);
   roadBase.rotation.x = -Math.PI / 2;

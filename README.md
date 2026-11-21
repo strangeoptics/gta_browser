@@ -24,6 +24,9 @@ Gebaut mit **Three.js**, **TypeScript**, **Vite** und der **Web Audio API** — 
 - **Fahrbare Retro-Autos, 80s-Motorrad („PCJ-86“), Speedboat & Polizei-Eskalation:**
   - 9 Fahrzeuge inkl. **PCJ-86 Neon-Motorrad** (mit Kurven-Schräglage & 3D-Fahrer), Auto-zu-Auto-Kollisionen, geschwindigkeitsabhängigem Crash-Schaden, **Explosionen**, **Brems- & Rückfahrlichtern**, Drift-Rauch & Skidmarks, **Pay ’n’ Spray (`F`)** sowie dem **Stinger Speedboat** am Pier.
   - **1–5 Wanted-Sterne:** Personen-Kollisionen, verfolgende **Vice-PD-Streifenwagen** (ab 2★), **Polizei-Straßensperren** & abschießbarer **Vice-PD-Helikopter mit Suchscheinwerfer** (ab 3★) plus **Polizeifunk**.
+- **Eigene Basis — VICE SAFEHOUSE (`⌂` am Nord-Ocean-Drive):**
+  - Begehbare 2-Ebenen-Art-Deco-Villa mit **automatischem Rolltor** (private Garage), **automatischen Glasschiebe- & Innentüren**, Lounge (Sofa, 80s-CRT-TV, Waffenwand, Kleiderschrank, Tresor) und **Penthouse-Dachterrasse mit eingelassenem, begehbarem Pool** inkl. Unterwasser-Stufen.
+  - **Gameplay-Funktionen:** Kostenlos **Heilen, Munition auffüllen & Speichern (`F`)** in der Lounge, **4 wechselbare 80s-Outfits (`F`)** am Kleiderschrank (gespeichert in `localStorage`), **gratis Garagen-Reparatur (`F`)**, schnellerer Wanted-Abbau drinnen & Safehouse-Respawn.
 - **Story-Heist, Mini-Missionen, Fotomodus (`P`) & Komfort:**
   - **3-stufiger Story-Heist „Ocean Club Finale“ (`H`, `+$3.500`)**, 5 rotierende Mini-Missionen & **AMMU-NEON Shop (`B`)** (Medkits, Kevlar-Armor, Launcher).
   - **Fotomodus (`P`):** Welt einfrieren, freie Flugkamera (`WASD` + `E`/`Q`) und PNG-Screenshot per **`K`** speichern.
@@ -46,7 +49,7 @@ Gebaut mit **Three.js**, **TypeScript**, **Vite** und der **Web Audio API** — 
 | `E` | Auto oder Speedboat ein- / aussteigen |
 | `V` | Kamera wechseln (zu Fuß: 1st/3rd-Person · im Auto: Chase/Cockpit) |
 | `Q` | 80s-Radio-Sender wechseln |
-| `F` | Pay ’n’ Spray (im Auto) / Miami Vice Cocktail an der Club-Bar |
+| `F` | Pay ’n’ Spray / Safehouse (Heilen, Outfit, Garage) / Club-Cocktail |
 | `B` | AMMU-NEON Shop öffnen (am Central Plaza) |
 | `T` / `Y` | Tageszeit wechseln / Tropenschauer an & aus |
 | `P` / `K` | Fotomodus an & aus / PNG-Screenshot im Fotomodus |
@@ -110,10 +113,17 @@ src/
 │   ├── BoatSystem.ts          # Fahrbares Stinger Speedboat am Strand
 │   └── VehicleSystem.ts       # Retro-Autos, Kollisionen, Crash-Schaden, Explosionen & Polizei-Jäger
 ├── world/
-│   ├── CityBuilder.ts         # 3×3 Miami-Welt, Terrassen, Wetter, Tageszeit, Palmen & Ozean
+│   ├── BeachProps.ts          # Lifeguard-Turm, Holzsteg, Sonnenliegen, Volleyball & Möwen
+│   ├── CityBuilder.ts         # 3×3 Miami-Welt, abschüssiger Strand, Wetter, Tageszeit & Ozean
 │   ├── CityLayout.ts          # Deterministisches Stadt-Layout
+│   ├── DecalSystem.ts         # Drift-Skidmarks, Brandspuren & Einschusslöcher
 │   ├── DestructibleProps.ts   # Zerstörbare Hydranten (Wasserfontäne), Cafés & Mülltonnen
-│   └── Textures.ts            # Prozedurale Pfützen-, Fassaden- & Neon-Schild-Texturen
+│   ├── NeonClub.ts            # Begehbarer NEON CLUB (Discokugel, Strahler, Bar, Barkeeper, DJ)
+│   ├── RoadblockSystem.ts     # Vice-PD-Straßensperren mit durchbrechbaren Barrikaden
+│   ├── Safehouse.ts           # Begehbare VICE SAFEHOUSE Villa (Rolltor, Türen & Dachpool)
+│   ├── StuntRamps.ts          # Neon-Stunt-Rampen für Insane Stunt Bonuses
+│   ├── Textures.ts            # Prozedurale Pfützen-, Sand-, Fassaden- & Neon-Texturen
+│   └── TrafficLights.ts       # Funktionierende Ampeln an den 4 Hauptkreuzungen
 └── main.ts                    # Game-Loop, Post-Processing (Bloom) & HUD-Wiring
 ```
 

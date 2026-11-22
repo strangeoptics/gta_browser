@@ -25,6 +25,7 @@ import { buildSafehouse, type CabinetWeapon, type FoodItem } from './Safehouse';
 import { buildStarfishIsland, type SuperyachtHandle } from './StarfishIsland';
 import { buildStuntRamps, type StuntRamp } from './StuntRamps';
 import { buildTrafficLights } from './TrafficLights';
+import { buildViceAirfield } from './ViceAirfield';
 import { buildVicePort, type ImportExportSpec } from './VicePort';
 import { buildWestDistrict } from './WestDistrict';
 import { buildNorthPoint, type MarinaBoatInit } from './NorthPoint';
@@ -61,6 +62,10 @@ export interface MiamiWorld {
   takeMarinaLoot: () => void;
   isNearLighthouseSpot: (pos: THREE.Vector3) => boolean;
   claimLighthouseBonus: () => boolean;
+  isInsideAirfieldInterior: (pos: THREE.Vector3) => boolean;
+  isNearAirfieldLoot: (pos: THREE.Vector3) => boolean;
+  takeAirfieldLoot: () => void;
+  isNearAirfieldCafe: (pos: THREE.Vector3) => boolean;
   cycleTimeOfDay: () => string;
   toggleRain: () => boolean;
   setRetrowaveMode: (active: boolean) => void;
@@ -750,9 +755,12 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
   // 6d) North Point: Coastal Highway, Vice Marina & Cape Vice 26m Lighthouse (z = -66..-128)
   const northPoint = buildNorthPoint(scene, colliders, worldMeshes, roadMat, sidewalkMat, oceanMat, palmPositions);
 
+  // 6e) Vice International Airfield: Runway 18/36, Walk-in Terminal 1, 22m ATC Tower & Hangar 06 (x = -124..-68, z = 66..138)
+  const viceAirfield = buildViceAirfield(scene, colliders, worldMeshes, palmPositions);
+
   const palms = buildPalmTrees(scene, palmPositions);
 
-  // 6e) Vice Port Industrial Container Docks, 26m Gantry Cranes, Cargo Freighter & Import/Export (z = 66..140)
+  // 6f) Vice Port Industrial Container Docks, 26m Gantry Cranes, Cargo Freighter & Import/Export (z = 66..140)
   const vicePort = buildVicePort(scene, colliders, worldMeshes, oceanMat);
 
   // ---------------------------------------------------------------------------
@@ -1012,6 +1020,10 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
     takeMarinaLoot: () => northPoint.takeMarinaLoot(),
     isNearLighthouseSpot: (pos: THREE.Vector3) => northPoint.isNearLighthouseSpot(pos),
     claimLighthouseBonus: () => northPoint.claimLighthouseBonus(),
+    isInsideAirfieldInterior: (pos: THREE.Vector3) => viceAirfield.isInsideInterior(pos),
+    isNearAirfieldLoot: (pos: THREE.Vector3) => viceAirfield.isNearAirfieldLoot(pos),
+    takeAirfieldLoot: () => viceAirfield.takeAirfieldLoot(),
+    isNearAirfieldCafe: (pos: THREE.Vector3) => viceAirfield.isNearAirfieldCafe(pos),
     cycleTimeOfDay: () => {
       timeIndex = (timeIndex + 1) % timePresets.length;
       return applyTimePreset(timeIndex);
@@ -1062,7 +1074,10 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
     isNearClubBar: (pos: THREE.Vector3) => neonClub.isNearBar(pos),
     getClubProximity: (pos: THREE.Vector3) => neonClub.getProximity(pos),
     getGroundHeight: (x: number, z: number) =>
-      northPoint.getGroundHeight(x, z) ?? starfish.getGroundHeight(x, z) ?? getBeachHeight(x, z),
+      northPoint.getGroundHeight(x, z) ??
+      starfish.getGroundHeight(x, z) ??
+      viceAirfield.getGroundHeight(x, z) ??
+      getBeachHeight(x, z),
     shouldTrafficStop: (x: number, z: number, yaw: number) => trafficLights.shouldAiStop(x, z, yaw),
     update: (
       elapsed: number,
@@ -1079,6 +1094,7 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
       starfish.update(elapsed, dt, playerPos);
       westDistrict.update(elapsed, playerPos);
       northPoint.update(elapsed, playerPos);
+      viceAirfield.update(elapsed, playerPos);
       vicePort.update(elapsed, playerPos);
       neonClub.update(elapsed, playerPos);
       safehouse.update(elapsed, dt, playerPos, cash, wantedStars, cameraYaw, performanceMode);

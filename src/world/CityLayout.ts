@@ -34,7 +34,7 @@ export const BLOCK_SIZE = 28;
 export const SIDEWALK_WIDTH = 2.8;
 
 export const DEFAULT_PLAYABLE_BOUNDS = {
-  minX: -122,
+  minX: -124,
   maxX: 204,
   minZ: -136,
   maxZ: 141,
@@ -53,6 +53,7 @@ export const WORLD_LANDMARKS = {
   PAY_N_SPRAY: { x: -56, z: -38 },
   VICE_CUSTOMS: { x: -85, z: -37.5 },
   LOWRIDER_ARENA: { x: -87, z: 1.6 },
+  VICE_AIRFIELD: { x: -96, z: 102 },
   VICE_PORT_GOAL_Z: 68,
   OCEAN_DEEP_X: 107,
 } as const;
@@ -239,10 +240,10 @@ export function generateCityLayout(): CityLayout {
     blockSize: BLOCK_SIZE,
     sidewalkWidth: SIDEWALK_WIDTH,
     playableBounds: {
-      minX: -122, // extends west through Little Havana, Starlight Diner, Banco de Vice & Vice Customs (x=-66..-124)
+      minX: -124, // extends west through Little Havana, Vice Airfield Runway 18/36 & West Havana Blvd (x=-66..-124)
       maxX: 228, // extends across Causeway Bridge, Starfish Island & open east ocean
       minZ: -168, // extends north through North Point, Vice Marina Bay & Cape Vice Cliff
-      maxZ: 158, // extends south through Vice Port Docks, Cargo Freighter & south bay
+      maxZ: 158, // extends south through Vice Port Docks, Vice Airfield & south bay
     },
     buildings,
   };

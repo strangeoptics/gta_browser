@@ -98,6 +98,35 @@ export class Minimap {
     sctx.fillStyle = 'rgba(184, 58, 48, 0.65)';
     sctx.fillRect(wx(-21), wz(128), 58 * scale, 14 * scale);
 
+    // Vice International Airfield (SW Peninsula: x = -125..-68, z = 66..138)
+    sctx.fillStyle = 'rgba(74, 80, 96, 0.52)';
+    sctx.strokeStyle = 'rgba(54, 241, 230, 0.35)';
+    sctx.lineWidth = 1;
+    sctx.fillRect(wx(-125), wz(66), 57 * scale, 72 * scale);
+    sctx.strokeRect(wx(-125), wz(66), 57 * scale, 72 * scale);
+    // Runway 18/36 dark strip + white dashed centerline
+    sctx.fillStyle = 'rgba(24, 26, 34, 0.85)';
+    sctx.fillRect(wx(-119), wz(70), 14 * scale, 66 * scale);
+    sctx.strokeStyle = 'rgba(242, 237, 228, 0.75)';
+    sctx.lineWidth = 1.4;
+    sctx.setLineDash([4, 4]);
+    sctx.beginPath();
+    sctx.moveTo(wx(-112), wz(73));
+    sctx.lineTo(wx(-112), wz(133));
+    sctx.stroke();
+    sctx.setLineDash([]);
+    // Terminal 1 & Hangar 06 footprints
+    sctx.fillStyle = 'rgba(242, 214, 194, 0.45)';
+    sctx.fillRect(wx(-86), wz(71), 16 * scale, 12 * scale);
+    sctx.fillStyle = 'rgba(148, 160, 178, 0.5)';
+    sctx.fillRect(wx(-88), wz(104), 17 * scale, 17 * scale);
+    // Secondary Helipad ring
+    sctx.strokeStyle = 'rgba(255, 209, 92, 0.7)';
+    sctx.lineWidth = 1.2;
+    sctx.beginPath();
+    sctx.arc(wx(-93), wz(129.5), 4.5 * scale, 0, Math.PI * 2);
+    sctx.stroke();
+
     // West District (Little Havana, Starlight Diner, Banco de Vice & Vice Customs: x = -124..-66)
     sctx.fillStyle = 'rgba(232, 168, 132, 0.22)';
     sctx.strokeStyle = 'rgba(255, 160, 110, 0.35)';
@@ -170,6 +199,8 @@ export class Minimap {
     sctx.fillText('⚓', wx(-8), wz(-104));
     sctx.fillStyle = '#ff9f43';
     sctx.fillText('L', wx(81), wz(-114));
+    sctx.fillStyle = '#36f1e6';
+    sctx.fillText('✈', wx(-96), wz(102));
 
     this.staticCanvas = c;
     return c;

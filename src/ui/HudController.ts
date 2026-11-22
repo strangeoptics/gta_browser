@@ -435,6 +435,10 @@ export class HudController {
         nextPrompt = '[F] VICE MARINA · SCHMUGGLER-KOFFER STEHLEN (+$2.000 · ⚠ 2★)';
       } else if (world.isNearLighthouseSpot(playerPos)) {
         nextPrompt = '[F] CAPE VICE LEUCHTTURM · AUSSICHT & ENTDECKER-BONUS';
+      } else if (world.isNearAirfieldLoot(playerPos)) {
+        nextPrompt = '[F] HANGAR 06 · SCHMUGGLER-FRACHT STEHLEN (+$2.800 · ⚠ 3★ ALARM)';
+      } else if (world.isNearAirfieldCafe(playerPos)) {
+        nextPrompt = '[F] TERMINAL 1 CAFÉ · ESPRESSO & SNACK ($35 · 100% HP)';
       } else if (inp.heistHud.nearStartMarker && !inp.heistHud.active) {
         nextPrompt = '[H] OCEAN CLUB HEIST STARTEN (+$3.500)';
       } else if (inp.heliPlayerHud.nearbyHeli) {

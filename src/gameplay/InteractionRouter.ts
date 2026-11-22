@@ -500,6 +500,26 @@ export function handleInteractKeyF(ctx: InteractionContext): void {
       audio.playPurchase();
       showQuickToast(`CAPE VICE AUSSICHT · FRISCHE MEERESLUFT (${maxHp} HP)`);
     }
+  } else if (world.isNearAirfieldLoot(pos)) {
+    world.takeAirfieldLoot();
+    objectives.cash += 2800;
+    wanted.addHeat(115);
+    audio.playMissionPassed();
+    persistProgress();
+    showQuickToast('HANGAR 06 · SCHMUGGLER-FRACHT GEKLAUT (+$2.800 · ⚠ 3★ ALARM)');
+    sendPoliceDispatch('CODE 3 am Vice International Airfield! Hangar 06 wurde überfallen!', true);
+  } else if (world.isNearAirfieldCafe(pos)) {
+    const cafeCost = 35;
+    if (objectives.cash >= cafeCost) {
+      objectives.cash -= cafeCost;
+      ctx.setPlayerHp(maxHp);
+      audio.playEatCrunch();
+      persistProgress();
+      ctx.setCarryingSnack('AIRPORT ESPRESSO', 40.0);
+      showQuickToast(`TERMINAL 1 CAFÉ · CUBAN ESPRESSO & SNACK (${maxHp} HP · -$35)`);
+    } else {
+      showQuickToast(`TERMINAL 1 CAFÉ · ZU WENIG CASH (BENÖTIGT $${cafeCost})`);
+    }
   } else if (world.isNearClubBar(pos)) {
     if (objectives.cash >= 50) {
       objectives.cash -= 50;

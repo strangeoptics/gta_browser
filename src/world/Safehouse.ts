@@ -61,8 +61,8 @@ export function buildSafehouse(
   colliders: AABB[],
   worldMeshes: THREE.Object3D[],
 ): SafehouseHandle {
-  const cx = 54;
-  const cz = -54;
+  const cx = 40;
+  const cz = -40;
   const wallT = 0.55;
   const floorH = 5.6; // tall ground floor so the recessed rooftop pool basin fits cleanly above the ceiling!
 

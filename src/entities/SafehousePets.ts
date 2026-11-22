@@ -247,15 +247,24 @@ export class SafehousePets {
   private readonly petPlayerPosScratch = new THREE.Vector3();
 
   constructor(scene: THREE.Scene) {
-    // Anchor all Safehouse pets & props to the 1.5x shifted Vice Safehouse (+14 X, -14 Z -> block 54, -54)
-    const petRoot = new THREE.Group();
-    petRoot.position.set(14, 0, -14);
-    scene.add(petRoot);
-    this.scene = petRoot as unknown as THREE.Scene;
+    // Anchor all Safehouse pets & props to the 1.45x enlarged Vice Safehouse at (54, -54)
+    const S = 1.45;
+    const pivot = new THREE.Group();
+    pivot.position.set(54, 0, -54);
+    pivot.scale.set(S, 1, S);
+    const inner = new THREE.Group();
+    inner.position.set(-40, 0, 40);
+    pivot.add(inner);
+    scene.add(pivot);
+    this.scene = inner as unknown as THREE.Scene;
     this.buildCleoCat();
     this.buildRicoParrot();
     this.buildZeusDoberman();
     this.buildElvisAlligator();
+    // Keep pet bodies at natural 1:1 proportions inside the 1.45x scaled Safehouse!
+    for (const grp of [this.cleoGroup, this.ricoGroup, this.zeusGroup, this.elvisGroup]) {
+      grp.scale.set(1 / S, 1, 1 / S);
+    }
     this.registerPetShootables();
     this.syncVisibility();
   }
@@ -1282,8 +1291,9 @@ export class SafehousePets {
   }
 
   public update(dt: number, elapsed: number, rawPlayerPos?: THREE.Vector3, insideLounge = false): void {
+    const S = 1.45;
     const playerPos = rawPlayerPos
-      ? this.petPlayerPosScratch.set(rawPlayerPos.x - 14, rawPlayerPos.y, rawPlayerPos.z + 14)
+      ? this.petPlayerPosScratch.set(40 + (rawPlayerPos.x - 54) / S, rawPlayerPos.y, -40 + (rawPlayerPos.z + 54) / S)
       : undefined;
     const clampedDt = Math.min(dt, 0.05);
 

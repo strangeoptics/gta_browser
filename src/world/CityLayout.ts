@@ -47,7 +47,7 @@ export const DEFAULT_PLAYABLE_BOUNDS = {
 export const WORLD_LANDMARKS = {
   VICE_PD_PRECINCT: { x: -54, z: 0 },
   SAFEHOUSE: { x: 54, z: -54 },
-  SAFEHOUSE_LOT: { minX: 43.0, maxX: 65.0, minZ: -64.0, maxZ: -44.0 },
+  SAFEHOUSE_LOT: { minX: 38.5, maxX: 69.5, minZ: -68.5, maxZ: -39.5 },
   NEON_CLUB: { x: 54, z: 0 },
   AMMU_NEON: { x: -4.5, z: 4.5 },
   PAY_N_SPRAY: { x: -77, z: -52 },
@@ -126,13 +126,13 @@ export function generateCityLayout(): CityLayout {
       }
 
       if (isCenterPlaza) {
-        // Spacious 42x42m Central Plaza with two grand corner Art-Deco buildings + wide open courtyard
+        // Grand 42x42m Central Plaza with two enlarged Art-Deco corner towers + wide open courtyard
         buildings.push({
-          x: cx - 10.5,
-          z: cz - 10.5,
-          w: 13.5,
-          h: 17.5,
-          d: 13.5,
+          x: cx - 10.6,
+          z: cz - 10.6,
+          w: 15.6,
+          h: 19.5,
+          d: 15.6,
           color: '#f2c6b4',
           trimColor: '#fff4e6',
           neonColor: '#ff4fa3',
@@ -141,11 +141,11 @@ export function generateCityLayout(): CityLayout {
           hasCrown: true,
         });
         buildings.push({
-          x: cx + 10.5,
-          z: cz + 10.2,
-          w: 13.2,
-          h: 14.0,
-          d: 13.8,
+          x: cx + 10.6,
+          z: cz + 10.4,
+          w: 15.4,
+          h: 15.5,
+          d: 15.8,
           color: '#bce0d8',
           trimColor: '#fff6ec',
           neonColor: '#36f1e6',
@@ -156,23 +156,23 @@ export function generateCityLayout(): CityLayout {
         continue;
       }
 
-      // Split each 34.4 x 34.4 buildable 1.5x block interior into 2 grand Art-Deco buildings separated by a walkable alley
+      // Split each 36.4 x 36.4 buildable 1.5x block interior into 2 grand Art-Deco buildings separated by a walkable alley
       const splitHorizontal = (row + col) % 2 === 0;
-      const alleyGap = 3.6;
+      const alleyGap = 3.8;
 
       if (splitHorizontal) {
-        const d1 = 14.2 + rand() * 2.2;
-        const d2 = 33.6 - alleyGap - d1;
-        const z1 = cz - 16.8 + d1 / 2;
-        const z2 = cz + 16.8 - d2 / 2;
+        const d1 = 15.6 + rand() * 2.4;
+        const d2 = 36.4 - alleyGap - d1;
+        const z1 = cz - 18.2 + d1 / 2;
+        const z2 = cz + 18.2 - d2 / 2;
 
-        const h1 = (isOceanFront ? 12 : 14) + rand() * 12;
-        const h2 = (isOceanFront ? 11 : 13) + rand() * 14;
+        const h1 = (isOceanFront ? 14 : 16) + rand() * 13;
+        const h2 = (isOceanFront ? 13 : 15) + rand() * 14;
 
         buildings.push({
           x: cx,
           z: z1,
-          w: 33.0,
+          w: 36.0,
           h: h1,
           d: d1,
           color: PASTEL_PALETTE[Math.floor(rand() * PASTEL_PALETTE.length)],
@@ -186,7 +186,7 @@ export function generateCityLayout(): CityLayout {
         buildings.push({
           x: cx,
           z: z2,
-          w: 33.0,
+          w: 36.0,
           h: h2,
           d: d2,
           color: PASTEL_PALETTE[Math.floor(rand() * PASTEL_PALETTE.length)],
@@ -197,20 +197,20 @@ export function generateCityLayout(): CityLayout {
           hasCrown: rand() > 0.35,
         });
       } else {
-        const w1 = 14.2 + rand() * 2.2;
-        const w2 = 33.6 - alleyGap - w1;
-        const x1 = cx - 16.8 + w1 / 2;
-        const x2 = cx + 16.8 - w2 / 2;
+        const w1 = 15.6 + rand() * 2.4;
+        const w2 = 36.4 - alleyGap - w1;
+        const x1 = cx - 18.2 + w1 / 2;
+        const x2 = cx + 18.2 - w2 / 2;
 
-        const h1 = (isOceanFront ? 13 : 14) + rand() * 13;
-        const h2 = (isOceanFront ? 11 : 12) + rand() * 12;
+        const h1 = (isOceanFront ? 15 : 16) + rand() * 13;
+        const h2 = (isOceanFront ? 13 : 14) + rand() * 13;
 
         buildings.push({
           x: x1,
           z: cz,
           w: w1,
           h: h1,
-          d: 33.0,
+          d: 36.0,
           color: PASTEL_PALETTE[Math.floor(rand() * PASTEL_PALETTE.length)],
           trimColor: '#fff3e4',
           neonColor: NEON_PALETTE[Math.floor(rand() * NEON_PALETTE.length)],
@@ -224,7 +224,7 @@ export function generateCityLayout(): CityLayout {
           z: cz,
           w: w2,
           h: h2,
-          d: 33.0,
+          d: 36.0,
           color: PASTEL_PALETTE[Math.floor(rand() * PASTEL_PALETTE.length)],
           trimColor: '#fff3e4',
           neonColor: NEON_PALETTE[Math.floor(rand() * NEON_PALETTE.length)],

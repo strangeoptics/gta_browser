@@ -22,7 +22,7 @@ export function buildNeonClub(
   colliders: AABB[],
   worldMeshes: THREE.Object3D[],
 ): NeonClubHandle {
-  const clubX = 54;
+  const clubX = 40;
   const clubZ = 0;
   const clubW = 18; // x: 31 .. 49
   const clubD = 16; // z: -8 .. +8

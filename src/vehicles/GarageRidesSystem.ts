@@ -329,7 +329,7 @@ export class GarageRidesSystem {
    */
   public canRehangActiveRide(pos: THREE.Vector3): boolean {
     if (!this.activeRide) return false;
-    return pos.x > 30.0 && pos.x < 36.8 && pos.z > -37.3 && pos.z < -31.2 && pos.y < 3.5;
+    return pos.x > 39.5 && pos.x < 47.0 && pos.z > -50.2 && pos.z < -41.0 && pos.y < 3.5;
   }
 
   /**
@@ -417,7 +417,7 @@ export class GarageRidesSystem {
     let dismountedPlayerPos: { x: number; y: number; z: number; yaw: number } | null = null;
     if (this.activeRide === r) {
       dismountedPlayerPos = {
-        x: 32.1,
+        x: 41.8,
         y: 0.22,
         z: r.wallPos.z,
         yaw: Math.PI / 2, // face the garage wall where you just hung it!
@@ -607,7 +607,7 @@ export class GarageRidesSystem {
     }
 
     // Safehouse interior slab sits visually at y = 0.20 (sidewalk block collider is 0.18)
-    const inSafehouseSlab = nextX > 30.1 && nextX < 49.9 && nextZ > -48.9 && nextZ < -31.1;
+    const inSafehouseSlab = nextX > 39.6 && nextX < 68.4 && nextZ > -67.0 && nextZ < -41.0;
     const baseGroundY = Math.max(inSafehouseSlab ? 0.2 : 0, rawTerrainY);
 
     const prevGrounded = r.grounded;
@@ -877,7 +877,8 @@ export class GarageRidesSystem {
   // ===========================================================================
   private buildGarageWallRack(): void {
     const rackGroup = new THREE.Group();
-    const wallX = 30.31; // Flush on the east inner face of the Safehouse Garage West Wall (30.275)
+    const wallX = 39.94; // Flush on the east inner face of the 1.45x Safehouse Garage West Wall (39.90)
+    const zOff = -11.3; // Centered in the enlarged Safehouse Garage (z = -50.38 .. -40.95)
 
     const boardMat = new THREE.MeshStandardMaterial({
       color: '#1b1728',
@@ -910,17 +911,17 @@ export class GarageRidesSystem {
 
     // Sleek dark-steel wall display backing board spanning both mounts
     const backPanel = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.85, 4.55), boardMat);
-    backPanel.position.set(wallX, 1.48, -34.35);
+    backPanel.position.set(wallX, 1.48, -34.35 + zOff);
     backPanel.receiveShadow = true;
     rackGroup.add(backPanel);
 
     // Thin top & bottom neon accent trim strips
     const topNeon = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.04, 2.05), this.emptySkateInd);
-    topNeon.position.set(wallX + 0.015, 2.36, -35.6);
+    topNeon.position.set(wallX + 0.015, 2.36, -35.6 + zOff);
     rackGroup.add(topNeon);
 
     const topNeonBike = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.04, 2.35), this.emptyBikeInd);
-    topNeonBike.position.set(wallX + 0.015, 2.36, -33.2);
+    topNeonBike.position.set(wallX + 0.015, 2.36, -33.2 + zOff);
     rackGroup.add(topNeonBike);
 
     // Label plaques above each mount
@@ -934,7 +935,7 @@ export class GarageRidesSystem {
       }),
     );
     skatePlate.rotation.y = Math.PI / 2;
-    skatePlate.position.set(wallX + 0.032, 2.16, -35.75);
+    skatePlate.position.set(wallX + 0.032, 2.16, -35.75 + zOff);
     rackGroup.add(skatePlate);
 
     const bikePlate = new THREE.Mesh(
@@ -947,25 +948,25 @@ export class GarageRidesSystem {
       }),
     );
     bikePlate.rotation.y = Math.PI / 2;
-    bikePlate.position.set(wallX + 0.032, 2.16, -33.15);
+    bikePlate.position.set(wallX + 0.032, 2.16, -33.15 + zOff);
     rackGroup.add(bikePlate);
 
-    // 1) Skateboard Wall Rack Arms (at z = -35.75, cradling the upper truck horizontally!)
+    // 1) Skateboard Wall Rack Arms
     for (const sz of [-0.11, 0.11]) {
       const arm = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.035, 0.035), bracketMat);
-      arm.position.set(wallX + 0.12, 1.66, -35.75 + sz);
+      arm.position.set(wallX + 0.12, 1.66, -35.75 + zOff + sz);
       rackGroup.add(arm);
 
       const tip = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.07, 8), rubberPadMat);
-      tip.position.set(wallX + 0.22, 1.69, -35.75 + sz);
+      tip.position.set(wallX + 0.22, 1.69, -35.75 + zOff + sz);
       rackGroup.add(tip);
     }
 
-    // 2) Rennrad Dual Horizontal Top-Tube Wall Hooks (cradling the horizontal top tube at y = 1.66)
+    // 2) Rennrad Dual Horizontal Top-Tube Wall Hooks
     for (const sz of [-0.18, 0.24]) {
       const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.022, 0.35, 10), bracketMat);
       stem.rotation.z = Math.PI / 2;
-      stem.position.set(wallX + 0.18, 1.66, -33.15 + sz);
+      stem.position.set(wallX + 0.18, 1.66, -33.15 + zOff + sz);
       rackGroup.add(stem);
 
       const hookCradle = new THREE.Mesh(
@@ -974,7 +975,7 @@ export class GarageRidesSystem {
       );
       hookCradle.rotation.y = Math.PI / 2;
       hookCradle.rotation.x = Math.PI;
-      hookCradle.position.set(wallX + 0.34, 1.67, -33.15 + sz);
+      hookCradle.position.set(wallX + 0.34, 1.67, -33.15 + zOff + sz);
       rackGroup.add(hookCradle);
     }
 
@@ -1114,7 +1115,7 @@ export class GarageRidesSystem {
     this.scene.add(root);
 
     // Dedicated static wall-mount raycast hitbox right at the Skateboard's garage wall cradle
-    const wallPos = new THREE.Vector3(30.45, 1.45, -35.75);
+    const wallPos = new THREE.Vector3(40.08, 1.45, -47.05);
     // Hang vertically on the wall with nose up (+Y) and 80s sunset graphic & glowing wheels facing into the garage (+X)!
     const wallEuler = new THREE.Euler(-Math.PI / 2, Math.PI / 2, 0, 'YXZ');
 
@@ -1137,7 +1138,7 @@ export class GarageRidesSystem {
       wallHitbox,
       wallPos,
       wallEuler,
-      detachFloorPos: new THREE.Vector3(32.2, 0.2, -35.4),
+      detachFloorPos: new THREE.Vector3(41.8, 0.2, -46.7),
       detachYaw: Math.PI / 2,
       position: wallPos.clone(),
       yaw: Math.PI / 2,
@@ -1145,8 +1146,8 @@ export class GarageRidesSystem {
       vy: 0,
       grounded: true,
       airborneFromRamp: false,
-      jumpStartX: 32.2,
-      jumpStartZ: -35.4,
+      jumpStartX: 41.8,
+      jumpStartZ: -46.7,
       animPhase: 0,
       ollieTimer: 0,
     };
@@ -1443,12 +1444,12 @@ export class GarageRidesSystem {
 
     this.scene.add(root);
 
-    // Wall mount position on the Safehouse Garage West Wall (top tube resting at y = 1.66 in the cyan padded hooks!)
-    const wallPos = new THREE.Vector3(30.65, 0.84, -33.15);
+    // Wall mount position on the 1.45x Safehouse Garage West Wall (top tube resting at y = 1.66 in the cyan padded hooks!)
+    const wallPos = new THREE.Vector3(40.28, 0.84, -44.45);
     const wallEuler = new THREE.Euler(0, 0, 0, 'YXZ'); // Parallel to West wall, facing +Z, right profile facing garage!
 
     const wallHitbox = new THREE.Mesh(new THREE.BoxGeometry(0.65, 1.25, 1.85), this.hitboxMat);
-    wallHitbox.position.set(30.58, 1.42, -33.15);
+    wallHitbox.position.set(40.21, 1.42, -44.45);
     this.scene.add(wallHitbox);
 
     return {
@@ -1469,7 +1470,7 @@ export class GarageRidesSystem {
       wallHitbox,
       wallPos,
       wallEuler,
-      detachFloorPos: new THREE.Vector3(32.2, 0.2, -33.3),
+      detachFloorPos: new THREE.Vector3(41.8, 0.2, -44.6),
       detachYaw: Math.PI / 2,
       position: wallPos.clone(),
       yaw: Math.PI / 2,
@@ -1477,8 +1478,8 @@ export class GarageRidesSystem {
       vy: 0,
       grounded: true,
       airborneFromRamp: false,
-      jumpStartX: 32.2,
-      jumpStartZ: -33.3,
+      jumpStartX: 41.8,
+      jumpStartZ: -44.6,
       animPhase: 0,
       ollieTimer: 0,
     };

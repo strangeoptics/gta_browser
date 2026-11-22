@@ -403,9 +403,9 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
     }
   }
 
-  // Central Plaza decorative fountain / planter in block (0, 0)
+  // Central Plaza decorative fountain / planter in 42x42m block (0, 0)
   const plazaPlanterMat = new THREE.MeshStandardMaterial({ color: '#e9d7c5', roughness: 0.6 });
-  addStaticBox(3.4, 0.75, 3.4, 2.2, 0.18 + 0.375, -2.2, plazaPlanterMat, true, 'prop');
+  addStaticBox(5.0, 0.75, 5.0, 2.2, 0.18 + 0.375, -2.2, plazaPlanterMat, true, 'prop');
   const poolMat = new THREE.MeshStandardMaterial({
     color: '#25d6d6',
     emissive: '#107a85',
@@ -413,7 +413,7 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
     roughness: 0.08,
     metalness: 0.1,
   });
-  const pool = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.12, 2.6), poolMat);
+  const pool = new THREE.Mesh(new THREE.BoxGeometry(4.0, 0.12, 4.0), poolMat);
   pool.position.set(2.2, 0.18 + 0.72, -2.2);
   scene.add(pool);
 
@@ -499,11 +499,54 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
   });
 
   // ---------------------------------------------------------------------------
-  // 4b) Walk-In Interiors: NEON CLUB (40, 0), VICE SAFEHOUSE (40, -40) & VICE PD PRECINCT (-40, 0)
+  // 4b) Walk-In Interiors shifted & scaled 1.45x horizontally to fill the 42x42m blocks!
+  //     (Each building stays 100% intact in its original local frame -> zero torn/shifted parts!)
   // ---------------------------------------------------------------------------
-  const neonClub = buildNeonClub(scene, colliders, worldMeshes);
-  const safehouse = buildSafehouse(scene, colliders, worldMeshes);
-  const policeStation = buildPoliceStation(scene, colliders, worldMeshes);
+  const LANDMARK_SCALE = 1.45;
+  const unscaleScratch = new THREE.Vector3();
+  const unscaleLandmarkPos = (
+    pos: THREE.Vector3,
+    oldCx: number,
+    oldCz: number,
+    newCx: number,
+    newCz: number,
+  ): THREE.Vector3 =>
+    unscaleScratch.set(
+      oldCx + (pos.x - newCx) / LANDMARK_SCALE,
+      pos.y,
+      oldCz + (pos.z - newCz) / LANDMARK_SCALE,
+    );
+
+  const buildScaledLandmark = <T>(
+    oldCx: number,
+    oldCz: number,
+    newCx: number,
+    newCz: number,
+    builder: (scaledScene: THREE.Scene) => T,
+  ): T => {
+    const pivot = new THREE.Group();
+    pivot.position.set(newCx, 0, newCz);
+    pivot.scale.set(LANDMARK_SCALE, 1, LANDMARK_SCALE);
+    const inner = new THREE.Group();
+    inner.position.set(-oldCx, 0, -oldCz);
+    pivot.add(inner);
+    scene.add(pivot);
+
+    const cStart = colliders.length;
+    const res = builder(inner as unknown as THREE.Scene);
+    for (let i = cStart; i < colliders.length; i++) {
+      const c = colliders[i];
+      c.minX = newCx + (c.minX - oldCx) * LANDMARK_SCALE;
+      c.maxX = newCx + (c.maxX - oldCx) * LANDMARK_SCALE;
+      c.minZ = newCz + (c.minZ - oldCz) * LANDMARK_SCALE;
+      c.maxZ = newCz + (c.maxZ - oldCz) * LANDMARK_SCALE;
+    }
+    return res;
+  };
+
+  const neonClub = buildScaledLandmark(40, 0, 54, 0, (sc) => buildNeonClub(sc, colliders, worldMeshes));
+  const safehouse = buildScaledLandmark(40, -40, 54, -54, (sc) => buildSafehouse(sc, colliders, worldMeshes));
+  const policeStation = buildScaledLandmark(-40, 0, -54, 0, (sc) => buildPoliceStation(sc, colliders, worldMeshes));
 
   // ---------------------------------------------------------------------------
   // 5) Verticality: Walkable Exterior Art-Deco Rooftop Stairs & Neon Terraces
@@ -1192,24 +1235,24 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
       return rainActive;
     },
     setRetrowaveMode,
-    isInsideClub: (pos: THREE.Vector3) => neonClub.isInside(pos),
-    isInsideSafehouse: (pos: THREE.Vector3) => safehouse.isInside(pos),
-    isInsidePoliceStation: (pos: THREE.Vector3) => policeStation.isInside(pos),
-    isNearPdDesk: (pos: THREE.Vector3) => policeStation.isNearDesk(pos),
-    isNearPdKevlar: (pos: THREE.Vector3) => policeStation.isNearKevlar(pos),
-    isNearPdArmory: (pos: THREE.Vector3) => policeStation.isNearArmory(pos),
-    isNearPdUniform: (pos: THREE.Vector3) => policeStation.isNearUniform(pos),
-    isNearPdEvidenceCash: (pos: THREE.Vector3) => policeStation.isNearEvidenceCash(pos),
+    isInsideClub: (pos: THREE.Vector3) => neonClub.isInside(unscaleLandmarkPos(pos, 40, 0, 54, 0)),
+    isInsideSafehouse: (pos: THREE.Vector3) => safehouse.isInside(unscaleLandmarkPos(pos, 40, -40, 54, -54)),
+    isInsidePoliceStation: (pos: THREE.Vector3) => policeStation.isInside(unscaleLandmarkPos(pos, -40, 0, -54, 0)),
+    isNearPdDesk: (pos: THREE.Vector3) => policeStation.isNearDesk(unscaleLandmarkPos(pos, -40, 0, -54, 0)),
+    isNearPdKevlar: (pos: THREE.Vector3) => policeStation.isNearKevlar(unscaleLandmarkPos(pos, -40, 0, -54, 0)),
+    isNearPdArmory: (pos: THREE.Vector3) => policeStation.isNearArmory(unscaleLandmarkPos(pos, -40, 0, -54, 0)),
+    isNearPdUniform: (pos: THREE.Vector3) => policeStation.isNearUniform(unscaleLandmarkPos(pos, -40, 0, -54, 0)),
+    isNearPdEvidenceCash: (pos: THREE.Vector3) => policeStation.isNearEvidenceCash(unscaleLandmarkPos(pos, -40, 0, -54, 0)),
     takePdKevlar: () => policeStation.takeKevlar(),
     takePdEvidenceCash: () => policeStation.takeEvidenceCash(),
     triggerPdAlarm: () => policeStation.triggerAlarm(),
     clearPdAlarm: () => policeStation.clearAlarm(),
     lockPdCellBriefly: () => policeStation.lockCellBriefly(),
-    isInSafehouseGarage: (pos: THREE.Vector3) => safehouse.isInGarage(pos),
-    isNearSafehouseLounge: (pos: THREE.Vector3) => safehouse.isNearLounge(pos),
-    isNearSafehouseWardrobe: (pos: THREE.Vector3) => safehouse.isNearWardrobe(pos),
-    isNearSafehouseFridge: (pos: THREE.Vector3) => safehouse.isNearFridge(pos),
-    isNearSafehouseRooftopBar: (pos: THREE.Vector3) => safehouse.isNearRooftopBar(pos),
+    isInSafehouseGarage: (pos: THREE.Vector3) => safehouse.isInGarage(unscaleLandmarkPos(pos, 40, -40, 54, -54)),
+    isNearSafehouseLounge: (pos: THREE.Vector3) => safehouse.isNearLounge(unscaleLandmarkPos(pos, 40, -40, 54, -54)),
+    isNearSafehouseWardrobe: (pos: THREE.Vector3) => safehouse.isNearWardrobe(unscaleLandmarkPos(pos, 40, -40, 54, -54)),
+    isNearSafehouseFridge: (pos: THREE.Vector3) => safehouse.isNearFridge(unscaleLandmarkPos(pos, 40, -40, 54, -54)),
+    isNearSafehouseRooftopBar: (pos: THREE.Vector3) => safehouse.isNearRooftopBar(unscaleLandmarkPos(pos, 40, -40, 54, -54)),
     isSafehouseRooftopBarOwned: () => safehouse.isRooftopBarOwned(),
     setSafehouseRooftopBarOwned: (owned: boolean) => safehouse.setRooftopBarOwned(owned),
     getFoodItems: () => {
@@ -1228,8 +1271,8 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
     getTvMesh: () => safehouse.getTvMesh(),
     toggleTv: (cash: number, wantedStars: number) => safehouse.toggleTv(cash, wantedStars),
     isTvOn: () => safehouse.isTvOn(),
-    isNearClubBar: (pos: THREE.Vector3) => neonClub.isNearBar(pos),
-    getClubProximity: (pos: THREE.Vector3) => neonClub.getProximity(pos),
+    isNearClubBar: (pos: THREE.Vector3) => neonClub.isNearBar(unscaleLandmarkPos(pos, 40, 0, 54, 0)),
+    getClubProximity: (pos: THREE.Vector3) => neonClub.getProximity(unscaleLandmarkPos(pos, 40, 0, 54, 0)),
     getGroundHeight: (x: number, z: number, currentY?: number) =>
       palmParking.getGroundHeight(x, z, currentY) ??
       northPoint.getGroundHeight(x, z + 21) ??
@@ -1260,9 +1303,23 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
       viceAirfield.update(elapsed, playerPos ? makeOffsetPos(playerPos, -21, 21) : undefined);
       smugglersCay.update(elapsed, playerPos ? makeOffsetPos(playerPos, 21, 21) : undefined);
       vicePort.update(elapsed, playerPos ? makeOffsetPos(playerPos, 0, 21) : undefined);
-      neonClub.update(elapsed, playerPos);
-      safehouse.update(elapsed, dt, playerPos, cash, wantedStars, cameraYaw, performanceMode);
-      policeStation.update(elapsed, dt, playerPos, cash, wantedStars);
+      neonClub.update(elapsed, playerPos ? unscaleLandmarkPos(playerPos, 40, 0, 54, 0) : undefined);
+      safehouse.update(
+        elapsed,
+        dt,
+        playerPos ? unscaleLandmarkPos(playerPos, 40, -40, 54, -54) : undefined,
+        cash,
+        wantedStars,
+        cameraYaw,
+        performanceMode,
+      );
+      policeStation.update(
+        elapsed,
+        dt,
+        playerPos ? unscaleLandmarkPos(playerPos, -40, 0, -54, 0) : undefined,
+        cash,
+        wantedStars,
+      );
       trafficLights.update(elapsed);
       palms.update(elapsed, rainActive ? 2.1 : 1.0);
 

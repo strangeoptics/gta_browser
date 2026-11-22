@@ -36,7 +36,7 @@ export function buildPoliceStation(
   colliders: AABB[],
   worldMeshes: THREE.Object3D[],
 ): PoliceStationHandle {
-  const cx = -54;
+  const cx = -40;
   const cz = 0;
   const floorY = 0.18;
   const floorH = 5.0;

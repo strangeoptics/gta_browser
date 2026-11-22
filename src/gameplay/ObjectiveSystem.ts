@@ -3,14 +3,227 @@ import type { NpcEntity, NpcSystem } from '../entities/NpcSystem';
 import type { VehicleSystem } from '../vehicles/VehicleSystem';
 import type { WantedSystem } from './WantedSystem';
 
-export type ObjectiveKind = 'stash' | 'dropoff' | 'bounty' | 'race' | 'survive';
+export type ObjectiveKind = 'stash' | 'dropoff' | 'bounty' | 'race' | 'survive' | 'courier';
+export type MissionDistrict = 'downtown' | 'west' | 'south' | 'north' | 'east';
+
+export interface MissionContract {
+  id: string;
+  district: MissionDistrict;
+  districtLabel: string;
+  kind: ObjectiveKind;
+  kindLabel: string;
+  title: string;
+  briefing: string;
+  reward: number;
+  heatOnComplete?: number;
+  startHeat?: number;
+  timerSec?: number;
+  spot?: [number, number, number];
+  deliverySpot?: [number, number, number];
+  checkpoints?: [number, number, number][];
+}
+
+export const MISSION_CONTRACTS: MissionContract[] = [
+  // --- DOWNTOWN / CORE 3x3 ---
+  {
+    id: 'neon_stash',
+    district: 'downtown',
+    districtLabel: 'DOWNTOWN',
+    kind: 'stash',
+    kindLabel: '📦 KURIER',
+    title: 'NEON STASH',
+    briefing: 'Sammle den versteckten Kurier-Koffer am Central Plaza / Ocean Drive ein.',
+    reward: 500,
+    heatOnComplete: 25,
+    spot: [2.2, 0.2, 2.5],
+  },
+  {
+    id: 'ocean_sprint',
+    district: 'downtown',
+    districtLabel: 'DOWNTOWN',
+    kind: 'race',
+    kindLabel: '⚡ RENNEN',
+    title: 'OCEAN DRIVE SPRINT',
+    briefing: '42s Zeitrennen durch 4 goldene Checkpoints quer durch das Kernviertel.',
+    reward: 1200,
+    timerSec: 42,
+    checkpoints: [
+      [60, 0.1, -48],
+      [-20, 0.1, -60],
+      [-60, 0.1, 20],
+      [20, 0.1, 60],
+    ],
+  },
+  {
+    id: 'syndikat_ziel',
+    district: 'downtown',
+    districtLabel: 'DOWNTOWN',
+    kind: 'bounty',
+    kindLabel: '🎯 KOPFGELD',
+    title: 'SYNDIKAT-ZIEL',
+    briefing: 'Schalte den bewaffneten Syndikat-Kurier am Pink-Beacon in Downtown aus.',
+    reward: 1000,
+    heatOnComplete: 75,
+    spot: [-20, 0.2, -20],
+  },
+  {
+    id: 'hot_wheels',
+    district: 'downtown',
+    districtLabel: 'DOWNTOWN',
+    kind: 'dropoff',
+    kindLabel: '🚗 LIEFERUNG',
+    title: 'HOT WHEELS',
+    briefing: 'Schnapp dir ein Fahrzeug [E] und liefere es in der Drop-Zone ab.',
+    reward: 800,
+    heatOnComplete: 45,
+    spot: [60, 0.1, -48],
+  },
+  {
+    id: 'heat_survival',
+    district: 'downtown',
+    districtLabel: 'DOWNTOWN',
+    kind: 'survive',
+    kindLabel: '🔥 ÜBERLEBEN',
+    title: 'HEAT SURVIVAL',
+    briefing: 'Löst sofort 2★-Fahndung aus — überlebe 25s gegen die Vice-PD-Streifenwagen!',
+    reward: 1100,
+    startHeat: 85,
+    timerSec: 25,
+  },
+
+  // --- WEST DISTRICT · LITTLE HAVANA ---
+  {
+    id: 'havana_express',
+    district: 'west',
+    districtLabel: 'LITTLE HAVANA',
+    kind: 'courier',
+    kindLabel: '📦 EXPRESS',
+    title: 'HAVANA EXPRESS',
+    briefing: 'Hol das Paket vor dem Starlight 80s Diner ab und bring es rechtzeitig zur Banco de Vice!',
+    reward: 1450,
+    heatOnComplete: 35,
+    timerSec: 55,
+    spot: [-74, 0.2, -4],
+    deliverySpot: [-74, 0.2, 40],
+  },
+  {
+    id: 'havana_enforcer',
+    district: 'west',
+    districtLabel: 'LITTLE HAVANA',
+    kind: 'bounty',
+    kindLabel: '🎯 KOPFGELD',
+    title: 'HAVANA-SCHULDNER',
+    briefing: 'Ein Kartell-Eintreiber patrouilliert am West Havana Blvd. Stell ihn!',
+    reward: 1600,
+    heatOnComplete: 85,
+    spot: [-112, 0.2, 12],
+  },
+
+  // --- SÜD · VICE PORT INDUSTRIAL DOCKS ---
+  {
+    id: 'port_slalom',
+    district: 'south',
+    districtLabel: 'VICE PORT',
+    kind: 'race',
+    kindLabel: '⚡ RENNEN',
+    title: 'DOCK-SLALOM',
+    briefing: 'Highspeed-Slalom (48s) durch den Containerhafen bis zum Import/Export-Kai.',
+    reward: 1850,
+    timerSec: 48,
+    checkpoints: [
+      [42, 0.1, 76],
+      [-12, 0.1, 88],
+      [-48, 0.1, 114],
+      [46, 0.1, 110],
+    ],
+  },
+  {
+    id: 'port_smuggler',
+    district: 'south',
+    districtLabel: 'VICE PORT',
+    kind: 'bounty',
+    kindLabel: '🎯 KOPFGELD',
+    title: 'CONTAINER-SCHMUGGLER',
+    briefing: 'Schalte den bewaffneten Schmuggler-Boss am Südkai vor dem Frachter aus.',
+    reward: 1750,
+    heatOnComplete: 90,
+    spot: [10, 0.2, 116],
+  },
+
+  // --- NORD · NORTH POINT (MARINA & CAPE VICE) ---
+  {
+    id: 'north_hillclimb',
+    district: 'north',
+    districtLabel: 'NORTH POINT',
+    kind: 'race',
+    kindLabel: '⚡ BERGRENNEN',
+    title: 'CAPE VICE SERPENTINE',
+    briefing: '58s Küsten- & Bergrennen über die Serpentinen hinauf zum 26m-Leuchtturm!',
+    reward: 2200,
+    timerSec: 58,
+    checkpoints: [
+      [-20, 0.1, -81],
+      [48, 0.1, -82],
+      [96, 5.2, -104],
+      [78, 11.1, -118],
+    ],
+  },
+  {
+    id: 'north_marina_drop',
+    district: 'north',
+    districtLabel: 'NORTH POINT',
+    kind: 'stash',
+    kindLabel: '📦 KURIER',
+    title: 'MARINA-ÜBERGABE',
+    briefing: 'Sichere den Schmuggler-Koffer draußen am mittleren Holzsteg der Vice Marina.',
+    reward: 1500,
+    heatOnComplete: 75,
+    spot: [-8, 0.9, -116],
+  },
+
+  // --- OST · STARFISH ISLAND & SUPERYACHT ---
+  {
+    id: 'starfish_turbo',
+    district: 'east',
+    districtLabel: 'STARFISH ISLAND',
+    kind: 'race',
+    kindLabel: '⚡ RENNEN',
+    title: 'CAUSEWAY TURBO',
+    briefing: '45s Sonnenuntergangs-Sprint über die Neon-Brücke bis zum Starfish-Helipad!',
+    reward: 1950,
+    timerSec: 45,
+    checkpoints: [
+      [60, 0.1, -60],
+      [107, 3.0, -60],
+      [166, 0.7, -48],
+      [162, 0.75, -74],
+    ],
+  },
+  {
+    id: 'starfish_baron',
+    district: 'east',
+    districtLabel: 'STARFISH ISLAND',
+    kind: 'bounty',
+    kindLabel: '🎯 KOPFGELD',
+    title: 'KARTELL-BARON',
+    briefing: 'Eliminiere den schwer bewachten Kartell-Baron vor dem Starfish Estate (3★ Risiko!).',
+    reward: 2400,
+    heatOnComplete: 130,
+    spot: [170, 0.72, -55],
+  },
+];
 
 export interface ActiveObjective {
+  id: string;
+  district: MissionDistrict;
   kind: ObjectiveKind;
   title: string;
   description: string;
   reward: number;
+  heatOnComplete: number;
   targetPos: THREE.Vector3;
+  deliveryPos?: THREE.Vector3;
+  courierPickedUp?: boolean;
   bountyNpc?: NpcEntity;
   timerSec?: number;
   checkpoints?: THREE.Vector3[];
@@ -18,6 +231,7 @@ export interface ActiveObjective {
 }
 
 export interface ObjectiveHudState {
+  activeId: string | null;
   title: string;
   description: string;
   distanceM: number;
@@ -49,20 +263,10 @@ const BOUNTY_SPOTS = [
   new THREE.Vector3(40, 0.2, 40),
 ];
 
-const RACE_ROUTE = [
-  new THREE.Vector3(60, 0.1, -48),
-  new THREE.Vector3(-20, 0.1, -60),
-  new THREE.Vector3(-60, 0.1, 20),
-  new THREE.Vector3(20, 0.1, 60),
-];
-
 /**
- * Rotating bite-sized GTA street objectives:
- * 1) NEON STASH (collect briefcase)
- * 2) OCEAN DRIVE SPRINT (4-checkpoint timed street race)
- * 3) SYNDIKAT-ZIEL (eliminate bounty target)
- * 4) HOT WHEELS (drive any car to drop-off zone)
- * 5) HEAT SURVIVAL (survive 25s of 2-star Vice PD cruiser pursuit)
+ * Manages selectable Vice-Phone / Auftragsboard contracts across all 5 districts
+ * (Downtown + Little Havana, Vice Port, North Point & Starfish Island) as well as
+ * automatic rotating street objectives.
  */
 export class ObjectiveSystem {
   public current: ActiveObjective | null = null;
@@ -75,6 +279,7 @@ export class ObjectiveSystem {
   private readonly beaconBeam: THREE.Mesh;
   private readonly beaconRing: THREE.Mesh;
   private readonly stashProp: THREE.Mesh;
+  private readonly completedIds = new Set<string>();
 
   private nextObjectiveTimer = 0;
   private toastText: string | null = null;
@@ -114,76 +319,149 @@ export class ObjectiveSystem {
     this.scene.add(this.beaconGroup);
   }
 
-  public startNextObjective(npcs: NpcSystem, wanted?: WantedSystem): void {
-    const mod = this.cycleIndex % 5;
-    this.cycleIndex++;
+  public getCompletedIds(): string[] {
+    return Array.from(this.completedIds);
+  }
 
-    if (mod === 0) {
-      const spot = STASH_SPOTS[Math.floor(Math.random() * STASH_SPOTS.length)].clone();
+  public setCompletedIds(ids: string[]): void {
+    this.completedIds.clear();
+    for (const id of ids) this.completedIds.add(id);
+  }
+
+  public isContractCompleted(id: string): boolean {
+    return this.completedIds.has(id);
+  }
+
+  public cancelActiveObjective(): void {
+    this.current = null;
+    this.beaconGroup.visible = false;
+    this.nextObjectiveTimer = 999999; // stay idle until user accepts a job or triggers next
+  }
+
+  public startContract(id: string, npcs: NpcSystem, wanted?: WantedSystem): boolean {
+    const c = MISSION_CONTRACTS.find((m) => m.id === id);
+    if (!c) return false;
+
+    this.nextObjectiveTimer = 0;
+
+    if (c.kind === 'stash') {
+      const spot =
+        c.id === 'neon_stash'
+          ? STASH_SPOTS[Math.floor(Math.random() * STASH_SPOTS.length)].clone()
+          : new THREE.Vector3(...(c.spot ?? [0, 0.2, 0]));
       this.current = {
+        id: c.id,
+        district: c.district,
         kind: 'stash',
-        title: 'NEON STASH',
-        description: 'Sammle den Kurier-Koffer am Cyan-Beacon ein.',
-        reward: 500,
+        title: c.title,
+        description: c.briefing,
+        reward: c.reward,
+        heatOnComplete: c.heatOnComplete ?? 25,
         targetPos: spot,
       };
       this.setBeaconColor('#36f1e6');
       this.stashProp.visible = true;
       this.beaconGroup.visible = true;
-    } else if (mod === 1) {
-      const route = RACE_ROUTE.map((p) => p.clone());
+    } else if (c.kind === 'courier') {
+      const pickup = new THREE.Vector3(...(c.spot ?? [-74, 0.2, -4]));
+      const delivery = new THREE.Vector3(...(c.deliverySpot ?? [-74, 0.2, 40]));
       this.current = {
+        id: c.id,
+        district: c.district,
+        kind: 'courier',
+        title: c.title,
+        description: 'Phase 1/2: Hol das Paket am Cyan-Beacon ab!',
+        reward: c.reward,
+        heatOnComplete: c.heatOnComplete ?? 35,
+        targetPos: pickup,
+        deliveryPos: delivery,
+        courierPickedUp: false,
+        timerSec: c.timerSec ?? 55,
+      };
+      this.setBeaconColor('#36f1e6');
+      this.stashProp.visible = true;
+      this.beaconGroup.visible = true;
+    } else if (c.kind === 'race' && c.checkpoints && c.checkpoints.length > 0) {
+      const route = c.checkpoints.map(([x, y, z]) => new THREE.Vector3(x, y, z));
+      this.current = {
+        id: c.id,
+        district: c.district,
         kind: 'race',
-        title: 'OCEAN DRIVE SPRINT',
-        description: 'Checkpoint 1/4 — Fahr im Auto durch alle Gold-Beacons!',
-        reward: 1200,
-        targetPos: route[0],
+        title: c.title,
+        description: `Checkpoint 1/${route.length} — Durchfahre alle Gold-Beacons!`,
+        reward: c.reward,
+        heatOnComplete: c.heatOnComplete ?? 0,
+        targetPos: route[0].clone(),
         checkpoints: route,
         checkpointIndex: 0,
-        timerSec: 42,
+        timerSec: c.timerSec ?? 45,
       };
       this.setBeaconColor('#ffbe3b');
       this.stashProp.visible = false;
       this.beaconGroup.visible = true;
-    } else if (mod === 2) {
-      const spot = BOUNTY_SPOTS[Math.floor(Math.random() * BOUNTY_SPOTS.length)].clone();
-      const boss = npcs.spawnBountyTarget(spot.x, spot.z);
+    } else if (c.kind === 'bounty') {
+      const spot =
+        c.id === 'syndikat_ziel'
+          ? BOUNTY_SPOTS[Math.floor(Math.random() * BOUNTY_SPOTS.length)].clone()
+          : new THREE.Vector3(...(c.spot ?? [0, 0.2, 0]));
+      const boss = npcs.spawnBountyTarget(spot.x, spot.z, spot.y);
       this.current = {
+        id: c.id,
+        district: c.district,
         kind: 'bounty',
-        title: 'SYNDIKAT-ZIEL',
-        description: 'Schalte den markierten Kurier am Pink-Beacon aus.',
-        reward: 1000,
-        targetPos: boss.position,
+        title: c.title,
+        description: c.briefing,
+        reward: c.reward,
+        heatOnComplete: c.heatOnComplete ?? 75,
+        targetPos: boss.position.clone(),
         bountyNpc: boss,
       };
       this.setBeaconColor('#ff4fa3');
       this.stashProp.visible = false;
       this.beaconGroup.visible = true;
-    } else if (mod === 3) {
-      const spot = DROPOFF_SPOTS[Math.floor(Math.random() * DROPOFF_SPOTS.length)].clone();
+    } else if (c.kind === 'dropoff') {
+      const spot =
+        c.id === 'hot_wheels'
+          ? DROPOFF_SPOTS[Math.floor(Math.random() * DROPOFF_SPOTS.length)].clone()
+          : new THREE.Vector3(...(c.spot ?? [60, 0.1, -48]));
       this.current = {
+        id: c.id,
+        district: c.district,
         kind: 'dropoff',
-        title: 'HOT WHEELS',
-        description: 'Schnapp dir ein Auto [E] und fahr in die Drop-Zone.',
-        reward: 800,
+        title: c.title,
+        description: c.briefing,
+        reward: c.reward,
+        heatOnComplete: c.heatOnComplete ?? 45,
         targetPos: spot,
       };
       this.setBeaconColor('#ff9f43');
       this.stashProp.visible = false;
       this.beaconGroup.visible = true;
     } else {
-      wanted?.addHeat(85); // immediately triggers 2-star Police Cruiser pursuit!
+      wanted?.addHeat(c.startHeat ?? 85);
       this.current = {
+        id: c.id,
+        district: c.district,
         kind: 'survive',
-        title: 'HEAT SURVIVAL',
-        description: 'Überlebe 25s gegen die verfolgenden Vice-PD-Streifenwagen!',
-        reward: 1100,
+        title: c.title,
+        description: c.briefing,
+        reward: c.reward,
+        heatOnComplete: 0,
         targetPos: new THREE.Vector3(0, 0, 0),
-        timerSec: 25,
+        timerSec: c.timerSec ?? 25,
       };
       this.stashProp.visible = false;
       this.beaconGroup.visible = false;
     }
+
+    return true;
+  }
+
+  public startNextObjective(npcs: NpcSystem, wanted?: WantedSystem): void {
+    const coreIds = ['neon_stash', 'ocean_sprint', 'syndikat_ziel', 'hot_wheels', 'heat_survival'];
+    const id = coreIds[this.cycleIndex % coreIds.length];
+    this.cycleIndex++;
+    this.startContract(id, npcs, wanted);
   }
 
   private setBeaconColor(hex: string): void {
@@ -198,6 +476,7 @@ export class ObjectiveSystem {
     vehicles: VehicleSystem,
     npcs: NpcSystem,
     wanted: WantedSystem,
+    inAnyGroundRide = false,
   ): ObjectiveHudState {
     if (this.toastTimer > 0) {
       this.toastTimer -= dt;
@@ -211,8 +490,9 @@ export class ObjectiveSystem {
         this.startNextObjective(npcs, wanted);
       }
       return {
-        title: 'NEUES ZIEL FOLGT…',
-        description: 'Besuche AMMU-NEON ($) am Plaza oder erkunde das Viertel.',
+        activeId: null,
+        title: 'KEIN AKTIVER AUFTRAG',
+        description: 'Drücke [J] für das Missions-Telefon & neue Bezirks-Aufträge!',
         distanceM: 0,
         timerText: null,
         cash: this.cash,
@@ -227,7 +507,11 @@ export class ObjectiveSystem {
 
     if (this.current.kind !== 'survive') {
       this.beaconGroup.visible = true;
-      this.beaconGroup.position.set(this.current.targetPos.x, 0, this.current.targetPos.z);
+      this.beaconGroup.position.set(
+        this.current.targetPos.x,
+        Math.max(0, this.current.targetPos.y - 0.12),
+        this.current.targetPos.z,
+      );
       this.stashProp.rotation.y = elapsed * 2.2;
       this.stashProp.position.y = 1.05 + Math.sin(elapsed * 3.0) * 0.16;
       const pulse = 1 + Math.sin(elapsed * 4.0) * 0.1;
@@ -244,20 +528,39 @@ export class ObjectiveSystem {
     let completed = false;
     let failed = false;
 
-    if (this.current.kind === 'stash' && dist < 2.6) {
+    if (this.current.kind === 'stash' && dist < 2.8) {
       completed = true;
-      wanted.addHeat(25);
-    } else if (this.current.kind === 'dropoff' && vehicles.isInVehicle() && dist < 4.8) {
+      if (this.current.heatOnComplete > 0) wanted.addHeat(this.current.heatOnComplete);
+    } else if (this.current.kind === 'courier') {
+      this.current.timerSec = Math.max(0, (this.current.timerSec ?? 0) - dt);
+      if (this.current.timerSec <= 0) {
+        failed = true;
+      } else if (!this.current.courierPickedUp && dist < 3.4) {
+        this.current.courierPickedUp = true;
+        this.onCheckpointReached?.();
+        if (this.current.deliveryPos) {
+          this.current.targetPos.copy(this.current.deliveryPos);
+        }
+        this.current.description = 'Phase 2/2: Liefere das Paket schnell an der Gold-Zone ab!';
+        this.setBeaconColor('#ff9f43');
+        this.stashProp.visible = false;
+        this.toastText = 'PAKET AUFGENOMMEN · AB ZUR LIEFERZONE!';
+        this.toastTimer = 2.4;
+      } else if (this.current.courierPickedUp && dist < 4.5) {
+        completed = true;
+        if (this.current.heatOnComplete > 0) wanted.addHeat(this.current.heatOnComplete);
+      }
+    } else if (this.current.kind === 'dropoff' && (vehicles.isInVehicle() || inAnyGroundRide) && dist < 4.8) {
       completed = true;
-      wanted.addHeat(45);
+      if (this.current.heatOnComplete > 0) wanted.addHeat(this.current.heatOnComplete);
     } else if (this.current.kind === 'bounty' && this.current.bountyNpc && !this.current.bountyNpc.alive) {
       completed = true;
-      wanted.addHeat(75);
+      if (this.current.heatOnComplete > 0) wanted.addHeat(this.current.heatOnComplete);
     } else if (this.current.kind === 'race' && this.current.checkpoints) {
       this.current.timerSec = Math.max(0, (this.current.timerSec ?? 0) - dt);
       if (this.current.timerSec <= 0) {
         failed = true;
-      } else if (dist < 6.2) {
+      } else if (dist < 6.8) {
         const nextIdx = (this.current.checkpointIndex ?? 0) + 1;
         this.onCheckpointReached?.();
         if (nextIdx >= this.current.checkpoints.length) {
@@ -279,16 +582,17 @@ export class ObjectiveSystem {
     if (completed) {
       this.cash += this.current.reward;
       this.completedCount++;
-      this.toastText = `ZIEL ERFÜLLT · +$${this.current.reward}`;
+      this.completedIds.add(this.current.id);
+      this.toastText = `${this.current.title} ERFÜLLT · +$${this.current.reward.toLocaleString('en-US')}`;
       this.toastTimer = 3.2;
       this.current = null;
-      this.nextObjectiveTimer = 3.5;
+      this.nextObjectiveTimer = 4.2;
       this.beaconGroup.visible = false;
     } else if (failed) {
-      this.toastText = 'ZEIT ABGELAUFEN · NEUES ZIEL FOLGT';
+      this.toastText = 'ZEIT ABGELAUFEN · [J] FÜR NEUEN AUFTRAG';
       this.toastTimer = 2.8;
       this.current = null;
-      this.nextObjectiveTimer = 3.0;
+      this.nextObjectiveTimer = 5.0;
       this.beaconGroup.visible = false;
     }
 
@@ -296,6 +600,7 @@ export class ObjectiveSystem {
       this.current?.timerSec !== undefined ? `${Math.ceil(this.current.timerSec)}s` : null;
 
     return {
+      activeId: this.current?.id ?? null,
       title: this.current?.title ?? 'ZIEL ERFÜLLT!',
       description: this.current?.description ?? '',
       distanceM: Math.round(dist),

@@ -14,6 +14,7 @@ export interface SaveProgress {
   outfitIndex: number;
   ownedPets?: string[];
   rooftopBarOwned?: boolean;
+  completedMissionIds?: string[];
   starterBonusApplied?: boolean;
 }
 
@@ -36,6 +37,7 @@ export const DEFAULT_PROGRESS: SaveProgress = {
   outfitIndex: 0,
   ownedPets: [],
   rooftopBarOwned: false,
+  completedMissionIds: [],
   starterBonusApplied: true,
 };
 
@@ -93,6 +95,9 @@ export function loadProgress(): SaveProgress {
         ? parsed.ownedPets.filter((p): p is string => typeof p === 'string')
         : [],
       rooftopBarOwned: Boolean(parsed.rooftopBarOwned),
+      completedMissionIds: Array.isArray(parsed.completedMissionIds)
+        ? parsed.completedMissionIds.filter((id): id is string => typeof id === 'string')
+        : [],
       starterBonusApplied: true,
     };
   } catch {

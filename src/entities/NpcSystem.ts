@@ -154,8 +154,8 @@ export class NpcSystem {
     return false;
   }
 
-  public spawnBountyTarget(x: number, z: number): NpcEntity {
-    const boss = this.createNpc('bounty', x, z, '#f5f0eb', 110);
+  public spawnBountyTarget(x: number, z: number, y = 0.2): NpcEntity {
+    const boss = this.createNpc('bounty', x, z, '#f5f0eb', 110, y);
     boss.state = 'walk';
     return boss;
   }

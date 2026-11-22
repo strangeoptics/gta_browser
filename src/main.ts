@@ -22,7 +22,7 @@ import { HelicopterSystem } from './entities/HelicopterSystem';
 import { SafehousePets, PET_CATALOG, type PetId, type PetInteractable } from './entities/SafehousePets';
 import { WildlifeSystem } from './entities/WildlifeSystem';
 import { WantedSystem } from './gameplay/WantedSystem';
-import { ObjectiveSystem } from './gameplay/ObjectiveSystem';
+import { MISSION_CONTRACTS, ObjectiveSystem, type MissionDistrict } from './gameplay/ObjectiveSystem';
 import { HeistSystem } from './gameplay/HeistSystem';
 import { VigilanteSystem } from './gameplay/VigilanteSystem';
 import { ShopSystem } from './gameplay/ShopSystem';
@@ -120,6 +120,17 @@ const devCashZeroBtn = document.getElementById('dev-cash-zero') as HTMLButtonEle
 const devCashInput = document.getElementById('dev-cash-input') as HTMLInputElement;
 const devCashSetBtn = document.getElementById('dev-cash-set') as HTMLButtonElement;
 const devCloseBtn = document.getElementById('dev-close') as HTMLButtonElement;
+
+// 80s Missions-Telefon / Auftragsboard Modal ([J])
+const phoneOverlayEl = document.getElementById('phone-overlay') as HTMLDivElement;
+const phoneCashEl = document.getElementById('phone-cash') as HTMLDivElement;
+const phoneDoneEl = document.getElementById('phone-done') as HTMLDivElement;
+const phoneActiveLabelEl = document.getElementById('phone-active-label') as HTMLSpanElement;
+const phoneCancelBtn = document.getElementById('phone-cancel-btn') as HTMLButtonElement;
+const phoneHeistBtn = document.getElementById('phone-heist-btn') as HTMLButtonElement;
+const phoneTabBtns = Array.from(document.querySelectorAll<HTMLButtonElement>('.phone-tab'));
+const phoneMissionListEl = document.getElementById('phone-mission-list') as HTMLDivElement;
+const phoneCloseBtn = document.getElementById('phone-close') as HTMLButtonElement;
 
 // Pause Settings & Saved Stats UI
 const statCashEl = document.getElementById('stat-cash') as HTMLElement;
@@ -232,6 +243,8 @@ let lastCompletedCount = savedProgress.completedMissions;
 let shopOpen = false;
 let petShopOpen = false;
 let devOpen = false;
+let phoneOpen = false;
+let phoneDistrictFilter: 'all' | MissionDistrict = 'all';
 let photoMode = false;
 let photoYaw = 0;
 let photoPitch = 0;
@@ -314,6 +327,7 @@ function eatLookedFood(): boolean {
 
 objectives.cash = savedProgress.cash;
 objectives.completedCount = savedProgress.completedMissions;
+objectives.setCompletedIds(savedProgress.completedMissionIds ?? []);
 playerAvatar.setOutfit(savedProgress.outfitIndex);
 pets.setOwnedPets((savedProgress.ownedPets ?? []) as PetId[]);
 world.setSafehouseRooftopBarOwned(Boolean(savedProgress.rooftopBarOwned));
@@ -332,6 +346,7 @@ function persistProgress(): void {
     outfitIndex: playerAvatar.getOutfitIndex(),
     ownedPets: pets.getOwnedPets(),
     rooftopBarOwned: world.isSafehouseRooftopBarOwned(),
+    completedMissionIds: objectives.getCompletedIds(),
     starterBonusApplied: true,
   });
   statCashEl.textContent = `$${objectives.cash.toLocaleString('en-US')}`;
@@ -385,6 +400,7 @@ resetSaveBtn.addEventListener('click', () => {
   playerArmor = 0;
   pets.setOwnedPets([]);
   world.setSafehouseRooftopBarOwned(false);
+  objectives.setCompletedIds([]);
   persistProgress();
 });
 
@@ -836,6 +852,132 @@ devCashSetBtn.addEventListener('click', () => {
 });
 devCloseBtn.addEventListener('click', () => closeDevPanel());
 
+// 80s Missions-Telefon / Auftragsboard Flow ([J])
+function renderPhoneMissions(): void {
+  phoneCashEl.textContent = `$${objectives.cash.toLocaleString('en-US')}`;
+  const doneCount = objectives.getCompletedIds().length;
+  phoneDoneEl.textContent = `${doneCount} / ${MISSION_CONTRACTS.length} ERLEDIGT`;
+
+  const active = objectives.current;
+  phoneActiveLabelEl.textContent = active ? `AKTIV: ${active.title}` : 'AKTIV: KEIN AUFTRAG';
+  phoneCancelBtn.disabled = !active;
+
+  phoneHeistBtn.disabled = heist.isActive();
+  phoneHeistBtn.textContent = heist.isActive() ? 'LÄUFT…' : 'STARTEN [H]';
+
+  phoneTabBtns.forEach((btn) => {
+    btn.classList.toggle('active', (btn.dataset.district ?? 'all') === phoneDistrictFilter);
+  });
+
+  const filtered =
+    phoneDistrictFilter === 'all'
+      ? MISSION_CONTRACTS
+      : MISSION_CONTRACTS.filter((c) => c.district === phoneDistrictFilter);
+
+  phoneMissionListEl.innerHTML = '';
+  for (const c of filtered) {
+    const isActive = active?.id === c.id;
+    const isDone = objectives.isContractCompleted(c.id);
+
+    const card = document.createElement('div');
+    card.className = `mission-item${isActive ? ' is-active' : ''}`;
+
+    const left = document.createElement('div');
+    const meta = document.createElement('div');
+    meta.className = 'mission-meta';
+
+    const distPill = document.createElement('span');
+    distPill.className = `mission-pill ${c.district}`;
+    distPill.textContent = c.districtLabel;
+
+    const kindPill = document.createElement('span');
+    kindPill.className = 'mission-pill';
+    kindPill.textContent = c.kindLabel;
+    meta.append(distPill, kindPill);
+
+    if (isDone) {
+      const doneBadge = document.createElement('span');
+      doneBadge.className = 'mission-done-badge';
+      doneBadge.textContent = '✓ ERLEDIGT';
+      meta.appendChild(doneBadge);
+    }
+
+    const nameEl = document.createElement('div');
+    nameEl.className = 'mission-name';
+    nameEl.textContent = c.title;
+
+    const descEl = document.createElement('div');
+    descEl.className = 'mission-desc';
+    descEl.textContent = c.briefing;
+
+    left.append(meta, nameEl, descEl);
+
+    const right = document.createElement('div');
+    right.className = 'mission-right';
+
+    const rewEl = document.createElement('div');
+    rewEl.className = 'mission-reward';
+    rewEl.textContent = `+$${c.reward.toLocaleString('en-US')}`;
+
+    const acceptBtn = document.createElement('button');
+    acceptBtn.type = 'button';
+    acceptBtn.className = 'mission-accept-btn';
+    acceptBtn.textContent = isActive ? 'AKTIV' : 'ANNEHMEN';
+    acceptBtn.disabled = isActive;
+    acceptBtn.addEventListener('click', () => {
+      objectives.startContract(c.id, npcs, wanted);
+      audio.playCheckpoint();
+      closePhone();
+      showQuickToast(`AUFTRAG ANGENOMMEN · ${c.title} (+$${c.reward.toLocaleString('en-US')})`);
+    });
+
+    right.append(rewEl, acceptBtn);
+    card.append(left, right);
+    phoneMissionListEl.appendChild(card);
+  }
+}
+
+function openPhone(): void {
+  phoneOpen = true;
+  player.setActive(false);
+  if (document.pointerLockElement === canvas) {
+    document.exitPointerLock?.();
+  }
+  renderPhoneMissions();
+  phoneOverlayEl.classList.add('visible');
+}
+
+function closePhone(): void {
+  phoneOpen = false;
+  phoneOverlayEl.classList.remove('visible');
+  overlay.classList.add('hidden');
+  player.setActive(true);
+  requestLockSafely();
+}
+
+phoneTabBtns.forEach((btn) => {
+  btn.addEventListener('click', () => {
+    phoneDistrictFilter = (btn.dataset.district ?? 'all') as 'all' | MissionDistrict;
+    renderPhoneMissions();
+  });
+});
+
+phoneCancelBtn.addEventListener('click', () => {
+  objectives.cancelActiveObjective();
+  renderPhoneMissions();
+  showQuickToast('AUFTRAG ABGEBROCHEN · [J] FÜR NEUE JOBS');
+});
+
+phoneHeistBtn.addEventListener('click', () => {
+  if (!heist.isActive()) {
+    heist.startHeist();
+    audio.playCheckpoint();
+    closePhone();
+  }
+});
+
+phoneCloseBtn.addEventListener('click', () => closePhone());
+
 function interactWithLookedPet(): boolean {
   if (!lookedPet) return false;
   const p = lookedPet;
@@ -993,6 +1135,7 @@ window.addEventListener('mousedown', (e) => {
     !shopOpen &&
     !petShopOpen &&
     !devOpen &&
+    !phoneOpen &&
     !photoMode &&
     !vehicles.isInVehicle() &&
     !boat.isInBoat() &&
@@ -1039,6 +1182,19 @@ window.addEventListener('keydown', (e) => {
   }
   if (devOpen) {
     if (e.code === 'Escape') closeDevPanel();
+    return;
+  }
+
+  if (e.code === 'KeyJ' && !shopOpen && !petShopOpen && !photoMode && wastedTimer <= 0) {
+    if (phoneOpen) {
+      closePhone();
+    } else if (player.getIsActive()) {
+      openPhone();
+    }
+    return;
+  }
+  if (phoneOpen) {
+    if (e.code === 'Escape') closePhone();
     return;
   }
 
@@ -1463,7 +1619,7 @@ function startGame(): void {
 }
 
 function pauseGame(): void {
-  if (shopOpen || petShopOpen || devOpen) return;
+  if (shopOpen || petShopOpen || devOpen || phoneOpen) return;
   player.setActive(false);
   persistProgress();
   overlay.classList.remove('hidden');
@@ -1476,7 +1632,7 @@ playBtn.addEventListener('click', (e) => {
 
 canvas.addEventListener('click', () => {
   audio.unlock();
-  if (player.getIsActive() && !player.getIsLocked() && !shopOpen && !petShopOpen && !devOpen) {
+  if (player.getIsActive() && !player.getIsLocked() && !shopOpen && !petShopOpen && !devOpen && !phoneOpen) {
     requestLockSafely();
   }
 });
@@ -1487,7 +1643,7 @@ document.addEventListener('pointerlockchange', () => {
     pointerLockFallback = false;
     overlay.classList.add('hidden');
     player.setActive(true);
-  } else if (!pointerLockFallback && !shopOpen && !petShopOpen && !devOpen) {
+  } else if (!pointerLockFallback && !shopOpen && !petShopOpen && !devOpen && !phoneOpen) {
     pauseGame();
   }
 });
@@ -1584,7 +1740,7 @@ function animate(now: number): void {
     else startGame();
   }
 
-  const isPlaying = player.getIsActive() && !shopOpen && !petShopOpen && !devOpen && wastedTimer <= 0;
+  const isPlaying = player.getIsActive() && !shopOpen && !petShopOpen && !devOpen && !phoneOpen && wastedTimer <= 0;
 
   // Gradually sober up over time; 1st cocktail keeps drunkLevel at 0
   if (cocktailScore > 0) {
@@ -1810,7 +1966,7 @@ function animate(now: number): void {
   if (vigilanteHud.toastText) {
     showQuickToast(vigilanteHud.toastText);
   }
-  const objHud = objectives.update(dt, elapsed, player.position, vehicles, npcs, wanted);
+  const objHud = objectives.update(dt, elapsed, player.position, vehicles, npcs, wanted, inGarageRide);
 
   if (heistHud.stageToast) {
     showQuickToast(heistHud.stageToast);
@@ -2025,7 +2181,7 @@ function animate(now: number): void {
     setText(objDescEl, heistHud.description);
     setText(objDistEl, `${heistHud.distanceM} m`);
   } else {
-    setText(objTagEl, 'ZIEL · [H] HEIST');
+    setText(objTagEl, 'ZIEL · [J] TELEFON · [H] HEIST');
     objTagEl.classList.remove('heist');
     setText(objTitleEl, objHud.title);
     setText(objDescEl, objHud.description);

@@ -152,6 +152,48 @@
         </div>
       </div>
 
+      <!-- 80s Missions-Telefon / Auftragsboard Modal ([J]) -->
+      <div id="phone-overlay">
+        <div class="shop-card phone-card">
+          <div class="phone-top-bar">
+            <div>
+              <div class="title-eyebrow">VICE CALL '86 · AUFTRAGS-TELEFON</div>
+              <h2 class="shop-title phone-title">AUFTRAGSBOARD</h2>
+            </div>
+            <div class="phone-stats">
+              <div id="phone-cash">$0</div>
+              <div id="phone-done">0 / 13 ERLEDIGT</div>
+            </div>
+          </div>
+
+          <div id="phone-active-bar" class="phone-active-bar">
+            <span id="phone-active-label">AKTIV: KEIN AUFTRAG</span>
+            <button id="phone-cancel-btn" class="phone-cancel-btn" type="button">ABBRECHEN</button>
+          </div>
+
+          <div class="phone-heist-banner">
+            <div>
+              <div class="phone-heist-tag">★ STORY-HEIST · 3 PHASEN</div>
+              <div class="phone-heist-title">OCEAN CLUB FINALE · +$3.500</div>
+            </div>
+            <button id="phone-heist-btn" class="dev-btn dev-btn-accent phone-heist-btn" type="button">STARTEN [H]</button>
+          </div>
+
+          <div class="phone-tabs">
+            <button class="phone-tab active" data-district="all" type="button">ALLE</button>
+            <button class="phone-tab" data-district="downtown" type="button">DOWNTOWN</button>
+            <button class="phone-tab" data-district="west" type="button">HAVANA</button>
+            <button class="phone-tab" data-district="south" type="button">VICE PORT</button>
+            <button class="phone-tab" data-district="north" type="button">NORTH POINT</button>
+            <button class="phone-tab" data-district="east" type="button">STARFISH</button>
+          </div>
+
+          <div id="phone-mission-list" class="phone-mission-list"></div>
+
+          <button id="phone-close" class="shop-close-btn" type="button">TELEFON WEGSTECKEN [J / ESC]</button>
+        </div>
+      </div>
+
       <!-- Developer Panel Modal ([Alt+D] / [F2] / [D] im Pause-Menü) -->
       <div id="dev-overlay">
         <div class="shop-card dev-card">
@@ -238,6 +280,7 @@
             <div><kbd>Q</kbd> / <kbd>V</kbd> Radio / Auto-Kamera</div>
             <div><kbd>T</kbd> / <kbd>Y</kbd> Tageszeit / Regen</div>
             <div><kbd>B</kbd> / <kbd>M</kbd> Shop / Audio Stumm</div>
+            <div><kbd>J</kbd> Missions-Telefon / Aufträge</div>
             <div><kbd>Alt+D</kbd> / <kbd>F2</kbd> Developer-Panel (<kbd>D</kbd> im Menü)</div>
           </div>
         </div>

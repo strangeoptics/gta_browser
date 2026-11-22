@@ -1712,6 +1712,31 @@ kbd {
   color: rgba(255, 240, 245, 0.65);
 }
 
+/* DeLorean 88 MPH Time-Jump Flash & 15s Retrowave Mode */
+#timejump-flash {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 25;
+  background: radial-gradient(circle at center, #ffffff 0%, #36f1e6 42%, #ff4fa3 100%);
+  opacity: 0;
+}
+
+body.retrowave-mode #hud::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(54, 241, 230, 0.05) 0px,
+    rgba(54, 241, 230, 0.05) 1px,
+    transparent 1px,
+    transparent 4px
+  );
+  box-shadow: inset 0 0 85px rgba(255, 42, 157, 0.38);
+}
+
 /* Performance Mode: disable expensive compositor backdrop-filter blurs across HUD & overlays */
 body.perf-mode #debug-info,
 body.perf-mode #weapon-panel,

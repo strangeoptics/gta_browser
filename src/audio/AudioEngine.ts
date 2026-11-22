@@ -1015,6 +1015,68 @@ export class AudioEngine {
     osc.stop(now + 0.2);
   }
 
+  /**
+   * Iconic DeLorean 88 MPH Flux-Capacitor Time Jump: thunderous synth boom + sparkling 80s warp arpeggio!
+   */
+  public playDeloreanTimeJump(): void {
+    if (!this.ctx || !this.masterGain || !this.noiseBuffer || this.muted) return;
+    const now = this.ctx.currentTime;
+
+    // 1) Massive sub-bass thunderclap boom
+    const sub = this.ctx.createOscillator();
+    const sGain = this.ctx.createGain();
+    sub.type = 'sine';
+    sub.frequency.setValueAtTime(160, now);
+    sub.frequency.exponentialRampToValueAtTime(28, now + 0.72);
+    sGain.gain.setValueAtTime(0.85, now);
+    sGain.gain.exponentialRampToValueAtTime(0.001, now + 0.78);
+    sub.connect(sGain);
+    sGain.connect(this.masterGain);
+    this.autoDisconnect(sub, sGain);
+    sub.start(now);
+    sub.stop(now + 0.8);
+
+    // 2) Electric lightning crackle burst
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = this.noiseBuffer;
+    const bp = this.ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.setValueAtTime(2600, now);
+    bp.frequency.exponentialRampToValueAtTime(280, now + 0.65);
+    bp.Q.value = 1.4;
+    const nGain = this.ctx.createGain();
+    nGain.gain.setValueAtTime(0.62, now);
+    nGain.gain.exponentialRampToValueAtTime(0.001, now + 0.68);
+    noise.connect(bp);
+    bp.connect(nGain);
+    nGain.connect(this.masterGain);
+    this.autoDisconnect(noise, bp, nGain);
+    noise.start(now);
+    noise.stop(now + 0.7);
+
+    // 3) Sparkling ascending 80s Retrowave warp synth shimmer
+    const warpNotes = [220, 329.63, 440, 659.25, 880, 1318.5];
+    warpNotes.forEach((freq, i) => {
+      const osc = this.ctx!.createOscillator();
+      const g = this.ctx!.createGain();
+      osc.type = 'sawtooth';
+      const lp = this.ctx!.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = 3200;
+      const t = now + 0.05 + i * 0.065;
+      osc.frequency.setValueAtTime(freq, t);
+      osc.frequency.exponentialRampToValueAtTime(freq * 1.06, t + 0.35);
+      g.gain.setValueAtTime(0.14, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.42);
+      osc.connect(lp);
+      lp.connect(g);
+      g.connect(this.masterGain!);
+      this.autoDisconnect(osc, lp, g);
+      osc.start(t);
+      osc.stop(t + 0.44);
+    });
+  }
+
   public getRadioBeatPulse(): number {
     return this.radioBeatPulse;
   }

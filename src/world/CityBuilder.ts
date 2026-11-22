@@ -63,6 +63,7 @@ export interface MiamiWorld {
   claimLighthouseBonus: () => boolean;
   cycleTimeOfDay: () => string;
   toggleRain: () => boolean;
+  setRetrowaveMode: (active: boolean) => void;
   isInsideClub: (pos: THREE.Vector3) => boolean;
   isInsideSafehouse: (pos: THREE.Vector3) => boolean;
   isInsidePoliceStation: (pos: THREE.Vector3) => boolean;
@@ -894,6 +895,53 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
     return p.name;
   };
 
+  // Pre-built Retrowave 1986 Neon Synthwave Grid for DeLorean 88 MPH Time Jump (zero runtime allocation!)
+  const retrowaveGrid = new THREE.GridHelper(360, 72, '#ff4fa3', '#36f1e6');
+  retrowaveGrid.position.set(0, 0.06, 0);
+  retrowaveGrid.visible = false;
+  retrowaveGrid.userData.dynamic = true;
+  scene.add(retrowaveGrid);
+
+  let retrowaveActive = false;
+  let cachedWireMats: THREE.MeshStandardMaterial[] | null = null;
+  const setRetrowaveMode = (active: boolean): void => {
+    if (retrowaveActive === active) return;
+    retrowaveActive = active;
+    retrowaveGrid.visible = active;
+
+    if (!cachedWireMats) {
+      const matSet = new Set<THREE.MeshStandardMaterial>();
+      for (let i = 0; i < worldMeshes.length; i++) {
+        const obj = worldMeshes[i];
+        if (!(obj instanceof THREE.Mesh)) continue;
+        const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+        for (const m of mats) {
+          if (m instanceof THREE.MeshStandardMaterial && !m.wireframe) {
+            matSet.add(m);
+          }
+        }
+      }
+      cachedWireMats = Array.from(matSet);
+    }
+
+    for (let i = 0; i < cachedWireMats.length; i++) {
+      cachedWireMats[i].wireframe = active;
+    }
+
+    if (active) {
+      skyMat.uniforms.topColor.value.set('#050214');
+      skyMat.uniforms.midColor.value.set('#4d0a6e');
+      skyMat.uniforms.horizonColor.value.set('#ff2a9d');
+      (scene.fog as THREE.FogExp2).color.set('#1a0836');
+      sunLight.color.set('#ff4fa3');
+      sunLight.intensity = 1.65;
+      hemiLight.intensity = 0.72;
+      oceanUniforms.uHorizonGlow.value.set('#36f1e6');
+    } else {
+      applyTimePreset(timeIndex);
+    }
+  };
+
   // Pre-filter large structural meshes (>= 2.2m) for 3rd-person camera wall-clip raycasts (skips tiny stairs, props & InstancedMeshes)
   const cameraMeshes = worldMeshes.filter((obj) => {
     if (!(obj instanceof THREE.Mesh) || obj instanceof THREE.InstancedMesh) return false;
@@ -974,6 +1022,7 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
       (scene.fog as THREE.FogExp2).density = rainActive ? 0.0095 : 0.0068;
       return rainActive;
     },
+    setRetrowaveMode,
     isInsideClub: (pos: THREE.Vector3) => neonClub.isInside(pos),
     isInsideSafehouse: (pos: THREE.Vector3) => safehouse.isInside(pos),
     isInsidePoliceStation: (pos: THREE.Vector3) => policeStation.isInside(pos),

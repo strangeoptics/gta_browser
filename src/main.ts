@@ -107,6 +107,7 @@ const toastBannerEl = document.getElementById('toast-banner') as HTMLDivElement;
 const dispatchBannerEl = document.getElementById('dispatch-banner') as HTMLDivElement;
 const dispatchTextEl = document.getElementById('dispatch-text') as HTMLSpanElement;
 const damageVignetteEl = document.getElementById('damage-vignette') as HTMLDivElement;
+const timeJumpFlashEl = document.getElementById('timejump-flash') as HTMLDivElement;
 const wastedOverlayEl = document.getElementById('wasted-overlay') as HTMLDivElement;
 const audioStatusEl = document.getElementById('audio-status') as HTMLDivElement;
 const minimapCanvas = document.getElementById('minimap-canvas') as HTMLCanvasElement;
@@ -264,6 +265,8 @@ let playerMaxHp = savedProgress.maxHpUnlocked ? 150 : 100;
 let playerHp = playerMaxHp;
 let playerArmor = savedProgress.armor;
 let damageFlash = 0;
+let timeJumpFlash = 0;
+let retrowaveTimer = 0;
 let shakeTrauma = 0;
 let lastWantedStars = 0;
 let dispatchTimer = 0;
@@ -775,6 +778,34 @@ vehicles.onKittTurboBoost = () => {
   audio.playKittTurboBoost();
   addCameraShake(0.32);
   kittAi.speak('boost', audio.isMuted(), true);
+};
+
+vehicles.onDeloreanTimeJump = (_v, fromPos, toPos, destLabel) => {
+  audio.playDeloreanTimeJump();
+  addCameraShake(0.68);
+  timeJumpFlash = 1.0;
+  decals.addScorchMark(fromPos.x, fromPos.z);
+  decals.addScorchMark(toPos.x, toPos.z);
+
+  const hadWanted = wanted.stars > 0;
+  wanted.reset();
+  lastWantedStars = 0;
+  bustProgress = 0;
+  npcs.clearPolice();
+  heli.clear();
+
+  retrowaveTimer = 15.0;
+  world.setRetrowaveMode(true);
+  document.body.classList.add('retrowave-mode');
+
+  showQuickToast(
+    hadWanted
+      ? `⚡ 88 MPH ZEITSPRUNG → ${destLabel} · RETROWAVE (15s) · FAHNDUNG GELÖSCHT!`
+      : `⚡ 88 MPH ZEITSPRUNG → ${destLabel} · RETROWAVE-MODUS (15s)!`,
+  );
+  if (hadWanted) {
+    sendPoliceDispatch('Verdächtiger im DeLorean bei 88 MPH verschwunden — nur brennende Reifenspuren übrig!', true);
+  }
 };
 
 vehicles.onPoliceRamPlayer = (dmg) => {
@@ -1752,6 +1783,16 @@ window.addEventListener('keydown', (e) => {
             ? `K.I.T.T. TURBO-BOOST LÄDT… (${car.turboBoostCooldown.toFixed(1)}s)`
             : 'K.I.T.T. TURBO-BOOST · NUR AUF FESTEM BODEN!',
         );
+      }
+      return;
+    }
+    if (car && car.isDelorean) {
+      if (!vehicles.triggerDeloreanTimeJump(car)) {
+        if (car.timeJumpCooldown && car.timeJumpCooldown > 0) {
+          showQuickToast(`FLUXKOMPENSATOR LÄDT… (${Math.ceil(car.timeJumpCooldown)}s)`);
+        } else {
+          showQuickToast('DELOREAN · ERST AUF 88 MPH (HÖCHSTGESCHWINDIGKEIT) BESCHLEUNIGEN!');
+        }
       }
       return;
     }
@@ -2956,6 +2997,20 @@ function animate(now: number): void {
   // --- HUD Updates (Dirty-checked DOM mutations) ---
   damageFlash = Math.max(0, damageFlash - dt * 2.2);
   setOpacity(damageVignetteEl, damageFlash > 0.004 ? damageFlash.toFixed(2) : '0');
+  if (timeJumpFlash > 0) {
+    timeJumpFlash = Math.max(0, timeJumpFlash - dt * 1.45);
+    setOpacity(timeJumpFlashEl, timeJumpFlash > 0.004 ? (timeJumpFlash * 0.92).toFixed(2) : '0');
+  } else {
+    setOpacity(timeJumpFlashEl, '0');
+  }
+  if (retrowaveTimer > 0) {
+    retrowaveTimer = Math.max(0, retrowaveTimer - dt);
+    if (retrowaveTimer <= 0) {
+      world.setRetrowaveMode(false);
+      document.body.classList.remove('retrowave-mode');
+      showQuickToast('ZEITSPRUNG BEENDET · ZURÜCK IN PALM CITY ’86');
+    }
+  }
   const hpPct = Math.min(100, Math.round((playerHp / playerMaxHp) * 100));
   setWidth(hpFillEl, `${hpPct}%`);
   setText(hpTextEl, playerMaxHp > 100 ? `${Math.round(playerHp)}/${playerMaxHp}` : `${Math.round(playerHp)}`);
@@ -3085,6 +3140,19 @@ function animate(now: number): void {
       setText(
         vehicleCamHintEl,
         `[G] ${jingleLbl} (COPS ABLENKEN) · [V] CAM · [E] AUS`,
+      );
+    } else if (car?.isDelorean) {
+      const warpLbl =
+        retrowaveTimer > 0
+          ? `⚡ RETROWAVE (${Math.ceil(retrowaveTimer)}s)`
+          : car.timeJumpCooldown && car.timeJumpCooldown > 0
+            ? `FLUX LÄDT (${Math.ceil(car.timeJumpCooldown)}s)`
+            : car.timeJumpReady
+              ? '[SHIFT/G] ⚡ 88 MPH ZEITSPRUNG BEREIT!'
+              : 'AUF 88 MPH BESCHLEUNIGEN → [SHIFT/G]';
+      setText(
+        vehicleCamHintEl,
+        `${warpLbl} · [Q] ${audio.getRadioStation()} · [V] CAM · [E] AUS`,
       );
     } else if (car?.isKitt) {
       const boostLbl =
@@ -3259,11 +3327,11 @@ function animate(now: number): void {
   if (drunkLevel > 0.005) {
     camera.rotation.z += Math.sin(elapsed * 1.65) * 0.125 * drunkLevel;
     camera.rotation.x += Math.cos(elapsed * 1.2) * 0.032 * drunkLevel;
-    bloomPass.strength = 0.42 + drunkLevel * 0.62;
+    bloomPass.strength = (retrowaveTimer > 0 ? 0.78 : 0.42) + drunkLevel * 0.62;
     bloomPass.radius = 0.48 + drunkLevel * 0.42;
   } else {
-    bloomPass.strength = 0.42;
-    bloomPass.radius = 0.48;
+    bloomPass.strength = retrowaveTimer > 0 ? 0.78 : 0.42;
+    bloomPass.radius = retrowaveTimer > 0 ? 0.68 : 0.48;
   }
 
   renderFrame();

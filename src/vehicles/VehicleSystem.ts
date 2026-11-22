@@ -19,6 +19,8 @@ export interface Vehicle {
   isBike: boolean;
   isRv: boolean;
   isDelorean: boolean;
+  timeJumpReady?: boolean;
+  timeJumpCooldown?: number;
   isKitt: boolean;
   turboBoostCooldown: number;
   turboBoostFlashTimer: number;
@@ -213,6 +215,7 @@ export class VehicleSystem {
   public onDriftMark?: (x: number, z: number, yaw: number) => void;
   public onStuntLanded?: (distanceM: number, reward: number) => void;
   public onKittTurboBoost?: (v: Vehicle) => void;
+  public onDeloreanTimeJump?: (v: Vehicle, fromPos: THREE.Vector3, toPos: THREE.Vector3, destLabel: string) => void;
   private ramCooldown = 0;
   private crashSoundCooldown = 0;
 
@@ -492,6 +495,77 @@ export class VehicleSystem {
     }
 
     this.onKittTurboBoost?.(v);
+    return true;
+  }
+
+  /**
+   * Fires the DeLorean DMC-12 "88 MPH" Time Jump when charged to >= 88% top speed!
+   * Leaves twin burning tire trails, bursts electric lightning arcs, and teleports across Palm City '86.
+   */
+  public triggerDeloreanTimeJump(v: Vehicle): boolean {
+    if (!v.isDelorean || v.destroyed || !v.timeJumpReady || (v.timeJumpCooldown ?? 0) > 0) return false;
+
+    const fromPos = v.position.clone();
+    const fwdX = Math.sin(v.yaw);
+    const fwdZ = Math.cos(v.yaw);
+    const rightX = Math.cos(v.yaw);
+    const rightZ = -Math.sin(v.yaw);
+
+    // Stamp twin blazing fire trails & skidmarks behind the departure spot
+    for (let step = 0; step < 6; step++) {
+      const distBack = step * 1.15;
+      for (const side of [-0.92, 0.92]) {
+        const fx = fromPos.x - fwdX * distBack + rightX * side;
+        const fz = fromPos.z - fwdZ * distBack + rightZ * side;
+        this.spawnDeloreanFireTrail(fx, fromPos.y, fz, v.yaw);
+        this.onDriftMark?.(fx, fz, v.yaw);
+      }
+    }
+    for (let b = 0; b < 8; b++) {
+      this.spawnDeloreanLightningBolt(v);
+    }
+
+    // Pick a dramatic straight-road destination far across the map (> 75m away)
+    const warpSpots = [
+      { x: 60, z: -48, yaw: 0, label: 'OCEAN DRIVE NORD' },
+      { x: 60, z: 46, yaw: Math.PI, label: 'OCEAN DRIVE SÜD' },
+      { x: -112, z: -40, yaw: 0, label: 'WEST HAVANA BLVD' },
+      { x: -12, z: -81, yaw: Math.PI / 2, label: 'NORTH POINT COASTAL HWY' },
+      { x: -20, z: 58, yaw: Math.PI, label: 'VICE PORT AVENUE' },
+    ];
+    const farSpots = warpSpots.filter((s) => Math.hypot(s.x - fromPos.x, s.z - fromPos.z) > 75);
+    const dest = (farSpots.length > 0 ? farSpots : warpSpots)[Math.floor(Math.random() * (farSpots.length > 0 ? farSpots.length : warpSpots.length))];
+
+    v.position.set(dest.x, 0.05, dest.z);
+    v.yaw = dest.yaw;
+    v.speed = 16.5;
+    v.vy = 0;
+    v.airborne = false;
+    v.mesh.position.copy(v.position);
+    v.mesh.rotation.set(0, v.yaw, 0);
+    v.timeJumpReady = false;
+    v.timeJumpCooldown = 16.0;
+    this.camInitialized = false;
+
+    // Arrival twin fire trails & lightning discharge!
+    const aFwdX = Math.sin(v.yaw);
+    const aFwdZ = Math.cos(v.yaw);
+    const aRightX = Math.cos(v.yaw);
+    const aRightZ = -Math.sin(v.yaw);
+    for (let step = 0; step < 5; step++) {
+      const distBack = step * 1.15;
+      for (const side of [-0.92, 0.92]) {
+        const fx = v.position.x - aFwdX * distBack + aRightX * side;
+        const fz = v.position.z - aFwdZ * distBack + aRightZ * side;
+        this.spawnDeloreanFireTrail(fx, 0, fz, v.yaw);
+        this.onDriftMark?.(fx, fz, v.yaw);
+      }
+    }
+    for (let b = 0; b < 6; b++) {
+      this.spawnDeloreanLightningBolt(v);
+    }
+
+    this.onDeloreanTimeJump?.(v, fromPos, v.position, dest.label);
     return true;
   }
 
@@ -933,6 +1007,9 @@ export class VehicleSystem {
       // Iconic K.I.T.T. sweeping red scanner LED animation on the 1982 Pontiac Firebird Trans Am!
       if (v.turboBoostCooldown > 0) {
         v.turboBoostCooldown = Math.max(0, v.turboBoostCooldown - clampedDt);
+      }
+      if (v.timeJumpCooldown && v.timeJumpCooldown > 0) {
+        v.timeJumpCooldown = Math.max(0, v.timeJumpCooldown - clampedDt);
       }
       if (v.turboBoostFlashTimer > 0) {
         v.turboBoostFlashTimer = Math.max(0, v.turboBoostFlashTimer - clampedDt);
@@ -1403,9 +1480,13 @@ export class VehicleSystem {
     radioBeatPulse = 0,
     lockDriving = false,
   ): void {
-    // K.I.T.T. Turbo-Boost on [SHIFT] while driving!
-    if (isActive && v.isKitt && (this.keys.has('ShiftLeft') || this.keys.has('ShiftRight'))) {
-      this.triggerKittTurboBoost(v);
+    // K.I.T.T. Turbo-Boost & DeLorean 88 MPH Time Jump on [SHIFT] while driving!
+    if (isActive && (this.keys.has('ShiftLeft') || this.keys.has('ShiftRight'))) {
+      if (v.isKitt) {
+        this.triggerKittTurboBoost(v);
+      } else if (v.isDelorean && v.timeJumpReady) {
+        this.triggerDeloreanTimeJump(v);
+      }
     }
 
     const kbAccel = (this.keys.has('KeyW') ? 1 : 0) - (this.keys.has('KeyS') ? 1 : 0);
@@ -1612,6 +1693,7 @@ export class VehicleSystem {
     // - ~100% top speed: crackling electric mini lightning bolts & sparks around the chassis!
     if (v.isDelorean) {
       const speedRatio = Math.max(0, v.speed) / maxForward;
+      v.timeJumpReady = !v.airborne && (v.timeJumpCooldown ?? 0) <= 0 && speedRatio >= 0.88;
       const fwdX = Math.sin(v.yaw);
       const fwdZ = Math.cos(v.yaw);
       const rightX = Math.cos(v.yaw);

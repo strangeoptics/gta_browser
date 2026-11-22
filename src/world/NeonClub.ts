@@ -1,7 +1,14 @@
 import * as THREE from 'three';
 import type { AABB } from '../types';
 import { createNeonSignTexture } from './Textures';
-import { buildLowPolyCharacter, type CharacterHairStyle } from '../entities/CharacterBuilder';
+import type { PlayerGlbOutfitStyle } from '../entities/CharacterTextures';
+import {
+  instantiateGlbCharacter,
+  styleGlbNpcInstance,
+  whenGlbCharacterReady,
+  type CharacterBuildType,
+  type GlbCharacterInstance,
+} from '../entities/GlbCharacterFactory';
 
 export interface NeonClubHandle {
   isInside: (pos: THREE.Vector3) => boolean;
@@ -444,6 +451,8 @@ export function buildNeonClub(
   // 126 BPM = 2.1 beats per second -> beat angular speed = 2.1 * 2 * PI
   const beatRadPerSec = 2.1 * Math.PI * 2;
 
+  let lastElapsed = 0;
+
   return {
     isInside: (pos: THREE.Vector3) =>
       pos.x > clubX - clubW / 2 &&
@@ -518,22 +527,33 @@ export function buildNeonClub(
         tt.rotation.y = elapsed * 4.0;
       }
 
+      // Advance club character skeletal animations (already gated by nearClub early-return above)
+      const clubDt = Math.min(Math.max(elapsed - lastElapsed, 0), 0.05);
+      lastElapsed = elapsed;
+
       // Bartender mixing drinks & nodding to the beat
       bartender.group.position.z = clubZ + Math.sin(elapsed * 0.7) * 1.6;
-      bartender.leftArm.rotation.x = -0.8 + Math.sin(elapsed * 6.5) * 0.35;
-      bartender.rightArm.rotation.x = -0.8 - Math.sin(elapsed * 6.5) * 0.35;
+      if (bartender.glb) {
+        bartender.glb.mixer.update(clubDt);
+        if (bartender.glb.upperArmL) bartender.glb.upperArmL.rotation.x -= 0.75 + Math.sin(elapsed * 6.5) * 0.25;
+        if (bartender.glb.upperArmR) bartender.glb.upperArmR.rotation.x -= 0.75 - Math.sin(elapsed * 6.5) * 0.25;
+      }
 
       // DJ bobbing & scratching
       dj.group.position.y = 0.2 + beatPulse * 0.08;
-      dj.leftArm.rotation.x = -1.1 + Math.sin(elapsed * 8.0) * 0.25;
-      dj.rightArm.rotation.x = -1.1 - Math.cos(elapsed * 7.2) * 0.25;
+      if (dj.glb) {
+        dj.glb.mixer.update(clubDt);
+        if (dj.glb.upperArmL) dj.glb.upperArmL.rotation.x -= 0.95 + Math.sin(elapsed * 8.0) * 0.22;
+        if (dj.glb.upperArmR) dj.glb.upperArmR.rotation.x -= 0.95 - Math.cos(elapsed * 7.2) * 0.22;
+      }
 
-      // Dancers grooving to the beat
+      // Dancers grooving & clapping to the beat
       for (const d of dancers) {
-        d.char.group.position.y = d.baseY + beatPulse * 0.16;
+        d.char.group.position.y = d.baseY + beatPulse * 0.14;
         d.char.group.rotation.y = Math.sin(elapsed * 2.2 + d.phase) * 0.85;
-        d.char.leftArm.rotation.x = -2.1 + Math.sin(elapsed * 6.2 + d.phase) * 0.45;
-        d.char.rightArm.rotation.x = -2.1 - Math.sin(elapsed * 6.2 + d.phase) * 0.45;
+        if (d.char.glb) {
+          d.char.glb.mixer.update(clubDt);
+        }
       }
     },
   };
@@ -541,46 +561,50 @@ export function buildNeonClub(
 
 interface ClubCharacter {
   group: THREE.Group;
-  leftArm: THREE.Group;
-  rightArm: THREE.Group;
+  glb: GlbCharacterInstance | null;
 }
 
 let clubCharSeed = 0;
 
 function createClubCharacter(shirtColor: string, pantsColor: string, sunglasses: boolean): ClubCharacter {
   const seed = clubCharSeed++;
-  const isFemale = seed % 2 === 1;
-  const styles: CharacterHairStyle[] = isFemale ? ['ponytail', 'bob', 'feathered'] : ['pompadour', 'feathered'];
-  const rig = buildLowPolyCharacter({
-    role: 'civilian',
-    bodyType: isFemale ? 'female' : 'male',
-    skinColor: seed % 3 === 0 ? '#e6b89c' : seed % 3 === 1 ? '#d49a76' : '#b87a56',
-    hairColor: seed % 4 === 0 ? '#d9b06a' : '#1f1620',
-    primaryColor: shirtColor,
-    accentColor: '#36f1e6',
-    pantsColor,
-    shoeColor: '#f4eee8',
-    outfitVariant: seed,
-    hairStyle: styles[seed % styles.length],
-    wearsSunglasses: sunglasses,
-    hasMustache: false,
-    shortSleeves: true,
-    scale: isFemale ? 0.96 : 1.0,
+  const group = new THREE.Group();
+  const builds: CharacterBuildType[] = ['slim', 'muscular', 'average', 'heavy', 'tall-lean', 'stocky'];
+  const styles: PlayerGlbOutfitStyle[] = ['midnight-neon', 'hawaiian', 'white-suit', 'detective'];
+  const build = builds[seed % builds.length];
+
+  const handle: ClubCharacter = { group, glb: null };
+
+  whenGlbCharacterReady((tpl) => {
+    const inst = instantiateGlbCharacter(tpl, build);
+    styleGlbNpcInstance(inst, {
+      role: 'civilian',
+      build,
+      skinColor: seed % 3 === 0 ? '#e6b89c' : seed % 3 === 1 ? '#d49a76' : '#b87a56',
+      hairColor: seed % 4 === 0 ? '#d9b06a' : '#1f1620',
+      outfitStyle: styles[seed % styles.length],
+      primaryColor: shirtColor,
+      accentColor: '#36f1e6',
+      pantsColor,
+      shoeColor: '#f4eee8',
+      wearsSunglasses: sunglasses,
+      goldChain: seed % 2 === 0,
+    });
+
+    // Subtle neon club bounce glow (safe under 0.86 bloom threshold)
+    if (inst.materials.shirt) {
+      inst.materials.shirt.emissive.set(shirtColor);
+      inst.materials.shirt.emissiveIntensity = 0.18;
+    }
+
+    // Dancers (seed >= 2) use clapping groove; bartender & DJ use idle + arm overlay
+    inst.playAnim(seed >= 2 ? 'clap' : 'idle', 0);
+    const act = inst.actions.get(seed >= 2 ? 'clap' : 'idle');
+    if (act) act.time = (seed * 0.37) % 1.0;
+
+    group.add(inst.model);
+    handle.glb = inst;
   });
 
-  // Subtle neon club bounce glow on club outfits (safe under 0.86 bloom threshold)
-  rig.materials.torsoFront.emissive.set(shirtColor);
-  rig.materials.torsoFront.emissiveIntensity = 0.2;
-  rig.materials.torsoBack.emissive.set(shirtColor);
-  rig.materials.torsoBack.emissiveIntensity = 0.2;
-  rig.materials.sleeve.emissive.set(shirtColor);
-  rig.materials.sleeve.emissiveIntensity = 0.18;
-
-  // Natural slight elbow bend for dancing/DJ/bartending
-  rig.leftElbowPivot.rotation.x = -0.45;
-  rig.rightElbowPivot.rotation.x = -0.45;
-
-  const group = new THREE.Group();
-  group.add(rig.bodyRoot);
-  return { group, leftArm: rig.leftArmPivot, rightArm: rig.rightArmPivot };
+  return handle;
 }

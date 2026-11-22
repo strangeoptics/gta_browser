@@ -1,6 +1,14 @@
 import * as THREE from 'three';
 import { resolvePlayerCollisions } from '../engine/Physics';
-import { getFaceTexture, getOutfitBackTexture, getOutfitTexture } from '../entities/CharacterTextures';
+import { getPlayerGlbOutfitTexture, type PlayerGlbOutfitStyle } from '../entities/CharacterTextures';
+import {
+  createGoldChainMesh,
+  createPoliceCapMesh,
+  createSunglassesMesh,
+  instantiateGlbCharacter,
+  whenGlbCharacterReady,
+  type GlbCharacterInstance,
+} from '../entities/GlbCharacterFactory';
 import type { GamepadSnapshot } from '../engine/GamepadInput';
 import type { AABB } from '../types';
 import type { StuntRamp } from '../world/StuntRamps';
@@ -73,16 +81,10 @@ interface GarageRideEntity {
 interface ArticulatedRider {
   group: THREE.Group;
   bodyRoot: THREE.Group;
-  torsoMat: THREE.MeshStandardMaterial;
-  torsoBackMat: THREE.MeshStandardMaterial;
-  sleeveMat: THREE.MeshStandardMaterial;
-  pantsMat: THREE.MeshStandardMaterial;
-  leftLegPivot: THREE.Group;
-  rightLegPivot: THREE.Group;
-  leftShinPivot: THREE.Group;
-  rightShinPivot: THREE.Group;
-  leftArmPivot: THREE.Group;
-  rightArmPivot: THREE.Group;
+  glb: GlbCharacterInstance | null;
+  policeCapGroup: THREE.Group | null;
+  goldChainGroup: THREE.Group | null;
+  pendingOutfit: PlayerOutfitSpec | null;
 }
 
 let cachedSkateDeckTex: THREE.CanvasTexture | null = null;
@@ -710,50 +712,37 @@ export class GarageRidesSystem {
     }
     r.deckOrFramePivot.rotation.x += (targetPitch - r.deckOrFramePivot.rotation.x) * (1 - Math.exp(-15 * dt));
 
-    // Articulated Skater Rider animation (goofy/regular sideways skate stance + rhythmic kick-push!)
+    // Rigged GLB Skater Rider animation (sideways skate stance, kick-push & mid-air Ollie!)
     const rider = r.rider;
     const blend = 1 - Math.exp(-11 * dt);
+    if (!rider.glb) return;
+
     if (!r.grounded) {
-      // Mid-air Ollie tuck: bend knees up over the deck & spread arms for style!
-      rider.bodyRoot.position.y += (0.14 - rider.bodyRoot.position.y) * blend;
-      rider.leftLegPivot.rotation.x += (-0.65 - rider.leftLegPivot.rotation.x) * blend;
-      rider.rightLegPivot.rotation.x += (-0.65 - rider.rightLegPivot.rotation.x) * blend;
-      rider.leftShinPivot.rotation.x += (0.85 - rider.leftShinPivot.rotation.x) * blend;
-      rider.rightShinPivot.rotation.x += (0.85 - rider.rightShinPivot.rotation.x) * blend;
-      rider.leftArmPivot.rotation.z += (0.85 - rider.leftArmPivot.rotation.z) * blend;
-      rider.rightArmPivot.rotation.z += (-0.85 - rider.rightArmPivot.rotation.z) * blend;
+      // Mid-air Ollie jump pose
+      rider.bodyRoot.position.y += (0.08 - rider.bodyRoot.position.y) * blend;
+      rider.glb.playAnim('jump', 0.1);
+      rider.glb.mixer.update(dt);
+      if (rider.glb.headBone) rider.glb.headBone.rotation.y += 0.95;
       return;
     }
 
     if (pushing && r.speed >= -0.1) {
       r.animPhase += dt * (sprinting ? 6.4 : 4.8);
       const pushWave = Math.sin(r.animPhase);
-      // Front leg (left) stays planted on the deck bolts with athletic knee bend
-      rider.leftLegPivot.rotation.x += (-0.22 - rider.leftLegPivot.rotation.x) * blend;
-      rider.leftShinPivot.rotation.x += (0.28 - rider.leftShinPivot.rotation.x) * blend;
-
-      // Rear pushing leg (right) swings off the side of the deck to kick-push the asphalt!
-      rider.rightLegPivot.rotation.z += (-0.26 - rider.rightLegPivot.rotation.z) * blend;
-      rider.rightLegPivot.rotation.x = pushWave * 0.68;
-      rider.rightShinPivot.rotation.x = Math.max(0.08, -pushWave * 0.55 + 0.25);
-
-      rider.bodyRoot.position.y = 0.06 - Math.max(0, pushWave) * 0.04;
-      rider.leftArmPivot.rotation.x += (-0.35 - pushWave * 0.45 - rider.leftArmPivot.rotation.x) * blend;
-      rider.rightArmPivot.rotation.x += (-0.35 + pushWave * 0.45 - rider.rightArmPivot.rotation.x) * blend;
-      rider.leftArmPivot.rotation.z += (0.38 - rider.leftArmPivot.rotation.z) * blend;
-      rider.rightArmPivot.rotation.z += (-0.38 - rider.rightArmPivot.rotation.z) * blend;
+      rider.bodyRoot.position.y = 0.02 - Math.max(0, pushWave) * 0.035;
+      rider.glb.playAnim('walk', 0.14);
+      const walkAct = rider.glb.actions.get('walk');
+      if (walkAct) walkAct.setEffectiveTimeScale(sprinting ? 1.5 : 1.15);
+      rider.glb.mixer.update(dt);
+      if (rider.glb.headBone) rider.glb.headBone.rotation.y += 0.95;
     } else {
       // Poised cruising carve stance with both feet planted sideways on the grip tape
-      rider.bodyRoot.position.y += (0.07 - rider.bodyRoot.position.y) * blend;
-      rider.leftLegPivot.rotation.x += (-0.18 - rider.leftLegPivot.rotation.x) * blend;
-      rider.rightLegPivot.rotation.x += (0.16 - rider.rightLegPivot.rotation.x) * blend;
-      rider.rightLegPivot.rotation.z += (0 - rider.rightLegPivot.rotation.z) * blend;
-      rider.leftShinPivot.rotation.x += (0.22 - rider.leftShinPivot.rotation.x) * blend;
-      rider.rightShinPivot.rotation.x += (0.22 - rider.rightShinPivot.rotation.x) * blend;
-      rider.leftArmPivot.rotation.x += (-0.25 - rider.leftArmPivot.rotation.x) * blend;
-      rider.rightArmPivot.rotation.x += (-0.25 - rider.rightArmPivot.rotation.x) * blend;
-      rider.leftArmPivot.rotation.z += ((0.42 + steer * 0.2) - rider.leftArmPivot.rotation.z) * blend;
-      rider.rightArmPivot.rotation.z += ((-0.42 + steer * 0.2) - rider.rightArmPivot.rotation.z) * blend;
+      rider.bodyRoot.position.y += (0.0 - rider.bodyRoot.position.y) * blend;
+      rider.glb.playAnim('idle', 0.18);
+      rider.glb.mixer.update(dt);
+      if (rider.glb.headBone) rider.glb.headBone.rotation.y += 0.95;
+      if (rider.glb.upperArmL) rider.glb.upperArmL.rotation.z += 0.35 + steer * 0.18;
+      if (rider.glb.upperArmR) rider.glb.upperArmR.rotation.z -= 0.35 - steer * 0.18;
     }
   }
 
@@ -793,25 +782,36 @@ export class GarageRidesSystem {
       if (r.pedalRight) r.pedalRight.rotation.x = -r.animPhase;
     }
 
-    // Synchronized 360° Road-Cyclist Leg Kinematics tracking the left & right crank arms!
+    // Rigged GLB Road-Cyclist: seated aero tuck + synchronized 360° pedaling legs!
     const rider = r.rider;
-    const leftCrank = r.animPhase;
-    const rightCrank = r.animPhase + Math.PI;
-
-    const applyPedalLeg = (hip: THREE.Group, shin: THREE.Group, angle: number): void => {
-      // sin(angle): +1 at top of stroke, -1 at bottom of stroke; cos(angle): +1 forward (+Z)
-      const lift = Math.sin(angle);
-      const fwd = Math.cos(angle);
-      hip.rotation.x = -0.68 - lift * 0.44 - fwd * 0.16;
-      shin.rotation.x = 0.88 + lift * 0.46 - fwd * 0.12;
-    };
-
-    applyPedalLeg(rider.leftLegPivot, rider.leftShinPivot, leftCrank);
-    applyPedalLeg(rider.rightLegPivot, rider.rightShinPivot, rightCrank);
-
-    // Subtle out-of-the-saddle sprint bob when sprinting
     const sprintLift = pedaling && sprinting ? 0.05 + Math.abs(Math.sin(r.animPhase)) * 0.035 : 0;
-    rider.bodyRoot.position.y += (sprintLift - rider.bodyRoot.position.y) * (1 - Math.exp(-10 * dt));
+    rider.bodyRoot.position.y += (0.28 + sprintLift - rider.bodyRoot.position.y) * (1 - Math.exp(-10 * dt));
+
+    if (!rider.glb) return;
+    rider.glb.playAnim('sit', 0.1);
+    rider.glb.mixer.update(dt);
+
+    // Aero forward torso lean & head tilt up to look down the road
+    if (rider.glb.torsoBone) rider.glb.torsoBone.rotation.x += 0.48;
+    if (rider.glb.headBone) rider.glb.headBone.rotation.x -= 0.42;
+
+    // Arms reaching forward onto the drop-bar brake hoods
+    if (rider.glb.upperArmL) {
+      rider.glb.upperArmL.rotation.x -= 0.62;
+      rider.glb.upperArmL.rotation.z -= 0.1;
+    }
+    if (rider.glb.upperArmR) {
+      rider.glb.upperArmR.rotation.x -= 0.62;
+      rider.glb.upperArmR.rotation.z += 0.1;
+    }
+
+    // Synchronized pedaling motion on Left & Right legs tracking crank phase
+    const leftLift = Math.sin(r.animPhase);
+    const rightLift = Math.sin(r.animPhase + Math.PI);
+    if (rider.glb.upperLegL) rider.glb.upperLegL.rotation.x += leftLift * 0.36;
+    if (rider.glb.lowerLegL) rider.glb.lowerLegL.rotation.x -= leftLift * 0.34;
+    if (rider.glb.upperLegR) rider.glb.upperLegR.rotation.x += rightLift * 0.36;
+    if (rider.glb.lowerLegR) rider.glb.lowerLegR.rotation.x -= rightLift * 0.34;
   }
 
   private updateCamera(r: GarageRideEntity, dt: number, camera: THREE.PerspectiveCamera): void {
@@ -1474,214 +1474,115 @@ export class GarageRidesSystem {
   }
 
   // ===========================================================================
-  // Articulated 3rd-Person Rider (syncs live with PlayerAvatar's 80s Outfit!)
+  // Rigged GLB 3rd-Person Rider (syncs live with PlayerAvatar's 80s Outfit!)
   // ===========================================================================
   private buildArticulatedRider(kind: GarageRideId): ArticulatedRider {
     const group = new THREE.Group();
     const bodyRoot = new THREE.Group();
     group.add(bodyRoot);
 
-    const skinColor = '#e2b192';
-    const skinMat = new THREE.MeshStandardMaterial({ color: skinColor, roughness: 0.7 });
-    const hairMat = new THREE.MeshStandardMaterial({ color: '#2b1e1b', roughness: 0.8 });
-    const torsoMat = new THREE.MeshStandardMaterial({
-      map: getOutfitTexture('civilian', '#f2e8e1', '#36f1e6', 2),
-      roughness: 0.6,
-    });
-    const torsoBackMat = new THREE.MeshStandardMaterial({
-      map: getOutfitBackTexture('civilian', '#f2e8e1', '#36f1e6', 2),
-      roughness: 0.6,
-    });
-    const sleeveMat = new THREE.MeshStandardMaterial({ color: '#f2e8e1', roughness: 0.6 });
-    const torsoMats = [sleeveMat, sleeveMat, sleeveMat, sleeveMat, torsoMat, torsoBackMat];
-    const pantsMat = new THREE.MeshStandardMaterial({ color: '#272c42', roughness: 0.78 });
-    const shoeMat = new THREE.MeshStandardMaterial({ color: '#f7f4f0', roughness: 0.5 });
-    const faceMat = new THREE.MeshStandardMaterial({
-      map: getFaceTexture(skinColor, true, false),
-      roughness: 0.65,
-    });
-
     if (kind === 'skateboard') {
-      // Sideways goofy/regular skate stance on the deck, head turned forward (+Z)
-      group.position.set(0, 0.095, -0.02);
-
-      const skateStance = new THREE.Group();
-      skateStance.rotation.y = -1.12; // ~64 deg sideways across the deck!
-      bodyRoot.add(skateStance);
-
-      const pelvis = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.15, 0.24), pantsMat);
-      pelvis.position.y = 0.74;
-      skateStance.add(pelvis);
-
-      const torso = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.54, 0.25), torsoMats);
-      torso.position.y = 1.08;
-      torso.rotation.x = 0.14;
-      torso.castShadow = true;
-      skateStance.add(torso);
-
-      // Head turned toward +Z nose of the board so sunglasses look straight down the street!
-      const headGroup = new THREE.Group();
-      headGroup.position.set(0, 1.54, 0.03);
-      headGroup.rotation.y = 1.05;
-      const head = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.28, 0.26), [
-        skinMat,
-        skinMat,
-        hairMat,
-        skinMat,
-        faceMat,
-        hairMat,
-      ]);
-      head.castShadow = true;
-      const hair = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.1, 0.3), hairMat);
-      hair.position.set(0, 0.15, -0.02);
-      headGroup.add(head, hair);
-      skateStance.add(headGroup);
-
-      const buildArm = (side: -1 | 1): THREE.Group => {
-        const p = new THREE.Group();
-        p.position.set(side * 0.29, 1.3, 0);
-        const upper = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.26, 0.12), sleeveMat);
-        upper.position.y = -0.11;
-        const lower = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.24, 0.1), sleeveMat);
-        lower.position.y = -0.34;
-        const hand = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.09, 0.09), skinMat);
-        hand.position.y = -0.48;
-        p.add(upper, lower, hand);
-        skateStance.add(p);
-        return p;
-      };
-      const leftArmPivot = buildArm(-1);
-      const rightArmPivot = buildArm(1);
-
-      const buildTwoJointLeg = (side: -1 | 1): { hip: THREE.Group; shin: THREE.Group } => {
-        const hip = new THREE.Group();
-        hip.position.set(side * 0.14, 0.7, 0);
-        const thigh = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.34, 0.16), pantsMat);
-        thigh.position.y = -0.17;
-        thigh.castShadow = true;
-        hip.add(thigh);
-
-        const shin = new THREE.Group();
-        shin.position.set(0, -0.34, 0);
-        const calf = new THREE.Mesh(new THREE.BoxGeometry(0.135, 0.33, 0.145), pantsMat);
-        calf.position.y = -0.165;
-        const shoe = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.09, 0.25), shoeMat);
-        shoe.position.set(0, -0.33, 0.04);
-        shin.add(calf, shoe);
-        hip.add(shin);
-        skateStance.add(hip);
-        return { hip, shin };
-      };
-      const legL = buildTwoJointLeg(-1);
-      const legR = buildTwoJointLeg(1);
-
-      group.visible = false;
-      return {
-        group,
-        bodyRoot,
-        torsoMat,
-        torsoBackMat,
-        sleeveMat,
-        pantsMat,
-        leftLegPivot: legL.hip,
-        rightLegPivot: legR.hip,
-        leftShinPivot: legL.shin,
-        rightShinPivot: legR.shin,
-        leftArmPivot,
-        rightArmPivot,
-      };
+      // Sideways skate stance standing on the deck
+      group.position.set(0, 0.1, -0.02);
+      bodyRoot.rotation.y = -1.05;
+    } else {
+      // Seated aero road-cyclist position on the Rennrad saddle
+      bodyRoot.position.set(0, 0.28, -0.24);
     }
 
-    // Road Cyclist Rider: Aero forward tuck seated on the Rennrad saddle, hands on drop-bar hoods!
-    const pelvis = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.15, 0.24), pantsMat);
-    pelvis.position.set(0, 1.03, -0.28);
-    pelvis.rotation.x = 0.42;
-    bodyRoot.add(pelvis);
-
-    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.54, 0.24), torsoMats);
-    torso.position.set(0, 1.24, -0.08);
-    torso.rotation.x = 0.88; // Sleek road-racing aero back angle!
-    torso.castShadow = true;
-    bodyRoot.add(torso);
-
-    const head = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.28, 0.26), [
-      skinMat,
-      skinMat,
-      hairMat,
-      skinMat,
-      faceMat,
-      hairMat,
-    ]);
-    head.position.set(0, 1.48, 0.2);
-    head.castShadow = true;
-    const hair = new THREE.Mesh(new THREE.BoxGeometry(0.29, 0.1, 0.29), hairMat);
-    hair.position.set(0, 1.63, 0.18);
-    bodyRoot.add(head, hair);
-
-    // Arms reaching forward onto the brake hoods of the curved drop-bars
-    const buildCyclistArm = (side: -1 | 1): THREE.Group => {
-      const p = new THREE.Group();
-      p.position.set(side * 0.23, 1.33, 0.1);
-      p.rotation.x = -1.18;
-      p.rotation.z = side * 0.08;
-      const upper = new THREE.Mesh(new THREE.BoxGeometry(0.115, 0.28, 0.115), sleeveMat);
-      upper.position.y = -0.13;
-      const lower = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.26, 0.1), skinMat);
-      lower.position.set(0, -0.36, 0.05);
-      lower.rotation.x = -0.28;
-      p.add(upper, lower);
-      bodyRoot.add(p);
-      return p;
-    };
-    const leftArmPivot = buildCyclistArm(1);
-    const rightArmPivot = buildCyclistArm(-1);
-
-    // Articulated Hip + Knee Pedaling Legs
-    const buildCyclistLeg = (side: -1 | 1): { hip: THREE.Group; shin: THREE.Group } => {
-      const hip = new THREE.Group();
-      hip.position.set(side * 0.125, 0.99, -0.24);
-      const thigh = new THREE.Mesh(new THREE.BoxGeometry(0.145, 0.38, 0.155), pantsMat);
-      thigh.position.y = -0.19;
-      thigh.castShadow = true;
-      hip.add(thigh);
-
-      const shin = new THREE.Group();
-      shin.position.set(0, -0.38, 0);
-      const calf = new THREE.Mesh(new THREE.BoxGeometry(0.125, 0.37, 0.135), pantsMat);
-      calf.position.y = -0.185;
-      const shoe = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.085, 0.23), shoeMat);
-      shoe.position.set(0, -0.37, 0.045);
-      shin.add(calf, shoe);
-      hip.add(shin);
-      bodyRoot.add(hip);
-      return { hip, shin };
-    };
-    const legL = buildCyclistLeg(1);
-    const legR = buildCyclistLeg(-1);
-
     group.visible = false;
-    return {
+
+    const rider: ArticulatedRider = {
       group,
       bodyRoot,
-      torsoMat,
-      torsoBackMat,
-      sleeveMat,
-      pantsMat,
-      leftLegPivot: legL.hip,
-      rightLegPivot: legR.hip,
-      leftShinPivot: legL.shin,
-      rightShinPivot: legR.shin,
-      leftArmPivot,
-      rightArmPivot,
+      glb: null,
+      policeCapGroup: null,
+      goldChainGroup: null,
+      pendingOutfit: null,
     };
+
+    whenGlbCharacterReady((tpl) => {
+      const inst = instantiateGlbCharacter(tpl, 'average');
+      rider.glb = inst;
+      bodyRoot.add(inst.model);
+
+      // Attach bone-mounted 80s accessories matching PlayerAvatar
+      if (inst.headBone) {
+        inst.attachToBone(inst.headBone, new THREE.Vector3(0, 1.655, 0.118), createSunglassesMesh());
+
+        const cap = createPoliceCapMesh();
+        cap.visible = false;
+        rider.policeCapGroup = cap;
+        inst.attachToBone(inst.headBone, new THREE.Vector3(0, 1.755, -0.008), cap);
+      }
+
+      if (inst.torsoBone) {
+        const chain = createGoldChainMesh();
+        chain.visible = false;
+        rider.goldChainGroup = chain;
+        inst.attachToBone(inst.torsoBone, new THREE.Vector3(0, 1.44, 0.125), chain);
+      }
+
+      inst.playAnim(kind === 'skateboard' ? 'idle' : 'sit', 0);
+
+      if (rider.pendingOutfit) {
+        this.applyOutfitToRider(rider, rider.pendingOutfit);
+      } else {
+        this.applyOutfitToRider(rider, {
+          primary: '#f2e8e1',
+          accent: '#36f1e6',
+          pants: '#272c42',
+          variant: 2,
+          role: 'civilian',
+        });
+      }
+    });
+
+    return rider;
+  }
+
+  private resolveGlbOutfitStyle(outfit: PlayerOutfitSpec): {
+    style: PlayerGlbOutfitStyle;
+    shoes: string;
+    policeCap: boolean;
+    goldChain: boolean;
+  } {
+    if (outfit.role === 'police') {
+      return { style: 'police', shoes: '#141418', policeCap: true, goldChain: false };
+    }
+    if (outfit.variant === 1) {
+      return { style: 'hawaiian', shoes: '#ffffff', policeCap: false, goldChain: false };
+    }
+    if (outfit.primary === '#1e172b') {
+      return { style: 'midnight-neon', shoes: '#ff4fa3', policeCap: false, goldChain: true };
+    }
+    if (outfit.primary === '#9fe6d8') {
+      return { style: 'detective', shoes: '#2c2520', policeCap: false, goldChain: true };
+    }
+    return { style: 'white-suit', shoes: '#f5f2ee', policeCap: false, goldChain: false };
   }
 
   private applyOutfitToRider(rider: ArticulatedRider, outfit: PlayerOutfitSpec): void {
-    rider.torsoMat.map = getOutfitTexture(outfit.role, outfit.primary, outfit.accent, outfit.variant);
-    rider.torsoMat.needsUpdate = true;
-    rider.torsoBackMat.map = getOutfitBackTexture(outfit.role, outfit.primary, outfit.accent, outfit.variant);
-    rider.torsoBackMat.needsUpdate = true;
-    rider.sleeveMat.color.set(outfit.primary);
-    rider.pantsMat.color.set(outfit.pants);
+    rider.pendingOutfit = outfit;
+    const resolved = this.resolveGlbOutfitStyle(outfit);
+    if (rider.glb) {
+      if (rider.glb.materials.shirt) {
+        rider.glb.materials.shirt.color.set('#ffffff');
+        rider.glb.materials.shirt.map = getPlayerGlbOutfitTexture(resolved.style, outfit.primary, outfit.accent);
+        rider.glb.materials.shirt.needsUpdate = true;
+      }
+      if (rider.glb.materials.pants) {
+        rider.glb.materials.pants.color.set(outfit.pants);
+      }
+      if (rider.glb.materials.socks) {
+        rider.glb.materials.socks.color.set(resolved.shoes);
+      }
+    }
+    if (rider.policeCapGroup) {
+      rider.policeCapGroup.visible = resolved.policeCap;
+    }
+    if (rider.goldChainGroup) {
+      rider.goldChainGroup.visible = resolved.goldChain;
+    }
   }
 }

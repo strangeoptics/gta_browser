@@ -2,7 +2,14 @@ import * as THREE from 'three';
 import type { AABB } from '../types';
 import type { ShootableTarget } from '../combat/WeaponSystem';
 import { BLOCK_CENTERS } from '../world/CityLayout';
-import { buildLowPolyCharacter, type CharacterBodyType, type CharacterHairStyle } from './CharacterBuilder';
+import type { PlayerGlbOutfitStyle } from './CharacterTextures';
+import {
+  instantiateGlbCharacter,
+  styleGlbNpcInstance,
+  whenGlbCharacterReady,
+  type CharacterBuildType,
+  type GlbCharacterInstance,
+} from './GlbCharacterFactory';
 
 export type NpcRole = 'civilian' | 'police' | 'bounty' | 'guard';
 
@@ -12,6 +19,7 @@ export interface NpcEntity {
   group: THREE.Group;
   hitbox: THREE.Mesh;
   bodyRoot: THREE.Group;
+  glb: GlbCharacterInstance | null;
   position: THREE.Vector3;
   yaw: number;
   hp: number;
@@ -27,14 +35,8 @@ export interface NpcEntity {
   targetPos: THREE.Vector3;
   patrolPoints?: THREE.Vector3[];
   patrolIdx?: number;
-  leftLegPivot: THREE.Group;
-  rightLegPivot: THREE.Group;
-  leftKneePivot: THREE.Group;
-  rightKneePivot: THREE.Group;
-  leftArmPivot: THREE.Group;
-  rightArmPivot: THREE.Group;
-  leftElbowPivot: THREE.Group;
-  rightElbowPivot: THREE.Group;
+  aimBlend: number;
+  lodTick: number;
   muzzleFlash?: THREE.Mesh;
   deathTimer: number;
 }
@@ -378,16 +380,17 @@ export class NpcSystem {
       const npc = this.npcs[i];
 
       if (!npc.alive) {
-        // Smooth ragdoll-style fall onto the pavement with relaxed bent limbs
-        npc.fallProgress = Math.min(1, npc.fallProgress + clampedDt * 3.4);
-        const eased = 1 - Math.pow(1 - npc.fallProgress, 2);
-        npc.bodyRoot.rotation.x = -eased * (Math.PI / 2);
-        npc.bodyRoot.rotation.z = eased * npc.fallDir * 0.24;
-        npc.bodyRoot.position.y = eased * 0.16;
-        npc.leftKneePivot.rotation.x = eased * 0.45;
-        npc.rightKneePivot.rotation.x = eased * 0.25;
-        npc.leftElbowPivot.rotation.x = -eased * 0.5;
-        npc.rightElbowPivot.rotation.x = -eased * 0.35;
+        // Play skeletal Man_Death animation (with smooth fallback fall if GLB still loading)
+        if (npc.glb) {
+          npc.glb.playAnim('death', 0.12);
+          npc.glb.mixer.update(clampedDt);
+        } else {
+          npc.fallProgress = Math.min(1, npc.fallProgress + clampedDt * 3.4);
+          const eased = 1 - Math.pow(1 - npc.fallProgress, 2);
+          npc.bodyRoot.rotation.x = -eased * (Math.PI / 2);
+          npc.bodyRoot.rotation.z = eased * npc.fallDir * 0.24;
+          npc.bodyRoot.position.y = eased * 0.16;
+        }
 
         npc.deathTimer -= clampedDt;
         if (npc.deathTimer <= 0) {
@@ -526,53 +529,53 @@ export class NpcSystem {
         }
 
         npc.yaw = Math.atan2(moveX, moveZ);
-
         npc.walkPhase += clampedDt * moveSpeed * 2.9;
-        const isRunning = moveSpeed > 3.5;
-        const swing = Math.sin(npc.walkPhase) * (isRunning ? 0.72 : 0.48);
-        npc.leftLegPivot.rotation.x = swing;
-        npc.rightLegPivot.rotation.x = -swing;
-        npc.leftKneePivot.rotation.x = Math.max(0, Math.sin(npc.walkPhase + 0.85)) * (isRunning ? 0.92 : 0.5);
-        npc.rightKneePivot.rotation.x = Math.max(0, Math.sin(npc.walkPhase + Math.PI + 0.85)) * (isRunning ? 0.92 : 0.5);
-        npc.bodyRoot.position.y = Math.abs(Math.sin(npc.walkPhase)) * 0.045;
 
-        if (npc.role === 'civilian' && npc.state === 'flee') {
-          // Panic arms raised while fleeing
-          const panicWave = Math.sin(npc.walkPhase * 1.4) * 0.22;
-          npc.leftArmPivot.rotation.x += (-2.35 + panicWave - npc.leftArmPivot.rotation.x) * animBlend;
-          npc.rightArmPivot.rotation.x += (-2.35 - panicWave - npc.rightArmPivot.rotation.x) * animBlend;
-          npc.leftElbowPivot.rotation.x += (-0.55 - npc.leftElbowPivot.rotation.x) * animBlend;
-          npc.rightElbowPivot.rotation.x += (-0.55 - npc.rightElbowPivot.rotation.x) * animBlend;
-        } else if (aiming) {
-          // Aim weapon straight ahead while moving
-          npc.rightArmPivot.rotation.x += (-1.38 - npc.rightArmPivot.rotation.x) * animBlend;
-          npc.rightElbowPivot.rotation.x += (-0.18 - npc.rightElbowPivot.rotation.x) * animBlend;
-          npc.leftArmPivot.rotation.x += (-1.05 - npc.leftArmPivot.rotation.x) * animBlend;
-          npc.leftElbowPivot.rotation.x += (-0.42 - npc.leftElbowPivot.rotation.x) * animBlend;
-        } else {
-          // Natural opposite arm swing with elbow bend
-          npc.leftArmPivot.rotation.x += (-swing * 0.7 - npc.leftArmPivot.rotation.x) * animBlend;
-          npc.rightArmPivot.rotation.x += (swing * 0.7 - npc.rightArmPivot.rotation.x) * animBlend;
-          npc.leftElbowPivot.rotation.x += ((-0.22 - Math.max(0, -swing) * 0.5) - npc.leftElbowPivot.rotation.x) * animBlend;
-          npc.rightElbowPivot.rotation.x += ((-0.22 - Math.max(0, swing) * 0.5) - npc.rightElbowPivot.rotation.x) * animBlend;
+        if (npc.glb) {
+          const isRunning = moveSpeed > 3.5;
+          npc.glb.playAnim(isRunning ? 'run' : 'walk', 0.16);
+          const act = npc.glb.actions.get(isRunning ? 'run' : 'walk');
+          if (act) {
+            act.setEffectiveTimeScale(
+              isRunning
+                ? THREE.MathUtils.clamp(moveSpeed / 5.2, 0.8, 1.45)
+                : THREE.MathUtils.clamp(moveSpeed / 2.2, 0.75, 1.4),
+            );
+          }
         }
       } else {
-        npc.leftLegPivot.rotation.x *= 0.84;
-        npc.rightLegPivot.rotation.x *= 0.84;
-        npc.leftKneePivot.rotation.x *= 0.84;
-        npc.rightKneePivot.rotation.x *= 0.84;
-        npc.bodyRoot.position.y *= 0.84;
-        if (aiming) {
-          const recoilLift = npc.muzzleTimer > 0 ? -0.25 : 0;
-          npc.rightArmPivot.rotation.x += (-1.42 + recoilLift - npc.rightArmPivot.rotation.x) * animBlend;
-          npc.rightElbowPivot.rotation.x += (-0.16 - npc.rightElbowPivot.rotation.x) * animBlend;
-          npc.leftArmPivot.rotation.x += (-1.15 - npc.leftArmPivot.rotation.x) * animBlend;
-          npc.leftElbowPivot.rotation.x += (-0.42 - npc.leftElbowPivot.rotation.x) * animBlend;
-        } else {
-          npc.leftArmPivot.rotation.x *= 0.85;
-          npc.rightArmPivot.rotation.x *= 0.85;
-          npc.leftElbowPivot.rotation.x += (-0.15 - npc.leftElbowPivot.rotation.x) * animBlend;
-          npc.rightElbowPivot.rotation.x += (-0.15 - npc.rightElbowPivot.rotation.x) * animBlend;
+        if (npc.glb) {
+          npc.glb.playAnim('idle', 0.2);
+        }
+      }
+
+      // Distance-based LOD for AnimationMixer & castShadow so 20+ rigged GLB NPCs stay silky-smooth
+      if (npc.glb) {
+        const wantsShadow = distToPlayer < 52;
+        if (npc.glb.meshes.length > 0 && npc.glb.meshes[0].castShadow !== wantsShadow) {
+          for (const m of npc.glb.meshes) m.castShadow = wantsShadow;
+        }
+
+        npc.lodTick++;
+        if (distToPlayer < 44) {
+          npc.glb.mixer.update(clampedDt);
+        } else if (distToPlayer < 85 && npc.lodTick % 2 === 0) {
+          npc.glb.mixer.update(clampedDt * 2);
+        }
+
+        // Post-mixer procedural aim raise for armed NPCs & panic arm lift for fleeing civilians
+        const targetAim = aiming ? 1 : 0;
+        npc.aimBlend += (targetAim - npc.aimBlend) * animBlend;
+        if (npc.aimBlend > 0.01 && npc.glb.upperArmR) {
+          const recoilLift = npc.muzzleTimer > 0 ? 0.24 : 0;
+          npc.glb.upperArmR.rotation.x -= (0.9 + recoilLift) * npc.aimBlend;
+          if (npc.glb.lowerArmR) {
+            npc.glb.lowerArmR.rotation.x -= 0.25 * npc.aimBlend;
+          }
+        } else if (npc.role === 'civilian' && npc.state === 'flee') {
+          const panicWave = Math.sin(npc.walkPhase * 1.4) * 0.22;
+          if (npc.glb.upperArmL) npc.glb.upperArmL.rotation.x -= 1.6 + panicWave;
+          if (npc.glb.upperArmR) npc.glb.upperArmR.rotation.x -= 1.6 - panicWave;
         }
       }
 
@@ -690,22 +693,21 @@ export class NpcSystem {
   }
 
   /**
-   * Builds a stylized Low-Poly 80s Miami character via CharacterBuilder with:
-   * - Tapered male & female silhouettes, faceted head, 3D sunglasses/facial features & hairstyles
-   * - Procedural front/back outfit textures, 3D lapels/badges/chains
-   * - 2-segment articulated arms (shoulder + elbow) & legs (hip + knee), plus 3D weapons & muzzle flash
+   * Spawns a rigged Quaternius GLB NPC with varied body builds (slim, tall-lean, average,
+   * muscular, heavy, stocky), UV-mapped 80s outfits, bone-mounted accessories & weapons.
    */
   private createNpc(role: NpcRole, x: number, z: number, shirtColor: string, maxHp: number, baseY = 0.18): NpcEntity {
     const seed = this.nextId++;
     const group = new THREE.Group();
     group.position.set(x, baseY, z);
 
+    const bodyRoot = new THREE.Group();
+    group.add(bodyRoot);
+
     const skinColor = SKIN_TONES[seed % SKIN_TONES.length];
     const hairColor = HAIR_COLORS[(seed * 3) % HAIR_COLORS.length];
     const accentColor = role === 'guard' ? '#ff3d7f' : CIV_ACCENTS[seed % CIV_ACCENTS.length];
     const wearsSunglasses = role === 'bounty' || role === 'guard' || role === 'police' || seed % 2 === 0;
-    const bodyType: CharacterBodyType = role === 'civilian' && seed % 2 === 0 ? 'female' : 'male';
-    const hasMustache = bodyType === 'male' && (role === 'police' ? seed % 2 === 0 : seed % 4 === 1);
 
     const pantsColor =
       role === 'police'
@@ -719,70 +721,31 @@ export class NpcSystem {
               : '#2c3047';
     const shoeColor = role === 'police' || role === 'guard' ? '#141418' : '#f4eee8';
 
-    let hairStyle: CharacterHairStyle;
-    if (role === 'police') {
-      hairStyle = 'police';
-    } else if (role === 'bounty' || role === 'guard') {
-      hairStyle = 'pompadour';
-    } else if (bodyType === 'female') {
-      const femaleStyles: CharacterHairStyle[] = ['ponytail', 'bob', 'feathered'];
-      hairStyle = femaleStyles[seed % femaleStyles.length];
+    // Varied body builds per role (dünner, größer, muskulöser, stämmig, dicker!)
+    let build: CharacterBuildType;
+    if (role === 'guard') {
+      const guardBuilds: CharacterBuildType[] = ['muscular', 'stocky', 'muscular', 'heavy'];
+      build = guardBuilds[seed % guardBuilds.length];
+    } else if (role === 'bounty') {
+      build = seed % 2 === 0 ? 'muscular' : 'tall-lean';
+    } else if (role === 'police') {
+      const pdBuilds: CharacterBuildType[] = ['average', 'muscular', 'stocky', 'heavy'];
+      build = pdBuilds[seed % pdBuilds.length];
     } else {
-      const maleStyles: CharacterHairStyle[] = ['pompadour', 'feathered', 'cap'];
-      hairStyle = maleStyles[seed % maleStyles.length];
+      const civBuilds: CharacterBuildType[] = ['slim', 'heavy', 'muscular', 'tall-lean', 'stocky', 'average'];
+      build = civBuilds[seed % civBuilds.length];
     }
 
-    const scale =
-      role === 'bounty'
-        ? 1.05
-        : bodyType === 'female'
-          ? 0.94 + (seed % 3) * 0.02
-          : 0.98 + (seed % 4) * 0.02;
-
-    const rig = buildLowPolyCharacter({
-      role,
-      bodyType,
-      skinColor,
-      hairColor,
-      primaryColor: shirtColor,
-      accentColor,
-      pantsColor,
-      shoeColor,
-      outfitVariant: seed,
-      hairStyle,
-      wearsSunglasses,
-      hasMustache,
-      isShorts: role === 'civilian' && seed % 2 === 1,
-      shortSleeves: role === 'civilian' || role === 'police',
-      withHalo: role === 'bounty',
-      scale,
-    });
-
-    const { bodyRoot } = rig;
-    group.add(bodyRoot);
-
-    // Attach 3D weapon + muzzle flash to right hand anchor for armed roles
-    let muzzleFlash: THREE.Mesh | undefined;
-    if (role === 'police' || role === 'bounty' || role === 'guard') {
-      const gunMat = new THREE.MeshStandardMaterial({
-        color: '#24202b',
-        metalness: 0.75,
-        roughness: 0.3,
-        flatShading: true,
-      });
-      const barrelLen = role === 'bounty' ? 0.34 : 0.25;
-      const gun = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.08, barrelLen), gunMat);
-      gun.position.set(0, -0.05, barrelLen * 0.38);
-      gun.rotation.x = Math.PI / 2;
-      rig.rightHandAnchor.add(gun);
-
-      muzzleFlash = new THREE.Mesh(
-        new THREE.OctahedronGeometry(0.09, 0),
-        new THREE.MeshBasicMaterial({ color: role === 'bounty' ? '#ff4fa3' : '#ffcf66' }),
-      );
-      muzzleFlash.position.set(0, -0.05 - barrelLen * 0.45, 0.08);
-      muzzleFlash.visible = false;
-      rig.rightHandAnchor.add(muzzleFlash);
+    let outfitStyle: PlayerGlbOutfitStyle;
+    if (role === 'police') {
+      outfitStyle = 'police';
+    } else if (role === 'guard') {
+      outfitStyle = 'midnight-neon';
+    } else if (role === 'bounty') {
+      outfitStyle = 'white-suit';
+    } else {
+      const civStyles: PlayerGlbOutfitStyle[] = ['hawaiian', 'white-suit', 'detective', 'midnight-neon'];
+      outfitStyle = civStyles[seed % civStyles.length];
     }
 
     const hitbox = new THREE.Mesh(this.hitboxGeo, this.hitboxMat);
@@ -797,6 +760,7 @@ export class NpcSystem {
       group,
       hitbox,
       bodyRoot,
+      glb: null,
       position: new THREE.Vector3(x, baseY, z),
       yaw: Math.random() * Math.PI * 2,
       hp: maxHp,
@@ -810,17 +774,73 @@ export class NpcSystem {
       fallProgress: 0,
       fallDir: 1,
       targetPos: this.randomSidewalkPoint(),
-      leftLegPivot: rig.leftLegPivot,
-      rightLegPivot: rig.rightLegPivot,
-      leftKneePivot: rig.leftKneePivot,
-      rightKneePivot: rig.rightKneePivot,
-      leftArmPivot: rig.leftArmPivot,
-      rightArmPivot: rig.rightArmPivot,
-      leftElbowPivot: rig.leftElbowPivot,
-      rightElbowPivot: rig.rightElbowPivot,
-      muzzleFlash,
+      aimBlend: 0,
+      lodTick: seed % 2,
       deathTimer: 0,
     };
+
+    whenGlbCharacterReady((tpl) => {
+      // Skip attaching if this NPC already despawned before GLB finished loading
+      if (!this.npcs.includes(npc)) return;
+
+      const inst = instantiateGlbCharacter(tpl, build);
+      styleGlbNpcInstance(inst, {
+        role,
+        build,
+        skinColor,
+        hairColor,
+        outfitStyle,
+        primaryColor: role === 'bounty' ? '#f5f0eb' : shirtColor,
+        accentColor,
+        pantsColor,
+        shoeColor,
+        wearsSunglasses,
+        policeCap: role === 'police',
+        goldChain: role === 'bounty' || role === 'guard' || (role === 'civilian' && seed % 5 === 0),
+        coastalCap: role === 'civilian' && seed % 3 === 2,
+        withHalo: role === 'bounty',
+      });
+
+      // Attach 3D firearm + muzzle flash to right hand bone for armed roles
+      if ((role === 'police' || role === 'bounty' || role === 'guard') && inst.rightHandBone) {
+        const weaponAnchor = new THREE.Group();
+        const boneWorldScale = new THREE.Vector3();
+        inst.model.updateMatrixWorld(true);
+        inst.rightHandBone.getWorldScale(boneWorldScale);
+        weaponAnchor.scale.set(
+          1 / Math.max(boneWorldScale.x, 0.0001),
+          1 / Math.max(boneWorldScale.y, 0.0001),
+          1 / Math.max(boneWorldScale.z, 0.0001),
+        );
+        weaponAnchor.position.set(0, 0.0012, 0);
+        inst.rightHandBone.add(weaponAnchor);
+
+        const gunMat = new THREE.MeshStandardMaterial({
+          color: '#24202b',
+          metalness: 0.75,
+          roughness: 0.3,
+          flatShading: true,
+        });
+        const barrelLen = role === 'bounty' ? 0.34 : 0.25;
+        const gun = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.08, barrelLen), gunMat);
+        gun.position.set(0, 0.04, barrelLen * 0.42);
+        weaponAnchor.add(gun);
+
+        const flash = new THREE.Mesh(
+          new THREE.OctahedronGeometry(0.09, 0),
+          new THREE.MeshBasicMaterial({ color: role === 'bounty' ? '#ff4fa3' : '#ffcf66' }),
+        );
+        flash.position.set(0, 0.04, barrelLen * 0.92);
+        flash.visible = false;
+        weaponAnchor.add(flash);
+        npc.muzzleFlash = flash;
+      }
+
+      inst.playAnim(npc.alive ? 'walk' : 'death', 0);
+      bodyRoot.add(inst.model);
+      npc.glb = inst;
+    });
+
     this.npcs.push(npc);
     return npc;
   }

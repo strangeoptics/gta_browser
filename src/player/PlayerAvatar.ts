@@ -1,6 +1,13 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { getPlayerGlbOutfitTexture, type PlayerGlbOutfitStyle } from '../entities/CharacterTextures';
+import {
+  createGoldChainMesh,
+  createPoliceCapMesh,
+  createSunglassesMesh,
+  instantiateGlbCharacter,
+  whenGlbCharacterReady,
+  type GlbCharacterInstance,
+} from '../entities/GlbCharacterFactory';
 
 interface PlayerOutfitDef {
   name: string;
@@ -78,115 +85,19 @@ const PLAYER_OUTFITS: PlayerOutfitDef[] = [
   },
 ];
 
-type AnimKey = 'idle' | 'walk' | 'run' | 'jump' | 'runJump' | 'slash';
-
 /**
- * Generates seamless per-triangle UVs on the Quaternius Shirt SkinnedMesh so our
- * 256x256 procedural 80s Miami outfit textures (front, back & sleeves) map crisply!
- */
-function assignShirtOutfitUVs(mesh: THREE.Mesh): void {
-  const nonIndexed = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry;
-  const pos = nonIndexed.getAttribute('position');
-  if (!pos) return;
-
-  const uvs = new Float32Array(pos.count * 2);
-  // Raw Blender bind-pose bounds for Quaternius Shirt:
-  // X: -0.0086..0.0086 (torso core: -0.0041..+0.0041), Y: -0.0035 (front)..+0.0040 (back), Z: 0.0248..0.0405 (up)
-  const torsoHalfX = 0.0041;
-  const zMin = 0.0248;
-  const zSpan = 0.0405 - zMin;
-
-  for (let i = 0; i < pos.count; i += 3) {
-    const cx = (pos.getX(i) + pos.getX(i + 1) + pos.getX(i + 2)) / 3;
-    const cy = (pos.getY(i) + pos.getY(i + 1) + pos.getY(i + 2)) / 3;
-
-    const isSleeve = Math.abs(cx) > torsoHalfX;
-    const isFront = cy <= 0.0002;
-
-    for (let k = 0; k < 3; k++) {
-      const vi = i + k;
-      const x = pos.getX(vi);
-      const y = pos.getY(vi);
-      const z = pos.getZ(vi);
-      const vNorm = THREE.MathUtils.clamp((z - zMin) / zSpan, 0, 1);
-
-      let u: number;
-      let v: number;
-      if (isSleeve) {
-        // Bottom half of 256x256 atlas: sleeves (u: 0..1, v: 0..0.48)
-        const sleeveFrac = THREE.MathUtils.clamp((Math.abs(x) - torsoHalfX) / 0.0046, 0, 1);
-        u = THREE.MathUtils.clamp((y + 0.0035) / 0.0075, 0.02, 0.98);
-        v = 0.46 - sleeveFrac * 0.44;
-      } else if (isFront) {
-        // Top-Left quadrant: Front torso (u: 0.02..0.48, v: 0.52..0.98)
-        const xNorm = THREE.MathUtils.clamp((x + torsoHalfX) / (torsoHalfX * 2), 0, 1);
-        u = 0.02 + xNorm * 0.46;
-        v = 0.52 + vNorm * 0.46;
-      } else {
-        // Top-Right quadrant: Back torso (u: 0.52..0.98, v: 0.52..0.98)
-        const xNorm = THREE.MathUtils.clamp((torsoHalfX - x) / (torsoHalfX * 2), 0, 1);
-        u = 0.52 + xNorm * 0.46;
-        v = 0.52 + vNorm * 0.46;
-      }
-
-      uvs[vi * 2] = u;
-      uvs[vi * 2 + 1] = v;
-    }
-  }
-
-  nonIndexed.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
-  mesh.geometry = nonIndexed;
-}
-
-/**
- * Helper: attaches a world-scale accessory Group to a bone at an exact model-space position
- * while preserving upright (+Y up, +Z forward) alignment regardless of Blender bone roll.
- */
-function attachAccessoryToBone(
-  bone: THREE.Object3D,
-  modelRoot: THREE.Object3D,
-  worldPos: THREE.Vector3,
-  uniformScale: number,
-  accessory: THREE.Object3D,
-): void {
-  modelRoot.updateMatrixWorld(true);
-
-  const localPos = worldPos.clone();
-  bone.worldToLocal(localPos);
-
-  const boneWorldQuat = new THREE.Quaternion();
-  bone.getWorldQuaternion(boneWorldQuat);
-
-  const wrapper = new THREE.Group();
-  wrapper.position.copy(localPos);
-  wrapper.quaternion.copy(boneWorldQuat).invert();
-  wrapper.scale.setScalar(1 / (100 * uniformScale));
-  wrapper.add(accessory);
-  bone.add(wrapper);
-}
-
-/**
- * Stylized 3D Low-Poly protagonist avatar powered by the rigged Quaternius Man GLB
- * (`public/models/player_man.glb`) with AnimationMixer crossfades, procedural UV-mapped
- * 80s Miami outfits (suits, Hawaiian print, Midnight Neon, Vice PD uniform + cap),
- * 3D 80s sunglasses, gold chain, Safehouse mirror Layer-1 support, and hand-bone weapons.
+ * Stylized 3D Low-Poly protagonist avatar powered by the shared rigged Quaternius Man GLB
+ * (`GlbCharacterFactory`) with AnimationMixer crossfades, procedural UV-mapped 80s Miami
+ * outfits, 3D accessories (sunglasses, Vice PD cap, gold chain), Safehouse mirror Layer-1
+ * support, and hand-bone weapons.
  */
 export class PlayerAvatar {
   public readonly group = new THREE.Group();
   private readonly bodyRoot = new THREE.Group();
 
-  private mixer: THREE.AnimationMixer | null = null;
-  private readonly actions = new Map<AnimKey, THREE.AnimationAction>();
-  private currentAnim: AnimKey | null = null;
-
-  private shirtMat: THREE.MeshStandardMaterial | null = null;
-  private pantsMat: THREE.MeshStandardMaterial | null = null;
-  private socksMat: THREE.MeshStandardMaterial | null = null;
-
+  private glb: GlbCharacterInstance | null = null;
   private policeCapGroup: THREE.Group | null = null;
   private goldChainGroup: THREE.Group | null = null;
-  private upperArmR: THREE.Object3D | null = null;
-  private lowerArmR: THREE.Object3D | null = null;
   private gunMesh: THREE.Mesh | null = null;
   private katanaMesh: THREE.Mesh | null = null;
 
@@ -200,237 +111,76 @@ export class PlayerAvatar {
     this.group.visible = false;
     scene.add(this.group);
 
-    this.loadModel();
-  }
+    whenGlbCharacterReady((tpl) => {
+      const inst = instantiateGlbCharacter(tpl, 'average');
+      this.glb = inst;
+      this.bodyRoot.add(inst.model);
 
-  private loadModel(): void {
-    const loader = new GLTFLoader();
-    loader.load(
-      './models/player_man.glb',
-      (gltf) => {
-        const model = gltf.scene;
+      // Attach bone-mounted 80s accessories
+      if (inst.headBone) {
+        inst.attachToBone(inst.headBone, new THREE.Vector3(0, 1.655, 0.118), createSunglassesMesh());
 
-        // Normalize height to 1.82m and ground feet cleanly at y = 0
-        model.updateMatrixWorld(true);
-        const rawBox = new THREE.Box3().setFromObject(model);
-        const rawSize = new THREE.Vector3();
-        rawBox.getSize(rawSize);
-        const targetHeight = 1.82;
-        const uniformScale = rawSize.y > 0.01 ? targetHeight / rawSize.y : 0.376;
-        model.scale.setScalar(uniformScale);
+        const cap = createPoliceCapMesh();
+        cap.visible = false;
+        this.policeCapGroup = cap;
+        inst.attachToBone(inst.headBone, new THREE.Vector3(0, 1.755, -0.008), cap);
+      }
 
-        model.updateMatrixWorld(true);
-        const scaledBox = new THREE.Box3().setFromObject(model);
-        model.position.y = -scaledBox.min.y;
+      if (inst.torsoBone) {
+        const chain = createGoldChainMesh();
+        chain.visible = false;
+        this.goldChainGroup = chain;
+        inst.attachToBone(inst.torsoBone, new THREE.Vector3(0, 1.44, 0.125), chain);
+      }
 
-        // Configure shadows, frustum culling, procedural Shirt UVs & collect named materials
-        model.traverse((obj) => {
-          if (obj instanceof THREE.Mesh) {
-            obj.castShadow = true;
-            obj.receiveShadow = true;
-            if (obj instanceof THREE.SkinnedMesh) {
-              obj.frustumCulled = false;
-            }
-            const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
-            for (const mat of mats) {
-              if (!(mat instanceof THREE.MeshStandardMaterial)) continue;
-              mat.flatShading = true;
-              mat.roughness = Math.max(mat.roughness, 0.58);
-              mat.needsUpdate = true;
-              if (mat.name === 'Shirt') {
-                this.shirtMat = mat;
-                assignShirtOutfitUVs(obj);
-              } else if (mat.name === 'Pants') {
-                this.pantsMat = mat;
-              } else if (mat.name === 'Socks') {
-                this.socksMat = mat;
-              }
-            }
-          }
-        });
+      // Attach weapons to right hand bone
+      if (inst.rightHandBone) {
+        const weaponAnchor = new THREE.Group();
+        const invBoneScale = 1 / (100 * inst.uniformScale);
+        weaponAnchor.scale.setScalar(invBoneScale);
+        weaponAnchor.position.set(0, 0.0012, 0);
+        inst.rightHandBone.add(weaponAnchor);
 
-        this.bodyRoot.add(model);
+        this.gunMesh = new THREE.Mesh(
+          new THREE.BoxGeometry(0.06, 0.085, 0.34),
+          new THREE.MeshStandardMaterial({ color: '#2b2636', metalness: 0.8, roughness: 0.28, flatShading: true }),
+        );
+        this.gunMesh.position.set(0, 0.04, 0.14);
+        weaponAnchor.add(this.gunMesh);
 
-        // Attach bone-mounted 80s accessories (Sunglasses, Vice PD Cap, Gold Chain)
-        const headBone = model.getObjectByName('Head');
-        if (headBone) {
-          // 1. Iconic 80s Sunset Wayfarer Sunglasses
-          const shades = new THREE.Group();
-          const frameMat = new THREE.MeshStandardMaterial({ color: '#14101c', roughness: 0.3, flatShading: true });
-          const lensMat = new THREE.MeshStandardMaterial({
-            color: '#20183a',
-            emissive: '#2998b8',
-            emissiveIntensity: 0.34,
-            metalness: 0.85,
-            roughness: 0.12,
-            flatShading: true,
-          });
-          const bridge = new THREE.Mesh(new THREE.BoxGeometry(0.036, 0.014, 0.014), frameMat);
-          bridge.position.set(0, 0.005, 0.004);
-          shades.add(bridge);
-          for (const side of [-1, 1] as const) {
-            const frame = new THREE.Mesh(new THREE.BoxGeometry(0.072, 0.044, 0.016), frameMat);
-            frame.position.set(side * 0.048, 0, 0);
-            frame.rotation.y = side * -0.14;
-            shades.add(frame);
+        this.katanaMesh = new THREE.Mesh(
+          new THREE.BoxGeometry(0.025, 0.85, 0.05),
+          new THREE.MeshStandardMaterial({
+            color: '#e6ffff',
+            emissive: '#36f1e6',
+            emissiveIntensity: 2.2,
+          }),
+        );
+        this.katanaMesh.position.set(0, 0.42, 0.03);
+        this.katanaMesh.visible = false;
+        weaponAnchor.add(this.katanaMesh);
+      }
 
-            const lens = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.033, 0.018), lensMat);
-            lens.position.set(side * 0.048, 0, 0.002);
-            lens.rotation.y = side * -0.14;
-            shades.add(lens);
-
-            const temple = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.012, 0.12), frameMat);
-            temple.position.set(side * 0.092, 0.008, -0.06);
-            shades.add(temple);
-          }
-          attachAccessoryToBone(headBone, model, new THREE.Vector3(0, 1.655, 0.118), uniformScale, shades);
-
-          // 2. 3D Vice PD Peaked Officer Cap (shown when wearing VICE PD UNIFORM)
-          const cap = new THREE.Group();
-          const capDark = new THREE.MeshStandardMaterial({ color: '#142447', roughness: 0.55, flatShading: true });
-          const capBrim = new THREE.MeshStandardMaterial({ color: '#0d1018', roughness: 0.28, flatShading: true });
-          const goldMat = new THREE.MeshStandardMaterial({ color: '#ffd15c', metalness: 0.85, roughness: 0.22, flatShading: true });
-
-          const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.12, 0.09, 8), capDark);
-          crown.position.set(0, 0.045, 0);
-          cap.add(crown);
-
-          const band = new THREE.Mesh(new THREE.CylinderGeometry(0.123, 0.123, 0.026, 8), capBrim);
-          band.position.set(0, 0.01, 0);
-          cap.add(band);
-
-          const brim = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.118, 0.128, 0.016, 8, 1, false, -Math.PI * 0.35, Math.PI * 0.7),
-            capBrim,
-          );
-          brim.position.set(0, 0.003, 0.052);
-          brim.rotation.x = 0.16;
-          cap.add(brim);
-
-          const emblem = new THREE.Mesh(new THREE.OctahedronGeometry(0.024, 0), goldMat);
-          emblem.scale.set(1, 1.1, 0.4);
-          emblem.position.set(0, 0.042, 0.128);
-          cap.add(emblem);
-
-          cap.visible = false;
-          this.policeCapGroup = cap;
-          attachAccessoryToBone(headBone, model, new THREE.Vector3(0, 1.755, -0.008), uniformScale, cap);
-        }
-
-        // 3. 3D 80s Gold Chain on Torso (shown on Midnight Neon & Vice Detective)
-        const torsoBone = model.getObjectByName('Torso');
-        if (torsoBone) {
-          const chainGroup = new THREE.Group();
-          const goldMat = new THREE.MeshStandardMaterial({ color: '#ffd15c', metalness: 0.88, roughness: 0.2, flatShading: true });
-          const chain = new THREE.Mesh(new THREE.TorusGeometry(0.062, 0.01, 5, 12, Math.PI), goldMat);
-          chain.rotation.z = Math.PI;
-          chainGroup.add(chain);
-          chainGroup.visible = false;
-          this.goldChainGroup = chainGroup;
-          attachAccessoryToBone(torsoBone, model, new THREE.Vector3(0, 1.44, 0.125), uniformScale, chainGroup);
-        }
-
-        // Locate right arm & hand bones for weapon attachments
-        const invBoneScale = 1 / (100 * uniformScale);
-        this.upperArmR = model.getObjectByName('UpperArm.R') ?? null;
-        this.lowerArmR = model.getObjectByName('LowerArm.R') ?? null;
-
-        const rightHandBone =
-          model.getObjectByName('MiddleHand.R') ??
-          model.getObjectByName('Palm.R') ??
-          model.getObjectByName('LowerArm.R');
-
-        if (rightHandBone) {
-          const weaponAnchor = new THREE.Group();
-          weaponAnchor.scale.setScalar(invBoneScale);
-          weaponAnchor.position.set(0, 0.0012, 0);
-          rightHandBone.add(weaponAnchor);
-
-          // Held firearm
-          this.gunMesh = new THREE.Mesh(
-            new THREE.BoxGeometry(0.06, 0.085, 0.34),
-            new THREE.MeshStandardMaterial({ color: '#2b2636', metalness: 0.8, roughness: 0.28, flatShading: true }),
-          );
-          this.gunMesh.position.set(0, 0.04, 0.14);
-          weaponAnchor.add(this.gunMesh);
-
-          // Held Neon Katana (shown for weapon slot 0)
-          this.katanaMesh = new THREE.Mesh(
-            new THREE.BoxGeometry(0.025, 0.85, 0.05),
-            new THREE.MeshStandardMaterial({
-              color: '#e6ffff',
-              emissive: '#36f1e6',
-              emissiveIntensity: 2.2,
-            }),
-          );
-          this.katanaMesh.position.set(0, 0.42, 0.03);
-          this.katanaMesh.visible = false;
-          weaponAnchor.add(this.katanaMesh);
-        }
-
-        // Setup AnimationMixer & map built-in Quaternius clips
-        this.mixer = new THREE.AnimationMixer(model);
-        const clipLookup: Record<AnimKey, string> = {
-          idle: 'HumanArmature|Man_Idle',
-          walk: 'HumanArmature|Man_Walk',
-          run: 'HumanArmature|Man_Run',
-          jump: 'HumanArmature|Man_Jump',
-          runJump: 'HumanArmature|Man_RunningJump',
-          slash: 'HumanArmature|Man_SwordSlash',
-        };
-
-        for (const [key, clipName] of Object.entries(clipLookup) as [AnimKey, string][]) {
-          const clip = gltf.animations.find((c) => c.name === clipName);
-          if (!clip) continue;
-          const action = this.mixer.clipAction(clip);
-          if (key === 'jump' || key === 'runJump') {
-            action.setLoop(THREE.LoopOnce, 1);
-            action.clampWhenFinished = true;
-          }
-          this.actions.set(key, action);
-        }
-
-        // Start in Idle
-        this.playAnim('idle', 0);
-
-        // Apply currently selected Safehouse outfit & mirror layer state
-        this.applyOutfitAppearance();
-        this.applyLayerState();
-      },
-      undefined,
-      (err) => {
-        console.warn('[PlayerAvatar] Failed to load ./models/player_man.glb:', err);
-      },
-    );
-  }
-
-  private playAnim(key: AnimKey, fadeDuration = 0.16): void {
-    if (this.currentAnim === key) return;
-    const next = this.actions.get(key);
-    if (!next) return;
-
-    const prev = this.currentAnim ? this.actions.get(this.currentAnim) : undefined;
-    next.reset().setEffectiveWeight(1).play();
-    if (prev && fadeDuration > 0) {
-      prev.crossFadeTo(next, fadeDuration, false);
-    } else if (prev) {
-      prev.stop();
-    }
-    this.currentAnim = key;
+      inst.playAnim('idle', 0);
+      this.applyOutfitAppearance();
+      this.applyLayerState();
+    });
   }
 
   private applyOutfitAppearance(): void {
     const o = PLAYER_OUTFITS[this.outfitIndex];
-    if (this.shirtMat) {
-      this.shirtMat.color.set('#ffffff');
-      this.shirtMat.map = getPlayerGlbOutfitTexture(o.style, o.primary, o.accent);
-      this.shirtMat.needsUpdate = true;
-    }
-    if (this.pantsMat) {
-      this.pantsMat.color.set(o.pants);
-    }
-    if (this.socksMat) {
-      this.socksMat.color.set(o.shoes);
+    if (this.glb) {
+      if (this.glb.materials.shirt) {
+        this.glb.materials.shirt.color.set('#ffffff');
+        this.glb.materials.shirt.map = getPlayerGlbOutfitTexture(o.style, o.primary, o.accent);
+        this.glb.materials.shirt.needsUpdate = true;
+      }
+      if (this.glb.materials.pants) {
+        this.glb.materials.pants.color.set(o.pants);
+      }
+      if (this.glb.materials.socks) {
+        this.glb.materials.socks.color.set(o.shoes);
+      }
     }
     if (this.policeCapGroup) {
       this.policeCapGroup.visible = o.policeCap;
@@ -510,7 +260,6 @@ export class PlayerAvatar {
 
     this.group.position.copy(position);
 
-    // In cover (not peeking), press back flat against the cover wall (face along outward normal)!
     if (coverState?.inCover && !coverState.peeking) {
       const targetRot = Math.atan2(coverState.normalX, coverState.normalZ);
       let diff = targetRot - this.group.rotation.y;
@@ -518,16 +267,16 @@ export class PlayerAvatar {
       while (diff < -Math.PI) diff += Math.PI * 2;
       this.group.rotation.y += diff * (1 - Math.exp(-14 * clampedDt));
     } else {
-      // Player camera looks along (-sin(yaw), -cos(yaw)); avatar faces +Z locally -> yaw + PI
       this.group.rotation.y = yaw + Math.PI;
     }
 
     if (this.gunMesh) this.gunMesh.visible = !isKatana && !swimming;
     if (this.katanaMesh) this.katanaMesh.visible = isKatana && !swimming;
 
-    // Crouch squash (upright while swimming)
     const targetScaleY = crouching && !swimming ? 0.75 : 1.0;
     this.bodyRoot.scale.y += (targetScaleY - this.bodyRoot.scale.y) * (1 - Math.exp(-12 * clampedDt));
+
+    if (!this.glb) return;
 
     if (swimming) {
       const moving = speed > 0.55;
@@ -541,48 +290,42 @@ export class PlayerAvatar {
       this.bodyRoot.rotation.z += (targetRoll - this.bodyRoot.rotation.z) * blend;
       this.bodyRoot.position.y += (targetLiftY - this.bodyRoot.position.y) * blend;
 
-      this.playAnim(moving ? 'run' : 'idle', 0.2);
-      if (this.mixer) {
-        const active = this.currentAnim ? this.actions.get(this.currentAnim) : undefined;
-        if (active) active.setEffectiveTimeScale(moving ? 1.25 : 0.75);
-        this.mixer.update(clampedDt);
-      }
+      this.glb.playAnim(moving ? 'run' : 'idle', 0.2);
+      const cur = this.glb.getCurrentAnim();
+      const active = cur ? this.glb.actions.get(cur) : undefined;
+      if (active) active.setEffectiveTimeScale(moving ? 1.25 : 0.75);
+      this.glb.mixer.update(clampedDt);
       return;
     }
 
-    // Smoothly reset swim posture back to standing
     this.bodyRoot.rotation.x += (0 - this.bodyRoot.rotation.x) * blend;
     this.bodyRoot.rotation.z += (0 - this.bodyRoot.rotation.z) * blend;
     this.bodyRoot.position.y += (0 - this.bodyRoot.position.y) * blend;
 
-    // Select skeletal animation clip based on movement state
     if (!grounded) {
-      this.playAnim(speed > 3.0 ? 'runJump' : 'jump', 0.12);
+      this.glb.playAnim(speed > 3.0 ? 'runJump' : 'jump', 0.12);
     } else if (speed > 6.2) {
-      this.playAnim('run', 0.15);
-      const runAct = this.actions.get('run');
+      this.glb.playAnim('run', 0.15);
+      const runAct = this.glb.actions.get('run');
       if (runAct) runAct.setEffectiveTimeScale(THREE.MathUtils.clamp(speed / 7.2, 0.85, 1.5));
     } else if (speed > 0.45) {
-      this.playAnim('walk', 0.16);
-      const walkAct = this.actions.get('walk');
+      this.glb.playAnim('walk', 0.16);
+      const walkAct = this.glb.actions.get('walk');
       if (walkAct) walkAct.setEffectiveTimeScale(THREE.MathUtils.clamp(speed / 4.2, 0.7, 1.45));
     } else {
-      this.playAnim('idle', 0.18);
-      const idleAct = this.actions.get('idle');
+      this.glb.playAnim('idle', 0.18);
+      const idleAct = this.glb.actions.get('idle');
       if (idleAct) idleAct.setEffectiveTimeScale(1.0);
     }
 
-    if (this.mixer) {
-      this.mixer.update(clampedDt);
-    }
+    this.glb.mixer.update(clampedDt);
 
-    // Subtle procedural upper-arm raise while aiming a firearm (applied post-mixer)
     const targetAim = aiming && !isKatana ? 1 : 0;
     this.aimBlend += (targetAim - this.aimBlend) * blend;
-    if (this.aimBlend > 0.01 && this.upperArmR) {
-      this.upperArmR.rotation.x -= 0.85 * this.aimBlend;
-      if (this.lowerArmR) {
-        this.lowerArmR.rotation.x -= 0.25 * this.aimBlend;
+    if (this.aimBlend > 0.01 && this.glb.upperArmR) {
+      this.glb.upperArmR.rotation.x -= 0.85 * this.aimBlend;
+      if (this.glb.lowerArmR) {
+        this.glb.lowerArmR.rotation.x -= 0.25 * this.aimBlend;
       }
     }
   }

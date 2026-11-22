@@ -15,10 +15,10 @@ interface SignalBulbSet {
 }
 
 const INTERSECTIONS: [number, number][] = [
-  [20, 20],
-  [20, -20],
-  [-20, 20],
-  [-20, -20],
+  [27, 27],
+  [27, -27],
+  [-27, 27],
+  [-27, -27],
 ];
 
 /**

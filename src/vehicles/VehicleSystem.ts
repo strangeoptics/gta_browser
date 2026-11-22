@@ -137,25 +137,25 @@ const CAR_SPECS: {
   bike: boolean;
   specialRole?: SpecialVehicleRole;
 }[] = [
-  // Parked cars positioned cleanly half on the sidewalk / curb (roadCenter ± 6.0m) so road lanes stay 100% clear!
-  { name: 'DELOREAN DMC-12', model: 'delorean', color: '#c8d0d8', neon: '#36f1e6', x: 54.0, z: 16, yaw: Math.PI, ai: false, police: false, pursuit: false, bike: false },
-  { name: 'PCJ-86 NEON BIKE', model: 'supercar', color: '#36f1e6', neon: '#ff4fa3', x: 66.2, z: 20, yaw: Math.PI, ai: false, police: false, pursuit: false, bike: true },
-  { name: 'TESLA CYBERTRUCK', model: 'cybertruck', color: '#c2c9d2', neon: '#5ee8ff', x: 65.8, z: -6, yaw: 0, ai: false, police: false, pursuit: false, bike: false },
-  { name: '1982 PONTIAC TRANS AM', model: 'transam', color: '#101118', neon: '#ff1e38', x: 54.0, z: -26, yaw: 0, ai: false, police: false, pursuit: false, bike: false },
-  { name: 'DODGE CHALLENGER', model: 'challenger', color: '#e64928', neon: '#ff9f43', x: 14.0, z: 6, yaw: Math.PI, ai: false, police: false, pursuit: false, bike: false },
-  { name: '1986 FLEETWOOD BOUNDER', model: 'bounder', color: '#e8dec5', neon: '#ffbe55', x: -26.0, z: -14, yaw: 0, ai: false, police: false, pursuit: false, bike: false },
-  { name: '1974 DODGE MONACO', model: 'monaco', color: '#14151c', neon: '#36f1e6', x: -14.0, z: 28, yaw: Math.PI, ai: false, police: false, pursuit: false, bike: false },
-  { name: 'VICE PD CRUISER', model: 'police', color: '#1b1b26', neon: '#36f1e6', x: -26.4, z: 7.5, yaw: 0, ai: false, police: true, pursuit: true, bike: false },
-  { name: 'VICE PD INTERCEPTOR', model: 'police', color: '#1b1b26', neon: '#ff3355', x: 22.75, z: 48, yaw: Math.PI, ai: true, police: true, pursuit: true, bike: false },
+  // Parked cars positioned cleanly half on the 1.5x sidewalk / curb (roadCenter ± 6.0m) so road lanes stay 100% clear!
+  { name: 'DELOREAN DMC-12', model: 'delorean', color: '#c8d0d8', neon: '#36f1e6', x: 75.0, z: 16, yaw: Math.PI, ai: false, police: false, pursuit: false, bike: false },
+  { name: 'PCJ-86 NEON BIKE', model: 'supercar', color: '#36f1e6', neon: '#ff4fa3', x: 87.2, z: 20, yaw: Math.PI, ai: false, police: false, pursuit: false, bike: true },
+  { name: 'TESLA CYBERTRUCK', model: 'cybertruck', color: '#c2c9d2', neon: '#5ee8ff', x: 86.8, z: -6, yaw: 0, ai: false, police: false, pursuit: false, bike: false },
+  { name: '1982 PONTIAC TRANS AM', model: 'transam', color: '#101118', neon: '#ff1e38', x: 75.0, z: -36, yaw: 0, ai: false, police: false, pursuit: false, bike: false },
+  { name: 'DODGE CHALLENGER', model: 'challenger', color: '#e64928', neon: '#ff9f43', x: 21.0, z: 8, yaw: Math.PI, ai: false, police: false, pursuit: false, bike: false },
+  { name: '1986 FLEETWOOD BOUNDER', model: 'bounder', color: '#e8dec5', neon: '#ffbe55', x: -33.0, z: -18, yaw: 0, ai: false, police: false, pursuit: false, bike: false },
+  { name: '1974 DODGE MONACO', model: 'monaco', color: '#14151c', neon: '#36f1e6', x: -21.0, z: 38, yaw: Math.PI, ai: false, police: false, pursuit: false, bike: false },
+  { name: 'VICE PD CRUISER', model: 'police', color: '#1b1b26', neon: '#36f1e6', x: -33.4, z: 8.5, yaw: 0, ai: false, police: true, pursuit: true, bike: false },
+  { name: 'VICE PD INTERCEPTOR', model: 'police', color: '#1b1b26', neon: '#ff3355', x: 29.75, z: 58, yaw: Math.PI, ai: true, police: true, pursuit: true, bike: false },
   // Classic GTA Special Service Vehicles: Checker Taxi, Ambulance & Firetruck!
-  { name: 'VICE CAB · CHECKER TAXI', model: 'taxi', color: '#f2c22e', neon: '#ffd15c', x: 54.0, z: -8, yaw: 0, ai: false, police: false, pursuit: false, bike: false, specialRole: 'taxi' },
-  { name: 'VICE CAB · CHECKER TAXI', model: 'taxi', color: '#f2c22e', neon: '#ffd15c', x: -22.75, z: -40, yaw: 0, ai: true, police: false, pursuit: false, bike: false, specialRole: 'taxi' },
-  { name: 'VICE EMS AMBULANCE', model: 'ambulance', color: '#f2f5fa', neon: '#ff3355', x: -14.0, z: -28, yaw: Math.PI, ai: false, police: false, pursuit: false, bike: false, specialRole: 'ambulance' },
-  { name: 'VICE FIRE ENGINE 06', model: 'firetruck', color: '#d9232e', neon: '#ff9f43', x: 26.0, z: 42, yaw: Math.PI, ai: false, police: false, pursuit: false, bike: false, specialRole: 'firetruck' },
-  { name: "CHERRY POPPER '86", model: 'icecream', color: '#ff7eb8', neon: '#63e8d4', x: 54.0, z: 28, yaw: Math.PI, ai: false, police: false, pursuit: false, bike: false, specialRole: 'icecream' },
-  // Cruising traffic cars in right-hand lanes on the road grid
-  { name: 'CHEETAH GT', model: 'supercar', color: '#ff4fa3', neon: '#ff4fa3', x: 17.25, z: -44, yaw: 0, ai: true, police: false, pursuit: false, bike: false },
-  { name: 'DODGE CHALLENGER RT', model: 'challenger', color: '#36c9c6', neon: '#36f1e6', x: -44, z: 22.75, yaw: Math.PI / 2, ai: true, police: false, pursuit: false, bike: false },
+  { name: 'VICE CAB · CHECKER TAXI', model: 'taxi', color: '#f2c22e', neon: '#ffd15c', x: 75.0, z: -10, yaw: 0, ai: false, police: false, pursuit: false, bike: false, specialRole: 'taxi' },
+  { name: 'VICE CAB · CHECKER TAXI', model: 'taxi', color: '#f2c22e', neon: '#ffd15c', x: -29.75, z: -52, yaw: 0, ai: true, police: false, pursuit: false, bike: false, specialRole: 'taxi' },
+  { name: 'VICE EMS AMBULANCE', model: 'ambulance', color: '#f2f5fa', neon: '#ff3355', x: -21.0, z: -38, yaw: Math.PI, ai: false, police: false, pursuit: false, bike: false, specialRole: 'ambulance' },
+  { name: 'VICE FIRE ENGINE 06', model: 'firetruck', color: '#d9232e', neon: '#ff9f43', x: 33.0, z: 54, yaw: Math.PI, ai: false, police: false, pursuit: false, bike: false, specialRole: 'firetruck' },
+  { name: "CHERRY POPPER '86", model: 'icecream', color: '#ff7eb8', neon: '#63e8d4', x: 75.0, z: 34, yaw: Math.PI, ai: false, police: false, pursuit: false, bike: false, specialRole: 'icecream' },
+  // Cruising traffic cars in right-hand lanes on the 1.5x road grid (±27 ± 2.75)
+  { name: 'CHEETAH GT', model: 'supercar', color: '#ff4fa3', neon: '#ff4fa3', x: 24.25, z: -54, yaw: 0, ai: true, police: false, pursuit: false, bike: false },
+  { name: 'DODGE CHALLENGER RT', model: 'challenger', color: '#36c9c6', neon: '#36f1e6', x: -54, z: 29.75, yaw: Math.PI / 2, ai: true, police: false, pursuit: false, bike: false },
 ];
 
 export class VehicleSystem {
@@ -640,8 +640,8 @@ export class VehicleSystem {
 
     // Pick a dramatic straight-road destination far across the map (> 75m away)
     const warpSpots = [
-      { x: 60, z: -48, yaw: 0, label: 'OCEAN DRIVE NORD' },
-      { x: 60, z: 46, yaw: Math.PI, label: 'OCEAN DRIVE SÜD' },
+      { x: 81, z: -64, yaw: 0, label: 'OCEAN DRIVE NORD' },
+      { x: 81, z: 62, yaw: Math.PI, label: 'OCEAN DRIVE SÜD' },
       { x: -112, z: -40, yaw: 0, label: 'WEST HAVANA BLVD' },
       { x: -12, z: -81, yaw: Math.PI / 2, label: 'NORTH POINT COASTAL HWY' },
       { x: -20, z: 58, yaw: Math.PI, label: 'VICE PORT AVENUE' },

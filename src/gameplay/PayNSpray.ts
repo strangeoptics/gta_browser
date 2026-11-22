@@ -25,7 +25,7 @@ const RESLPRAY_COLORS = [
  * and clears all Wanted stars.
  */
 export class PayNSpray {
-  public readonly position = new THREE.Vector3(-56, 0.05, -38);
+  public readonly position = new THREE.Vector3(-77, 0.05, -52);
   public readonly cost = 300;
 
   private readonly scene: THREE.Scene;

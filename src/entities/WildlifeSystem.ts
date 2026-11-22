@@ -213,7 +213,7 @@ export class WildlifeSystem {
   // Oversized Kickable / Drivable / Shootable 80s Miami Beach Ball!
   private beachBallMesh!: THREE.Mesh;
   private beachBallHitbox!: THREE.Mesh;
-  private beachBallPos = new THREE.Vector3(80.5, 1.35, 22.0);
+  private beachBallPos = new THREE.Vector3(101.5, 1.35, 22.0);
   private beachBallVel = new THREE.Vector3();
   private beachBallRadius = 1.15;
   private beachBallPortGoalClaimed = false;
@@ -343,16 +343,16 @@ export class WildlifeSystem {
     const eyeMat = new THREE.MeshBasicMaterial({ color: '#ffe066' });
 
     const spots: [number, number, number, number][] = [
-      // Shallow Beach Lagoon (standing in ankle-deep surf!)
-      [96.2, -0.14, -32.5, 0.8],
-      [97.4, -0.16, -30.2, 2.1],
-      [95.8, -0.12, -28.4, -0.5],
-      [96.8, -0.15, 38.0, 1.4],
-      [95.6, -0.12, 40.2, -1.2],
-      // Starfish Island Tropical Estate Lawn (y = 0.68)
-      [155.5, 0.68, -38.5, 0.4],
-      [157.2, 0.68, -36.8, 2.5],
-      [154.4, 0.68, -35.6, -0.9],
+      // Shallow Beach Lagoon (shifted +21m East for 1.5x City!)
+      [117.2, -0.14, -32.5, 0.8],
+      [118.4, -0.16, -30.2, 2.1],
+      [116.8, -0.12, -28.4, -0.5],
+      [117.8, -0.15, 38.0, 1.4],
+      [116.6, -0.12, 40.2, -1.2],
+      // Starfish Island Tropical Estate Lawn (shifted +21 X, -21 Z, y = 0.68)
+      [176.5, 0.68, -59.5, 0.4],
+      [178.2, 0.68, -57.8, 2.5],
+      [175.4, 0.68, -56.6, -0.9],
     ];
 
     const neckCurve = new THREE.CatmullRomCurve3([
@@ -1133,7 +1133,7 @@ export class WildlifeSystem {
     // 3) Circling Deep-Sea Reef Sharks + Dynamic "Jaws" Stalker Fin!
     const inDeepOcean =
       playerSwimming &&
-      (playerPos.x > 107 || playerPos.z < -103 || playerPos.z > 127);
+      (playerPos.x > 128 || playerPos.z < -124 || playerPos.z > 148);
     let sharkDanger = 0;
 
     for (const s of this.sharks) {

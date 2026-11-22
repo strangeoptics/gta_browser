@@ -141,7 +141,7 @@ const player = new PlayerController(camera, canvas);
 const playerAvatar = new PlayerAvatar(scene);
 const b = world.layout.playableBounds;
 player.setWorldBounds(b.minX, b.maxX, b.minZ, b.maxZ);
-player.setSpawn(60, 0.2, 24, 0.12);
+player.setSpawn(81, 0.2, 24, 0.12);
 
 // Pre-compile all WebGL shaders up front while light counts are fixed -> eliminates mid-game shader stalls!
 renderer.compile(scene, camera);
@@ -278,7 +278,7 @@ function applyActiveProfileToWorld(respawnPlayer: boolean): void {
     if (vigilante.isActive()) vigilante.stop(npcs);
     if (specialMissions.isActive()) specialMissions.stop();
     story.cancelChapter(npcs);
-    player.setSpawn(60, 0.2, 24, 0.12);
+    player.setSpawn(81, 0.2, 24, 0.12);
     camera.fov = 75;
     camera.updateProjectionMatrix();
   }

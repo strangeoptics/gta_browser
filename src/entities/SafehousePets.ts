@@ -244,8 +244,14 @@ export class SafehousePets {
     elvis: { hp: 120, maxHp: 120, dead: false, deathTimer: 0, respawnTimer: 0 },
   };
 
+  private readonly petPlayerPosScratch = new THREE.Vector3();
+
   constructor(scene: THREE.Scene) {
-    this.scene = scene;
+    // Anchor all Safehouse pets & props to the 1.5x shifted Vice Safehouse (+14 X, -14 Z -> block 54, -54)
+    const petRoot = new THREE.Group();
+    petRoot.position.set(14, 0, -14);
+    scene.add(petRoot);
+    this.scene = petRoot as unknown as THREE.Scene;
     this.buildCleoCat();
     this.buildRicoParrot();
     this.buildZeusDoberman();
@@ -1275,7 +1281,10 @@ export class SafehousePets {
     return quips[Math.floor(Math.random() * quips.length)];
   }
 
-  public update(dt: number, elapsed: number, playerPos?: THREE.Vector3, insideLounge = false): void {
+  public update(dt: number, elapsed: number, rawPlayerPos?: THREE.Vector3, insideLounge = false): void {
+    const playerPos = rawPlayerPos
+      ? this.petPlayerPosScratch.set(rawPlayerPos.x - 14, rawPlayerPos.y, rawPlayerPos.z + 14)
+      : undefined;
     const clampedDt = Math.min(dt, 0.05);
 
     // Update floating 3D heart particles

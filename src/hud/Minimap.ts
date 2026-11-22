@@ -3,16 +3,16 @@ import type { Vehicle } from '../vehicles/VehicleSystem';
 import type { NpcEntity } from '../entities/NpcSystem';
 import type { ActiveObjective } from '../gameplay/ObjectiveSystem';
 
-const STATIC_MIN_X = -200;
-const STATIC_MAX_X = 340;
-const STATIC_MIN_Z = -260;
-const STATIC_MAX_Z = 240;
+const STATIC_MIN_X = -220;
+const STATIC_MAX_X = 360;
+const STATIC_MIN_Z = -280;
+const STATIC_MAX_Z = 260;
 
 export class Minimap {
   private readonly ctx: CanvasRenderingContext2D;
   private readonly size: number;
   private readonly half: number;
-  private readonly scale = 1.05; // pixels per world meter
+  private readonly scale = 0.92; // pixels per world meter (slightly zoomed out for 1.5x expanded city!)
   private lastRenderElapsed = -1;
   private staticCanvas: HTMLCanvasElement | null = null;
 
@@ -33,28 +33,28 @@ export class Minimap {
     const wx = (x: number) => (x - STATIC_MIN_X) * scale;
     const wz = (z: number) => (z - STATIC_MIN_Z) * scale;
 
-    // Ocean & beach on East (+X) + Northern Bay (z < -96) + Causeway Bridge & Starfish Island
+    // 1.5x Beach & Ocean on East (+X) + Northern Bay (z < -117)
     sctx.fillStyle = 'rgba(201, 166, 132, 0.25)';
-    sctx.fillRect(wx(74), wz(STATIC_MIN_Z), 36 * scale, (STATIC_MAX_Z - STATIC_MIN_Z) * scale);
+    sctx.fillRect(wx(95), wz(STATIC_MIN_Z), 36 * scale, (STATIC_MAX_Z - STATIC_MIN_Z) * scale);
     sctx.fillStyle = 'rgba(34, 110, 145, 0.45)';
-    sctx.fillRect(wx(108), wz(STATIC_MIN_Z), (STATIC_MAX_X - 108) * scale, (STATIC_MAX_Z - STATIC_MIN_Z) * scale);
-    // Northern Bay Ocean (z = -240..-96)
-    sctx.fillRect(wx(-180), wz(-240), 288 * scale, 144 * scale);
+    sctx.fillRect(wx(129), wz(STATIC_MIN_Z), (STATIC_MAX_X - 129) * scale, (STATIC_MAX_Z - STATIC_MIN_Z) * scale);
+    // Northern Bay Ocean (z = -260..-117)
+    sctx.fillRect(wx(-200), wz(-260), 330 * scale, 143 * scale);
 
-    // North Point Coastal Highway (z = -88..-74, x = -124..+74) & Cape Vice Lighthouse Peninsula
+    // North Point Coastal Highway (z = -110..-95, x = -145..+95) & Cape Vice Lighthouse Peninsula
     sctx.fillStyle = 'rgba(255, 255, 255, 0.14)';
-    sctx.fillRect(wx(-124), wz(-89), 198 * scale, 15 * scale);
-    // Vice Marina Wooden Piers (x = -36, -8, +20; z = -124..-98)
+    sctx.fillRect(wx(-145), wz(-110), 240 * scale, 15 * scale);
+    // Vice Marina Wooden Piers (x = -36, -8, +20; z = -145..-119)
     sctx.fillStyle = 'rgba(180, 142, 102, 0.65)';
     for (const px of [-36, -8, 20]) {
-      sctx.fillRect(wx(px - 1.8), wz(-124), 3.6 * scale, 26 * scale);
+      sctx.fillRect(wx(px - 1.8), wz(-145), 3.6 * scale, 26 * scale);
     }
-    // Cape Vice 11m Sea Cliff Plateau (center 78, -114, r = 16.5) & Winding Serpentine Road
+    // Cape Vice 11m Sea Cliff Plateau (center 78, -135, r = 16.5) & Winding Serpentine Road
     sctx.fillStyle = 'rgba(156, 137, 116, 0.55)';
     sctx.strokeStyle = 'rgba(235, 208, 162, 0.5)';
     sctx.lineWidth = 1.5;
     sctx.beginPath();
-    sctx.arc(wx(78), wz(-114), 16.5 * scale, 0, Math.PI * 2);
+    sctx.arc(wx(78), wz(-135), 16.5 * scale, 0, Math.PI * 2);
     sctx.fill();
     sctx.stroke();
 
@@ -64,15 +64,15 @@ export class Minimap {
     sctx.lineCap = 'round';
     sctx.lineJoin = 'round';
     const serpPts: [number, number][] = [
-      [44, -82],
-      [56, -83],
-      [70, -86],
-      [86, -90],
-      [98, -98],
-      [99, -111],
-      [94, -123],
-      [84, -127.5],
-      [78, -121.5],
+      [44, -103],
+      [56, -104],
+      [70, -107],
+      [86, -111],
+      [98, -119],
+      [99, -132],
+      [94, -144],
+      [84, -148.5],
+      [78, -142.5],
     ];
     sctx.beginPath();
     serpPts.forEach(([sx, sz], idx) => {
@@ -81,100 +81,95 @@ export class Minimap {
     });
     sctx.stroke();
 
-    // Causeway Bridge (x = 66..148, z = -60)
+    // Causeway Bridge (x = 87..169, z = -81)
     sctx.fillStyle = 'rgba(255, 255, 255, 0.22)';
-    sctx.fillRect(wx(66), wz(-65.7), 82 * scale, 11.4 * scale);
+    sctx.fillRect(wx(87), wz(-86.7), 82 * scale, 11.4 * scale);
 
-    // Starfish Island (x = 148..198, z = -84..-20)
+    // Starfish Island (x = 169..219, z = -105..-41)
     sctx.fillStyle = 'rgba(72, 168, 118, 0.45)';
     sctx.strokeStyle = 'rgba(235, 208, 162, 0.55)';
     sctx.lineWidth = 1.5;
-    sctx.fillRect(wx(148), wz(-84), 50 * scale, 64 * scale);
-    sctx.strokeRect(wx(148), wz(-84), 50 * scale, 64 * scale);
+    sctx.fillRect(wx(169), wz(-105), 50 * scale, 64 * scale);
+    sctx.strokeRect(wx(169), wz(-105), 50 * scale, 64 * scale);
 
-    // Smuggler's Cay & Offshore Rig 86 (SE Ocean: center 162, 96)
+    // Smuggler's Cay & Offshore Rig 86 (SE Ocean: center 183, 117)
     sctx.fillStyle = 'rgba(78, 158, 108, 0.52)';
     sctx.strokeStyle = 'rgba(235, 208, 162, 0.65)';
     sctx.lineWidth = 1.6;
     sctx.beginPath();
-    sctx.ellipse(wx(162), wz(96), 23 * scale, 21 * scale, 0, 0, Math.PI * 2);
+    sctx.ellipse(wx(183), wz(117), 23 * scale, 21 * scale, 0, 0, Math.PI * 2);
     sctx.fill();
     sctx.stroke();
-    // Wooden Boat Jetty (x = 126..145, z = 96)
     sctx.fillStyle = 'rgba(184, 142, 98, 0.8)';
-    sctx.fillRect(wx(126), wz(94), 19 * scale, 4 * scale);
-    sctx.fillRect(wx(126), wz(90), 3.4 * scale, 12 * scale);
-    // Offshore Steel Rig Helipad (163, 118)
+    sctx.fillRect(wx(147), wz(115), 19 * scale, 4 * scale);
+    sctx.fillRect(wx(147), wz(111), 3.4 * scale, 12 * scale);
     sctx.fillStyle = 'rgba(84, 92, 106, 0.78)';
-    sctx.fillRect(wx(156), wz(111), 14 * scale, 14 * scale);
+    sctx.fillRect(wx(177), wz(132), 14 * scale, 14 * scale);
     sctx.strokeStyle = 'rgba(255, 209, 92, 0.85)';
     sctx.lineWidth = 1.3;
     sctx.beginPath();
-    sctx.arc(wx(163), wz(118), 5 * scale, 0, Math.PI * 2);
+    sctx.arc(wx(184), wz(139), 5 * scale, 0, Math.PI * 2);
     sctx.stroke();
 
-    // Vice Port Industrial Docks (x = -68..78, z = 66..126) & Cargo Freighter (x = -21..37, z = 128..142)
+    // Expanded Vice Port Industrial Docks (x = -89..99, z = 87..147) & Cargo Freighter (x = -21..37, z = 149..163)
     sctx.fillStyle = 'rgba(92, 96, 110, 0.45)';
-    sctx.fillRect(wx(-68), wz(66), 146 * scale, 60 * scale);
+    sctx.fillRect(wx(-89), wz(87), 188 * scale, 60 * scale);
     sctx.fillStyle = 'rgba(184, 58, 48, 0.65)';
-    sctx.fillRect(wx(-21), wz(128), 58 * scale, 14 * scale);
+    sctx.fillRect(wx(-21), wz(149), 58 * scale, 14 * scale);
 
-    // Vice International Airfield (SW Peninsula: x = -125..-68, z = 66..138)
+    // Vice International Airfield (SW Peninsula: x = -146..-89, z = 87..159)
     sctx.fillStyle = 'rgba(74, 80, 96, 0.52)';
     sctx.strokeStyle = 'rgba(54, 241, 230, 0.35)';
     sctx.lineWidth = 1;
-    sctx.fillRect(wx(-125), wz(66), 57 * scale, 72 * scale);
-    sctx.strokeRect(wx(-125), wz(66), 57 * scale, 72 * scale);
-    // Runway 18/36 dark strip + white dashed centerline
+    sctx.fillRect(wx(-146), wz(87), 57 * scale, 72 * scale);
+    sctx.strokeRect(wx(-146), wz(87), 57 * scale, 72 * scale);
     sctx.fillStyle = 'rgba(24, 26, 34, 0.85)';
-    sctx.fillRect(wx(-119), wz(70), 14 * scale, 66 * scale);
+    sctx.fillRect(wx(-140), wz(91), 14 * scale, 66 * scale);
     sctx.strokeStyle = 'rgba(242, 237, 228, 0.75)';
     sctx.lineWidth = 1.4;
     sctx.setLineDash([4, 4]);
     sctx.beginPath();
-    sctx.moveTo(wx(-112), wz(73));
-    sctx.lineTo(wx(-112), wz(133));
+    sctx.moveTo(wx(-133), wz(94));
+    sctx.lineTo(wx(-133), wz(154));
     sctx.stroke();
     sctx.setLineDash([]);
-    // Terminal 1 & Hangar 06 footprints
     sctx.fillStyle = 'rgba(242, 214, 194, 0.45)';
-    sctx.fillRect(wx(-86), wz(71), 16 * scale, 12 * scale);
+    sctx.fillRect(wx(-107), wz(92), 16 * scale, 12 * scale);
     sctx.fillStyle = 'rgba(148, 160, 178, 0.5)';
-    sctx.fillRect(wx(-88), wz(104), 17 * scale, 17 * scale);
-    // Secondary Helipad ring
+    sctx.fillRect(wx(-109), wz(125), 17 * scale, 17 * scale);
     sctx.strokeStyle = 'rgba(255, 209, 92, 0.7)';
     sctx.lineWidth = 1.2;
     sctx.beginPath();
-    sctx.arc(wx(-93), wz(129.5), 4.5 * scale, 0, Math.PI * 2);
+    sctx.arc(wx(-114), wz(150.5), 4.5 * scale, 0, Math.PI * 2);
     sctx.stroke();
 
-    // West District (Little Havana, Starlight Diner, Banco de Vice & Vice Customs: x = -124..-66)
+    // West District (Little Havana, Starlight Diner, Banco de Vice & Vice Customs: x = -145..-87)
     sctx.fillStyle = 'rgba(232, 168, 132, 0.22)';
     sctx.strokeStyle = 'rgba(255, 160, 110, 0.35)';
     sctx.lineWidth = 1;
     for (const zBlock of [-40, 0, 40]) {
-      const bx = wx(-104);
+      const bx = wx(-125);
       const bz = wz(zBlock - 14);
       sctx.fillRect(bx, bz, 34 * scale, 28 * scale);
       sctx.strokeRect(bx, bz, 34 * scale, 28 * scale);
     }
 
-    // Road grid highlights (including West Havana Blvd at x = -112)
+    // 1.5x Road grid highlights (including West Havana Blvd at x = -133)
     sctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
     sctx.lineWidth = layout.roadWidth * scale;
     sctx.lineCap = 'butt';
-    for (const r of [...layout.roadCoords, -112]) {
+    for (const r of [...layout.roadCoords, -133]) {
       const rx = wx(r);
       sctx.beginPath();
-      sctx.moveTo(rx, wz(-68));
-      sctx.lineTo(rx, wz(68));
+      sctx.moveTo(rx, wz(-89));
+      sctx.lineTo(rx, wz(89));
       sctx.stroke();
     }
     for (const r of layout.roadCoords) {
       const rz = wz(r);
       sctx.beginPath();
-      sctx.moveTo(wx(-120), rz);
-      sctx.lineTo(wx(68), rz);
+      sctx.moveTo(wx(-141), rz);
+      sctx.lineTo(wx(89), rz);
       sctx.stroke();
     }
 
@@ -191,14 +186,14 @@ export class Minimap {
       sctx.strokeRect(bx, bz, bw, bd);
     }
 
-    // Palm Parking '86 4-Story Neon Parking Garage on Block (0, 40)
+    // Grand Palm Parking '86 4-Story Neon Parking Garage on 1.5x Block (0, 54)
     sctx.fillStyle = 'rgba(64, 72, 92, 0.65)';
     sctx.strokeStyle = '#ff4fa3';
     sctx.lineWidth = 1.6;
-    sctx.fillRect(wx(-12.6), wz(27.4), 25.2 * scale, 25.2 * scale);
-    sctx.strokeRect(wx(-12.6), wz(27.4), 25.2 * scale, 25.2 * scale);
+    sctx.fillRect(wx(-19.8), wz(34.2), 39.6 * scale, 39.6 * scale);
+    sctx.strokeRect(wx(-19.8), wz(34.2), 39.6 * scale, 39.6 * scale);
 
-    // Static district & landmark labels
+    // Static district & landmark labels (1.5x coordinates)
     sctx.font = '900 11px "Segoe UI", sans-serif';
     sctx.textAlign = 'center';
     sctx.textBaseline = 'middle';
@@ -206,33 +201,33 @@ export class Minimap {
     sctx.fillStyle = '#52f29c';
     sctx.fillText('$', wx(-4.5), wz(4.5));
     sctx.fillStyle = '#ff9f43';
-    sctx.fillText('P', wx(-56), wz(-38));
+    sctx.fillText('P', wx(-77), wz(-52));
     sctx.fillStyle = '#ff4fa3';
-    sctx.fillText('C', wx(40), wz(0));
+    sctx.fillText('C', wx(54), wz(0));
     sctx.fillStyle = '#36f1e6';
-    sctx.fillText('⌂', wx(40), wz(-40));
+    sctx.fillText('⌂', wx(54), wz(-54));
     sctx.fillStyle = '#33aaff';
-    sctx.fillText('PD', wx(-40), wz(0));
+    sctx.fillText('PD', wx(-54), wz(0));
     sctx.fillStyle = '#ff9f43';
-    sctx.fillText('IE', wx(58), wz(92));
+    sctx.fillText('IE', wx(58), wz(113));
     sctx.fillStyle = '#36f1e6';
-    sctx.fillText('T', wx(-85), wz(-37.5));
+    sctx.fillText('T', wx(-106), wz(-37.5));
     sctx.fillStyle = '#ff4fa3';
-    sctx.fillText('D', wx(-88), wz(-7));
+    sctx.fillText('D', wx(-109), wz(-7));
     sctx.fillStyle = '#52f29c';
-    sctx.fillText('🐾', wx(-76.5), wz(9.5));
+    sctx.fillText('🐾', wx(-97.5), wz(9.5));
     sctx.fillStyle = '#ffd15c';
-    sctx.fillText('B', wx(-88), wz(40));
+    sctx.fillText('B', wx(-109), wz(40));
     sctx.fillStyle = '#36f1e6';
-    sctx.fillText('⚓', wx(-8), wz(-104));
+    sctx.fillText('⚓', wx(-8), wz(-125));
     sctx.fillStyle = '#ff9f43';
-    sctx.fillText('L', wx(81), wz(-114));
+    sctx.fillText('L', wx(81), wz(-135));
     sctx.fillStyle = '#36f1e6';
-    sctx.fillText('✈', wx(-96), wz(102));
+    sctx.fillText('✈', wx(-117), wz(123));
     sctx.fillStyle = '#ffd15c';
-    sctx.fillText('☠', wx(162), wz(96));
+    sctx.fillText('☠', wx(183), wz(117));
     sctx.fillStyle = '#36f1e6';
-    sctx.fillText('P3', wx(0), wz(40));
+    sctx.fillText('P3', wx(0), wz(54));
 
     this.staticCanvas = c;
     return c;

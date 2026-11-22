@@ -279,7 +279,7 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
       );
   };
 
-  const roadBase = new THREE.Mesh(new THREE.PlaneGeometry(144, 144), roadMat);
+  const roadBase = new THREE.Mesh(new THREE.PlaneGeometry(188, 188), roadMat);
   roadBase.rotation.x = -Math.PI / 2;
   roadBase.position.set(0, 0, 0);
   roadBase.receiveShadow = true;
@@ -301,10 +301,10 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
   const dashMatrices: THREE.Matrix4[] = [];
   const dummy = new THREE.Object3D();
 
-  // Horizontal & vertical road dashes between intersections
+  // Horizontal & vertical road dashes between intersections (scaled for 42m blocks!)
   for (const rCoord of ROAD_COORDS) {
     for (const bCenter of BLOCK_CENTERS) {
-      for (let offset = -11; offset <= 11; offset += 5.5) {
+      for (let offset = -18; offset <= 18; offset += 6.0) {
         // Vertical roads (running along Z)
         dummy.position.set(rCoord, 0.012, bCenter + offset);
         dummy.rotation.set(-Math.PI / 2, 0, 0);
@@ -327,10 +327,10 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
   dashInst.instanceMatrix.needsUpdate = true;
   scene.add(dashInst);
 
-  // Crosswalks at inner intersections
+  // Crosswalks at inner intersections (scaled for ±27 & +81 avenues!)
   const cwMatrices: THREE.Matrix4[] = [];
-  for (const rx of [-20, 20, 60]) {
-    for (const rz of [-20, 20]) {
+  for (const rx of [-27, 27, 81]) {
+    for (const rz of [-27, 27]) {
       for (let s = -4.0; s <= 4.0; s += 1.6) {
         // North/South crosswalks
         for (const side of [-1, 1]) {
@@ -582,81 +582,111 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
   deckGlow.position.set(-2.6, 0.18 + 5.45, 9.6);
   scene.add(deckGlow);
 
-  // Ocean Drive Sunset Overlook Deck (stairs rising from the boardwalk at x=67.5 up to a coastal sunset terrace)
-  buildStaircase(68.2, -10, 0, -1, 4.8, 2.2);
-  addStaticBox(5.6, 0.35, 7.0, 69.2, 0.18 + 4.8, -20.5, stairMat, true, 'deck');
+  // Ocean Drive Sunset Overlook Deck (stairs rising from the boardwalk at x=88.5 up to a coastal sunset terrace)
+  buildStaircase(89.2, -10, 0, -1, 4.8, 2.2);
+  addStaticBox(5.6, 0.35, 7.0, 90.2, 0.18 + 4.8, -20.5, stairMat, true, 'deck');
   const oceanDeckNeon = new THREE.Mesh(
     new THREE.BoxGeometry(5.7, 0.14, 7.1),
     new THREE.MeshStandardMaterial({ color: '#ff4fa3', emissive: '#ff4fa3', emissiveIntensity: 2.3 }),
   );
-  oceanDeckNeon.position.set(69.2, 0.18 + 5.05, -20.5);
+  oceanDeckNeon.position.set(90.2, 0.18 + 5.05, -20.5);
   scene.add(oceanDeckNeon);
 
   // ---------------------------------------------------------------------------
-  // 5b) Sloping Coastal Beach (Dry Dunes -> Mirror-Wet Shoreline) & Dusk Ocean
+  // 5b) Sloping Coastal Beach (Dry Dunes -> Mirror-Wet Shoreline) & Dusk Ocean (1.5x City Shifted +21m)
   // ---------------------------------------------------------------------------
-  // Shared continuous beach & deep-ocean seabed elevation function:
-  // Flush with boardwalk at x = 74 (+0.20m), sloping gently to the surf line (-0.22m at x = 98),
-  // then dropping steeply into deep 6m ocean water (-6.0m)!
-  // Also returns deep -6.0m seabed everywhere in the North Marina Bay (z < -98.5) and South Port Sea (z > 126.2).
   const getBeachHeight = (x: number, z: number): number => {
-    if (z < -98.5 || z > 126.2) return -6.0;
-    if (x <= 74) return 0;
-    if (x <= 98) {
-      const t = (x - 74) / 24;
+    if (z < -119.5 || z > 147.2) return -6.0;
+    if (x <= 95) return 0;
+    if (x <= 119) {
+      const t = (x - 95) / 24;
       const smoothSlope = t * t * (3 - 2 * t);
       const baseY = THREE.MathUtils.lerp(0.2, -0.22, smoothSlope);
       const dune =
         (Math.sin(z * 0.085) * 0.12 + Math.cos(x * 0.16 + z * 0.04) * 0.05) *
         (1 - smoothSlope) *
-        Math.min(1, (x - 74) / 5);
+        Math.min(1, (x - 95) / 5);
       return baseY + dune;
     }
-    const deepT = THREE.MathUtils.clamp((x - 98) / 14, 0, 1);
+    const deepT = THREE.MathUtils.clamp((x - 119) / 14, 0, 1);
     const deepSmooth = deepT * deepT * (3 - 2 * deepT);
     return THREE.MathUtils.lerp(-0.22, -6.0, deepSmooth);
   };
 
-  // Boardwalk east of x = 66
-  addStaticBox(8, 0.22, 144, 70, 0.11, 0, sidewalkMat, false, 'sidewalk');
+  // Boardwalk east of x = 87 (188m long spanning z = -94..+94)
+  addStaticBox(8, 0.22, 188, 91, 0.11, 0, sidewalkMat, false, 'sidewalk');
 
-  // Low Art-Deco coastal seawall along the boardwalk with walkable openings (leaves z = -66..-54 wide open for Causeway Bridge!)
+  // Low Art-Deco coastal seawall along the boardwalk with walkable openings (leaves z = -87..-75 wide open for Causeway Bridge!)
   const seawallMat = new THREE.MeshStandardMaterial({ color: '#eedccf', roughness: 0.65 });
-  addStaticBox(0.55, 0.85, 16, 73.7, 0.22 + 0.425, -45.0, seawallMat, true, 'prop');
-  for (const segZ of [-16, 16, 48]) {
-    addStaticBox(0.55, 0.85, 22, 73.7, 0.22 + 0.425, segZ, seawallMat, true, 'prop');
+  addStaticBox(0.55, 0.85, 20, 94.7, 0.22 + 0.425, -60.0, seawallMat, true, 'prop');
+  for (const segZ of [-24, 16, 56]) {
+    addStaticBox(0.55, 0.85, 26, 94.7, 0.22 + 0.425, segZ, seawallMat, true, 'prop');
   }
 
-  // Subdivided sloping beach mesh (x = 74 to 120) with dry-to-wet sand PBR roughness map
+  // Subdivided sloping beach mesh (x = 95 to 141) with dry-to-wet sand PBR roughness map
   const beachTex = createBeachSandTextures();
   const sandMat = new THREE.MeshStandardMaterial({
     map: beachTex.map,
     roughnessMap: beachTex.roughnessMap,
-    roughness: 1.0, // modulated by roughnessMap (dry ~0.92, wet shoreline ~0.10)
+    roughness: 1.0,
     metalness: 0.14,
     envMapIntensity: 1.45,
   });
 
-  const beachWidth = 46; // x: 74 .. 120
-  const beachLength = 260;
-  const beachGeo = new THREE.PlaneGeometry(beachWidth, beachLength, 44, 64);
+  const beachWidth = 46; // x: 95 .. 141
+  const beachLength = 310;
+  const beachGeo = new THREE.PlaneGeometry(beachWidth, beachLength, 44, 72);
   beachGeo.rotateX(-Math.PI / 2);
   const bPos = beachGeo.attributes.position as THREE.BufferAttribute;
   for (let i = 0; i < bPos.count; i++) {
-    const worldX = bPos.getX(i) + 97; // centered at x = 97 -> spans 74..120
+    const worldX = bPos.getX(i) + 118; // centered at x = 118 -> spans 95..141
     const worldZ = bPos.getZ(i);
     bPos.setY(i, getBeachHeight(worldX, worldZ));
   }
   beachGeo.computeVertexNormals();
 
   const beach = new THREE.Mesh(beachGeo, sandMat);
-  beach.position.set(97, 0, 0);
+  beach.position.set(118, 0, 0);
   beach.receiveShadow = true;
   scene.add(beach);
   worldMeshes.push(beach);
 
-  // Iconic South Beach Highlights (Lifeguard Tower, Illuminated Pier to Speedboat, Loungers, Volleyball, Dune Grass)
-  const beachHighlights = buildBeachHighlights(scene, colliders, worldMeshes, getBeachHeight);
+  // Helper to mount any coastal/expansion district with exact (dx, dz) offset (zero coordinate drift!)
+  const shiftVecScratch = new THREE.Vector3();
+  const makeOffsetPos = (pos: THREE.Vector3, dx: number, dz: number): THREE.Vector3 =>
+    shiftVecScratch.set(pos.x - dx, pos.y, pos.z - dz);
+
+  const buildShiftedDistrict = <T>(
+    dx: number,
+    dz: number,
+    builder: (offsetScene: THREE.Scene) => T,
+    palmsArr?: { x: number; y?: number; z: number; rot: number; scale: number }[],
+  ): { result: T; group: THREE.Group } => {
+    const group = new THREE.Group();
+    group.position.set(dx, 0, dz);
+    scene.add(group);
+    const cStart = colliders.length;
+    const pStart = palmsArr ? palmsArr.length : 0;
+    const result = builder(group as unknown as THREE.Scene);
+    for (let i = cStart; i < colliders.length; i++) {
+      colliders[i].minX += dx;
+      colliders[i].maxX += dx;
+      colliders[i].minZ += dz;
+      colliders[i].maxZ += dz;
+    }
+    if (palmsArr) {
+      for (let i = pStart; i < palmsArr.length; i++) {
+        palmsArr[i].x += dx;
+        palmsArr[i].z += dz;
+      }
+    }
+    return { result, group };
+  };
+
+  // Iconic South Beach Highlights shifted +21m East onto the 1.5x beachfront
+  const beachHighlights = buildShiftedDistrict(21, 0, (sc) =>
+    buildBeachHighlights(sc, colliders, worldMeshes, (lx, lz) => getBeachHeight(lx + 21, lz)),
+  ).result;
 
   // Animated Dusk Ocean Shader with translucent shallow wash & receding shoreline foam
   const oceanUniforms = {
@@ -678,7 +708,6 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
         float distFromShore = clamp((pos.x + 120.0) / 40.0, 0.0, 1.0);
         float w1 = sin(pos.x * 0.18 - uTime * 1.65) * 0.15 * distFromShore;
         float w2 = cos(pos.y * 0.14 - uTime * 1.15) * 0.11 * distFromShore;
-        // Gentle rhythmic shoreline swash lifting the shallow edge
         float swash = sin(uTime * 1.35 + pos.y * 0.05) * 0.045 * (1.0 - distFromShore);
         pos.z += w1 + w2 + swash;
         vWave = w1 + w2 + swash;
@@ -698,45 +727,41 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
         vec3 viewDir = normalize(cameraPosition - vWorldPos);
         float fresnel = pow(1.0 - max(dot(viewDir, vec3(0.0, 1.0, 0.0)), 0.0), 3.0);
 
-        // Dynamic tide swash line oscillating across East beach x ~ 95..101
         float swashOffset = sin(uTime * 1.35 + sin(vWorldPos.z * 0.07) * 2.2) * 1.8;
         float shoreX = vWorldPos.x + swashOffset;
 
-        // Deep-water factors for East Ocean, North Marina Bay (z < -95) & South Vice Port Sea (z > 125)
-        float eastDeep = smoothstep(97.0, 122.0, vWorldPos.x);
-        float northDeep = smoothstep(-95.0, -104.0, vWorldPos.z);
-        float southDeep = smoothstep(124.5, 133.0, vWorldPos.z);
+        // Deep-water factors for 1.5x East Ocean, North Marina Bay (z < -116) & South Vice Port Sea (z > 145.5)
+        float eastDeep = smoothstep(118.0, 143.0, vWorldPos.x);
+        float northDeep = smoothstep(-116.0, -125.0, vWorldPos.z);
+        float southDeep = smoothstep(145.5, 154.0, vWorldPos.z);
         float deepBlend = max(eastDeep, max(northDeep, southDeep));
 
         vec3 waterCol = mix(uShallowColor, uDeepColor, deepBlend);
         waterCol = mix(waterCol, uHorizonGlow, fresnel * 0.72);
 
-        // Soft animated foam ribbon hugging the East sloping sand beach
-        float onEastBeach = step(-96.0, vWorldPos.z) * step(vWorldPos.z, 126.0);
-        float foamBand = smoothstep(104.0, 98.5, shoreX) * smoothstep(94.5, 98.0, shoreX) * onEastBeach;
+        float onEastBeach = step(-117.0, vWorldPos.z) * step(vWorldPos.z, 147.0);
+        float foamBand = smoothstep(125.0, 119.5, shoreX) * smoothstep(115.5, 119.0, shoreX) * onEastBeach;
         float foamPattern = 0.55 + 0.45 * sin(vWorldPos.z * 0.45 + uTime * 2.4) * cos(shoreX * 1.4 - uTime * 1.8);
         float foam = clamp(foamBand * foamPattern, 0.0, 1.0);
         waterCol = mix(waterCol, vec3(1.0, 0.92, 0.93), foam * 0.65);
 
-        // Subtle golden wave crest shimmer
         waterCol += vec3(1.0, 0.72, 0.55) * max(vWave, 0.0) * 0.35;
 
-        // Opaque deep water in North Marina, South Port & East Ocean; translucent shallow wash only at East shoreline
-        float eastAlpha = smoothstep(94.5, 100.5, shoreX) * 0.94 + foam * 0.35;
-        float bayAlpha = max(smoothstep(-94.0, -96.5, vWorldPos.z), smoothstep(123.5, 126.0, vWorldPos.z)) * 0.94;
+        float eastAlpha = smoothstep(115.5, 121.5, shoreX) * 0.94 + foam * 0.35;
+        float bayAlpha = max(smoothstep(-115.0, -117.5, vWorldPos.z), smoothstep(144.5, 147.0, vWorldPos.z)) * 0.94;
         float alpha = max(eastAlpha, bayAlpha);
         gl_FragColor = vec4(waterCol, clamp(alpha, 0.0, 0.97));
       }
     `,
   });
-  const ocean = new THREE.Mesh(new THREE.PlaneGeometry(240, 420, 48, 48), oceanMat);
+  const ocean = new THREE.Mesh(new THREE.PlaneGeometry(260, 480, 48, 48), oceanMat);
   ocean.rotation.x = -Math.PI / 2;
-  ocean.position.set(214, -0.18, 0); // spans x = 94 .. 334, intersecting the sloping beach around x ~ 98!
+  ocean.position.set(245, -0.18, 0); // spans x = 115 .. 375
   scene.add(ocean);
 
-  // Deep ocean seabed plane at y = -6.0m so water always looks genuinely deep everywhere
+  // Deep ocean seabed plane at y = -6.0m
   const seabed = new THREE.Mesh(
-    new THREE.PlaneGeometry(520, 520),
+    new THREE.PlaneGeometry(660, 660),
     new THREE.MeshBasicMaterial({ color: '#081829' }),
   );
   seabed.rotation.x = -Math.PI / 2;
@@ -744,49 +769,132 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
   scene.add(seabed);
 
   // ---------------------------------------------------------------------------
-  // 6) Palm Trees along Ocean Drive & Avenues
+  // 6) Palm Trees along Ocean Drive & Avenues (1.5x City Grid!)
   // ---------------------------------------------------------------------------
   const palmPositions: { x: number; y?: number; z: number; rot: number; scale: number }[] = [];
 
-  // Ocean Drive beachfront palms (keep Causeway Bridge corridor z = -67.5..-52.5 clear & frame the bridge entrance!)
-  palmPositions.push({ x: 67.4, z: -68.2, rot: -1.1, scale: 1.0 });
-  palmPositions.push({ x: 67.4, z: -51.8, rot: 0.9, scale: 1.0 });
-  for (let z = -48; z <= 60; z += 12) {
-    palmPositions.push({ x: 67.4, z, rot: z * 0.7, scale: 0.95 + ((Math.abs(z) % 5) * 0.05) });
-    if (z + 5 > -52) {
-      palmPositions.push({ x: 76.5, z: z + 5, rot: z * 1.1, scale: 0.9 + ((Math.abs(z) % 4) * 0.06) });
+  // Ocean Drive beachfront palms (keep Causeway Bridge corridor z = -88.5..-73.5 clear!)
+  palmPositions.push({ x: 88.4, z: -89.2, rot: -1.1, scale: 1.0 });
+  palmPositions.push({ x: 88.4, z: -72.8, rot: 0.9, scale: 1.0 });
+  for (let z = -66; z <= 82; z += 13) {
+    palmPositions.push({ x: 88.4, z, rot: z * 0.7, scale: 0.95 + ((Math.abs(z) % 5) * 0.05) });
+    if (z + 6 > -72) {
+      palmPositions.push({ x: 97.5, z: z + 6, rot: z * 1.1, scale: 0.9 + ((Math.abs(z) % 4) * 0.06) });
     }
   }
-  // Boulevard corner palms on city sidewalks
+  // Boulevard corner palms on 42x42m city sidewalks
   for (const bx of BLOCK_CENTERS) {
     for (const bz of BLOCK_CENTERS) {
-      palmPositions.push({ x: bx + 12.2, z: bz + 12.2, rot: bx + bz, scale: 0.92 });
-      palmPositions.push({ x: bx - 12.2, z: bz - 12.2, rot: bx - bz, scale: 0.88 });
+      palmPositions.push({ x: bx + 19.2, z: bz + 19.2, rot: bx + bz, scale: 0.94 });
+      palmPositions.push({ x: bx - 19.2, z: bz - 19.2, rot: bx - bz, scale: 0.9 });
     }
   }
 
-  // 6b) Starfish Island, Arched Causeway Bridge & 42m Superyacht (adds island palms before InstancedMesh build!)
-  const starfish = buildStarfishIsland(scene, colliders, worldMeshes, palmPositions);
+  // 6b) Starfish Island, Arched Causeway Bridge & Superyacht (shifted +21 X, -21 Z to align with z = -81!)
+  const starfishBuilt = buildShiftedDistrict(
+    21,
+    -21,
+    (sc) => buildStarfishIsland(sc, colliders, worldMeshes, palmPositions),
+    palmPositions,
+  );
+  const starfish = starfishBuilt.result;
+  starfish.helipadSpawn.x += 21;
+  starfish.helipadSpawn.z -= 21;
+  // Reparent drivable Superyacht directly to scene at world-space (+21 X, 0 Z) so SuperyachtSystem navigates in world coords!
+  scene.add(starfish.yacht.group);
+  starfish.yacht.initialPos.set(193, 0, 15);
+  starfish.yacht.group.position.set(193, 0, 15);
+  starfish.yacht.syncColliders(193, 0, 15, 0);
 
-  // 6c) West District: Little Havana, Starlight 80s Diner, Banco de Vice & Vice Customs Tuning Garage (x = -66..-124)
-  const westDistrict = buildWestDistrict(scene, colliders, worldMeshes, roadMat, sidewalkMat, palmPositions);
+  // 6c) West District (shifted -21 X) + Seamless North/South Expansion Aprons filling z = -87..-66 & z = +66..+87!
+  const westDistrict = buildShiftedDistrict(
+    -21,
+    0,
+    (sc) => buildWestDistrict(sc, colliders, worldMeshes, roadMat, sidewalkMat, palmPositions),
+    palmPositions,
+  ).result;
+  // Seamless North & South West-District road & plaza extensions connecting to z = -81 & z = +81 avenues!
+  for (const extZ of [-76.5, 76.5]) {
+    const extRoad = new THREE.Mesh(new THREE.PlaneGeometry(58, 22), roadMat);
+    extRoad.rotation.x = -Math.PI / 2;
+    extRoad.position.set(-116, 0.005, extZ);
+    extRoad.receiveShadow = true;
+    scene.add(extRoad);
+    worldMeshes.push(extRoad);
+    // Palm-lined Little Havana plaza corners
+    addStaticBox(28, 0.18, 9.5, -108, 0.09, extZ + (extZ < 0 ? 5.2 : -5.2), sidewalkMat, false, 'sidewalk');
+    palmPositions.push({ x: -119, z: extZ + (extZ < 0 ? 5.2 : -5.2), rot: extZ, scale: 0.96 });
+    palmPositions.push({ x: -97, z: extZ + (extZ < 0 ? 5.2 : -5.2), rot: extZ + 1.4, scale: 0.92 });
+  }
 
-  // 6d) North Point: Coastal Highway, Vice Marina & Cape Vice 26m Lighthouse (z = -66..-128)
-  const northPoint = buildNorthPoint(scene, colliders, worldMeshes, roadMat, sidewalkMat, oceanMat, palmPositions);
+  // 6d) North Point (shifted 0 X, -21 Z) + Seamless East & West Coastal Highway Extensions (+21m each side!)
+  const northPoint = buildShiftedDistrict(
+    0,
+    -21,
+    (sc) => buildNorthPoint(sc, colliders, worldMeshes, roadMat, sidewalkMat, oceanMat, palmPositions),
+    palmPositions,
+  ).result;
+  // Reparent drivable Marina Boats directly to scene in world space (z -= 21)
+  for (const mb of northPoint.marinaBoats) {
+    mb.z -= 21;
+    mb.group.position.set(mb.x, mb.baseY, mb.z);
+    scene.add(mb.group);
+  }
+  // Extend North Coastal Highway (z = -102) cleanly West (-145..-124) & East (+74..+95) for the wider 1.5x city!
+  for (const [ex, ew] of [
+    [-135, 24],
+    [85, 24],
+  ]) {
+    const hwyExt = new THREE.Mesh(new THREE.PlaneGeometry(ew, 22), roadMat);
+    hwyExt.rotation.x = -Math.PI / 2;
+    hwyExt.position.set(ex, 0.005, -98);
+    hwyExt.receiveShadow = true;
+    scene.add(hwyExt);
+    worldMeshes.push(hwyExt);
+    palmPositions.push({ x: ex, z: -107, rot: ex, scale: 0.96 });
+  }
+  for (const r of northPoint.stuntRamps) {
+    r.z -= 21;
+  }
 
-  // 6e) Vice International Airfield: Runway 18/36, Walk-in Terminal 1, 22m ATC Tower & Hangar 06 (x = -124..-68, z = 66..138)
-  const viceAirfield = buildViceAirfield(scene, colliders, worldMeshes, palmPositions);
+  // 6e) Vice International Airfield (shifted -21 X, +21 Z -> x = -145..-89, z = 87..159)
+  const viceAirfield = buildShiftedDistrict(
+    -21,
+    21,
+    (sc) => buildViceAirfield(sc, colliders, worldMeshes, palmPositions),
+    palmPositions,
+  ).result;
 
-  // 6f) Smuggler's Cay & Offshore Rig 86 in the Southeast Ocean (x = 120..200, z = 55..135)
-  const smugglersCay = buildSmugglersCay(scene, colliders, worldMeshes, palmPositions);
+  // 6f) Smuggler's Cay & Offshore Rig 86 (shifted +21 X, +21 Z -> center 183, 117)
+  const smugglersCay = buildShiftedDistrict(
+    21,
+    21,
+    (sc) => buildSmugglersCay(sc, colliders, worldMeshes, palmPositions),
+    palmPositions,
+  ).result;
 
-  // 6g) Palm Parking '86 — 4-Story Drivable Art-Deco Neon Parking Garage on Block (0, 40)
+  // 6g) Palm Parking '86 — Grand 39.6x39.6m 4-Story Art-Deco Neon Parking Garage on 1.5x Block (0, 54)
   const palmParking = buildPalmParking(scene, colliders, worldMeshes, palmPositions);
 
   const palms = buildPalmTrees(scene, palmPositions);
 
-  // 6h) Vice Port Industrial Container Docks, 26m Gantry Cranes, Cargo Freighter & Import/Export (z = 66..140)
-  const vicePort = buildVicePort(scene, colliders, worldMeshes, oceanMat);
+  // 6h) Vice Port Industrial Container Docks (shifted 0 X, +21 Z) + Wide 188m East/West Port Apron Extensions!
+  const vicePort = buildShiftedDistrict(0, 21, (sc) => buildVicePort(sc, colliders, worldMeshes, oceanMat)).result;
+  for (const r of vicePort.stuntRamps) {
+    r.z += 21;
+  }
+  // Extend Vice Port concrete quay apron cleanly West (x = -89..-68) & East (x = +78..+99) so it spans the full 188m city width!
+  const portExtMat = new THREE.MeshStandardMaterial({ color: '#3c3e47', roughness: 0.62, metalness: 0.14 });
+  for (const [px, pw] of [
+    [-78.5, 22],
+    [88.5, 22],
+  ]) {
+    const slab = new THREE.Mesh(new THREE.BoxGeometry(pw, 1.4, 60), portExtMat);
+    slab.position.set(px, -0.7, 117);
+    slab.receiveShadow = true;
+    scene.add(slab);
+    worldMeshes.push(slab);
+  }
 
   // ---------------------------------------------------------------------------
   // 7) Coastal Streetlights (Fixed 4-Light Nearest Pool -> Zero Shader Recompiles!), Traffic Lights & Stunt Ramps
@@ -1035,32 +1143,32 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
     maverickSpawn: starfish.helipadSpawn,
     yacht: starfish.yacht,
     marinaBoats: northPoint.marinaBoats,
-    isNearIslandVault: (pos: THREE.Vector3) => starfish.isNearIslandVault(pos),
+    isNearIslandVault: (pos: THREE.Vector3) => starfish.isNearIslandVault(makeOffsetPos(pos, 21, -21)),
     isNearYachtLoot: (pos: THREE.Vector3) => starfish.isNearYachtLoot(pos),
     takeIslandVault: () => starfish.takeIslandVault(),
     takeYachtLoot: () => starfish.takeYachtLoot(),
-    isCarInExportBay: (pos: THREE.Vector3) => vicePort.isCarInExportBay(pos),
+    isCarInExportBay: (pos: THREE.Vector3) => vicePort.isCarInExportBay(makeOffsetPos(pos, 0, 21)),
     canDeliverExportVehicle: (name: string) => vicePort.canDeliverVehicle(name),
     deliverExportVehicle: (name: string) => vicePort.markDelivered(name),
-    isCarInTuningBay: (pos: THREE.Vector3) => westDistrict.isCarInTuningBay(pos),
-    isCarInLowriderArena: (pos: THREE.Vector3) => westDistrict.isCarInLowriderArena(pos),
-    isNearDinerCounter: (pos: THREE.Vector3) => westDistrict.isNearDinerCounter(pos),
-    isNearPetShop: (pos: THREE.Vector3) => westDistrict.isNearPetShop(pos),
-    isNearBankVault: (pos: THREE.Vector3) => westDistrict.isNearBankVault(pos),
+    isCarInTuningBay: (pos: THREE.Vector3) => westDistrict.isCarInTuningBay(makeOffsetPos(pos, -21, 0)),
+    isCarInLowriderArena: (pos: THREE.Vector3) => westDistrict.isCarInLowriderArena(makeOffsetPos(pos, -21, 0)),
+    isNearDinerCounter: (pos: THREE.Vector3) => westDistrict.isNearDinerCounter(makeOffsetPos(pos, -21, 0)),
+    isNearPetShop: (pos: THREE.Vector3) => westDistrict.isNearPetShop(makeOffsetPos(pos, -21, 0)),
+    isNearBankVault: (pos: THREE.Vector3) => westDistrict.isNearBankVault(makeOffsetPos(pos, -21, 0)),
     takeBankVault: () => westDistrict.takeBankVault(),
-    isInsideWestInterior: (pos: THREE.Vector3) => westDistrict.isInsideInterior(pos),
-    isNearMarinaLoot: (pos: THREE.Vector3) => northPoint.isNearMarinaLoot(pos),
+    isInsideWestInterior: (pos: THREE.Vector3) => westDistrict.isInsideInterior(makeOffsetPos(pos, -21, 0)),
+    isNearMarinaLoot: (pos: THREE.Vector3) => northPoint.isNearMarinaLoot(makeOffsetPos(pos, 0, -21)),
     takeMarinaLoot: () => northPoint.takeMarinaLoot(),
-    isNearLighthouseSpot: (pos: THREE.Vector3) => northPoint.isNearLighthouseSpot(pos),
+    isNearLighthouseSpot: (pos: THREE.Vector3) => northPoint.isNearLighthouseSpot(makeOffsetPos(pos, 0, -21)),
     claimLighthouseBonus: () => northPoint.claimLighthouseBonus(),
-    isInsideAirfieldInterior: (pos: THREE.Vector3) => viceAirfield.isInsideInterior(pos),
-    isNearAirfieldLoot: (pos: THREE.Vector3) => viceAirfield.isNearAirfieldLoot(pos),
+    isInsideAirfieldInterior: (pos: THREE.Vector3) => viceAirfield.isInsideInterior(makeOffsetPos(pos, -21, 21)),
+    isNearAirfieldLoot: (pos: THREE.Vector3) => viceAirfield.isNearAirfieldLoot(makeOffsetPos(pos, -21, 21)),
     takeAirfieldLoot: () => viceAirfield.takeAirfieldLoot(),
-    isNearAirfieldCafe: (pos: THREE.Vector3) => viceAirfield.isNearAirfieldCafe(pos),
-    isInsideSmugglersShack: (pos: THREE.Vector3) => smugglersCay.isInsideShack(pos),
-    isNearSmugglersLoot: (pos: THREE.Vector3) => smugglersCay.isNearLoot(pos),
+    isNearAirfieldCafe: (pos: THREE.Vector3) => viceAirfield.isNearAirfieldCafe(makeOffsetPos(pos, -21, 21)),
+    isInsideSmugglersShack: (pos: THREE.Vector3) => smugglersCay.isInsideShack(makeOffsetPos(pos, 21, 21)),
+    isNearSmugglersLoot: (pos: THREE.Vector3) => smugglersCay.isNearLoot(makeOffsetPos(pos, 21, 21)),
     takeSmugglersLoot: () => smugglersCay.takeLoot(),
-    isNearSmugglersBar: (pos: THREE.Vector3) => smugglersCay.isNearTikiBar(pos),
+    isNearSmugglersBar: (pos: THREE.Vector3) => smugglersCay.isNearTikiBar(makeOffsetPos(pos, 21, 21)),
     isInsidePalmParking: (pos: THREE.Vector3) => palmParking.isInsideGarage(pos),
     isCarAtParkingRushStart: (pos: THREE.Vector3) => palmParking.isCarAtRushStart(pos),
     isParkingRushActive: () => palmParking.isRushActive(),
@@ -1124,10 +1232,10 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
     getClubProximity: (pos: THREE.Vector3) => neonClub.getProximity(pos),
     getGroundHeight: (x: number, z: number, currentY?: number) =>
       palmParking.getGroundHeight(x, z, currentY) ??
-      northPoint.getGroundHeight(x, z) ??
-      starfish.getGroundHeight(x, z) ??
-      viceAirfield.getGroundHeight(x, z) ??
-      smugglersCay.getGroundHeight(x, z) ??
+      northPoint.getGroundHeight(x, z + 21) ??
+      starfish.getGroundHeight(x - 21, z + 21) ??
+      viceAirfield.getGroundHeight(x + 21, z - 21) ??
+      smugglersCay.getGroundHeight(x - 21, z - 21) ??
       getBeachHeight(x, z),
     appendAnimalHitboxes: (out: THREE.Object3D[]) => {
       beachHighlights.appendShootableHitboxes(out);
@@ -1145,13 +1253,13 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
     ) => {
       oceanUniforms.uTime.value = elapsed;
       mistUniforms.uTime.value = elapsed;
-      beachHighlights.update(elapsed, playerPos);
-      starfish.update(elapsed, dt, playerPos);
-      westDistrict.update(elapsed, playerPos);
-      northPoint.update(elapsed, playerPos);
-      viceAirfield.update(elapsed, playerPos);
-      smugglersCay.update(elapsed, playerPos);
-      vicePort.update(elapsed, playerPos);
+      beachHighlights.update(elapsed, playerPos ? makeOffsetPos(playerPos, 21, 0) : undefined);
+      starfish.update(elapsed, dt, playerPos ? makeOffsetPos(playerPos, 21, -21) : undefined);
+      westDistrict.update(elapsed, playerPos ? makeOffsetPos(playerPos, -21, 0) : undefined);
+      northPoint.update(elapsed, playerPos ? makeOffsetPos(playerPos, 0, -21) : undefined);
+      viceAirfield.update(elapsed, playerPos ? makeOffsetPos(playerPos, -21, 21) : undefined);
+      smugglersCay.update(elapsed, playerPos ? makeOffsetPos(playerPos, 21, 21) : undefined);
+      vicePort.update(elapsed, playerPos ? makeOffsetPos(playerPos, 0, 21) : undefined);
       neonClub.update(elapsed, playerPos);
       safehouse.update(elapsed, dt, playerPos, cash, wantedStars, cameraYaw, performanceMode);
       policeStation.update(elapsed, dt, playerPos, cash, wantedStars);
@@ -1367,21 +1475,21 @@ function buildStreetlights(scene: THREE.Scene): { updateNearest: (px: number, pz
   });
 
   const lampSpots: { x: number; z: number; dirX: number; withLight: boolean }[] = [
-    // Ocean Drive promenade lamps
-    { x: 66.5, z: -42, dirX: -1, withLight: true },
-    { x: 66.5, z: -14, dirX: -1, withLight: true },
-    { x: 66.5, z: 14, dirX: -1, withLight: true },
-    { x: 66.5, z: 42, dirX: -1, withLight: true },
-    // Central avenues
-    { x: 26.4, z: -26.4, dirX: -1, withLight: true },
-    { x: 26.4, z: 26.4, dirX: -1, withLight: true },
-    { x: -26.4, z: -26.4, dirX: 1, withLight: true },
-    { x: -26.4, z: 26.4, dirX: 1, withLight: true },
+    // Ocean Drive promenade lamps (1.5x shifted to x = 87.5)
+    { x: 87.5, z: -56, dirX: -1, withLight: true },
+    { x: 87.5, z: -18, dirX: -1, withLight: true },
+    { x: 87.5, z: 18, dirX: -1, withLight: true },
+    { x: 87.5, z: 56, dirX: -1, withLight: true },
+    // Central avenues (around ±27 intersections)
+    { x: 33.4, z: -33.4, dirX: -1, withLight: true },
+    { x: 33.4, z: 33.4, dirX: -1, withLight: true },
+    { x: -33.4, z: -33.4, dirX: 1, withLight: true },
+    { x: -33.4, z: 33.4, dirX: 1, withLight: true },
     // Extra visual-only lamps (no extra PointLight for GPU budget)
-    { x: 13.6, z: 0, dirX: 1, withLight: false },
-    { x: -13.6, z: 0, dirX: -1, withLight: false },
-    { x: 53.6, z: 0, dirX: 1, withLight: false },
-    { x: -53.6, z: 0, dirX: -1, withLight: false },
+    { x: 20.6, z: 0, dirX: 1, withLight: false },
+    { x: -20.6, z: 0, dirX: -1, withLight: false },
+    { x: 74.6, z: 0, dirX: 1, withLight: false },
+    { x: -74.6, z: 0, dirX: -1, withLight: false },
   ];
 
   const litCoords: { x: number; y: number; z: number; dSq: number }[] = [];

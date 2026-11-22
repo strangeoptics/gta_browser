@@ -64,7 +64,7 @@ const MARINA_PIER_XS = [-36, -8, 20];
  * walkable deck colliders (so you can climb onto boats from the water or stand on deck), and smart pier/shore disembark.
  */
 export class BoatSystem {
-  public readonly position = new THREE.Vector3(111, 0.05, 8);
+  public readonly position = new THREE.Vector3(132, 0.05, 8);
   public yaw = Math.PI;
   public speed = 0;
   public readonly boats: DrivableBoat[] = [];
@@ -91,7 +91,7 @@ export class BoatSystem {
     // 1) Original Stinger Speedboat off East Beach Pier
     const stingerGroup = this.createBoatMesh();
     stingerGroup.userData.dynamic = true;
-    const stingerPos = new THREE.Vector3(111, 0.06, 8);
+    const stingerPos = new THREE.Vector3(132, 0.06, 8);
     stingerGroup.position.copy(stingerPos);
     stingerGroup.rotation.y = Math.PI;
     this.scene.add(stingerGroup);
@@ -312,7 +312,7 @@ export class BoatSystem {
     nextZ: number,
     yachtPos?: { x: number; z: number },
   ): { x: number; z: number; hit: boolean } {
-    let x = THREE.MathUtils.clamp(nextX, -148.0, 226.0);
+    let x = THREE.MathUtils.clamp(nextX, -168.0, 248.0);
     let z = THREE.MathUtils.clamp(nextZ, -166.0, 156.0);
     let hit = false;
 

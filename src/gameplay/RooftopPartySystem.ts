@@ -4,8 +4,8 @@ import { buildLowPolyCharacter, type LowPolyCharacterRig } from '../entities/Cha
 import type { NpcEntity, NpcSystem } from '../entities/NpcSystem';
 
 const ROOF_Y = 6.02;
-const ROOF_CX = 40.0;
-const ROOF_CZ = -40.0;
+const ROOF_CX = 54.0;
+const ROOF_CZ = -54.0;
 const BAR_X = 33.8;
 const BAR_Z = -35.2;
 

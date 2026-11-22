@@ -27,17 +27,17 @@ export interface CityLayout {
   buildings: BuildingSpec[];
 }
 
-export const ROAD_COORDS = [-60, -20, 20, 60];
-export const BLOCK_CENTERS = [-40, 0, 40];
+export const ROAD_COORDS = [-81, -27, 27, 81];
+export const BLOCK_CENTERS = [-54, 0, 54];
 export const ROAD_WIDTH = 12;
-export const BLOCK_SIZE = 28;
-export const SIDEWALK_WIDTH = 2.8;
+export const BLOCK_SIZE = 42;
+export const SIDEWALK_WIDTH = 3.2;
 
 export const DEFAULT_PLAYABLE_BOUNDS = {
-  minX: -124,
-  maxX: 204,
-  minZ: -136,
-  maxZ: 141,
+  minX: -146,
+  maxX: 250,
+  minZ: -190,
+  maxZ: 180,
 } as const;
 
 /**
@@ -45,19 +45,19 @@ export const DEFAULT_PLAYABLE_BOUNDS = {
  * (single source of truth shared by NpcSystem, VehicleSystem, InteractionRouter & main.ts).
  */
 export const WORLD_LANDMARKS = {
-  VICE_PD_PRECINCT: { x: -40, z: 0 },
-  SAFEHOUSE: { x: 40, z: -40 },
-  SAFEHOUSE_LOT: { minX: 29.0, maxX: 51.0, minZ: -50.0, maxZ: -30.0 },
-  NEON_CLUB: { x: 40, z: 0 },
+  VICE_PD_PRECINCT: { x: -54, z: 0 },
+  SAFEHOUSE: { x: 54, z: -54 },
+  SAFEHOUSE_LOT: { minX: 43.0, maxX: 65.0, minZ: -64.0, maxZ: -44.0 },
+  NEON_CLUB: { x: 54, z: 0 },
   AMMU_NEON: { x: -4.5, z: 4.5 },
-  PAY_N_SPRAY: { x: -56, z: -38 },
-  VICE_CUSTOMS: { x: -85, z: -37.5 },
-  LOWRIDER_ARENA: { x: -87, z: 1.6 },
-  VICE_AIRFIELD: { x: -96, z: 102 },
-  SMUGGLERS_CAY: { x: 162, z: 96 },
-  PALM_PARKING: { x: 0, z: 40 },
-  VICE_PORT_GOAL_Z: 68,
-  OCEAN_DEEP_X: 107,
+  PAY_N_SPRAY: { x: -77, z: -52 },
+  VICE_CUSTOMS: { x: -106, z: -37.5 },
+  LOWRIDER_ARENA: { x: -108, z: 1.6 },
+  VICE_AIRFIELD: { x: -117, z: 123 },
+  SMUGGLERS_CAY: { x: 183, z: 117 },
+  PALM_PARKING: { x: 0, z: 54 },
+  VICE_PORT_GOAL_Z: 89,
+  OCEAN_DEEP_X: 128,
 } as const;
 
 const PASTEL_PALETTE = [
@@ -126,13 +126,13 @@ export function generateCityLayout(): CityLayout {
       }
 
       if (isCenterPlaza) {
-        // Central block has two stylish corner Art-Deco buildings + an open courtyard/alley between them
+        // Spacious 42x42m Central Plaza with two grand corner Art-Deco buildings + wide open courtyard
         buildings.push({
-          x: cx - 5.2,
-          z: cz - 5.2,
-          w: 10.2,
-          h: 15.5,
-          d: 10.2,
+          x: cx - 10.5,
+          z: cz - 10.5,
+          w: 13.5,
+          h: 17.5,
+          d: 13.5,
           color: '#f2c6b4',
           trimColor: '#fff4e6',
           neonColor: '#ff4fa3',
@@ -141,11 +141,11 @@ export function generateCityLayout(): CityLayout {
           hasCrown: true,
         });
         buildings.push({
-          x: cx + 5.2,
-          z: cz + 5.0,
-          w: 10.0,
-          h: 12.0,
-          d: 10.4,
+          x: cx + 10.5,
+          z: cz + 10.2,
+          w: 13.2,
+          h: 14.0,
+          d: 13.8,
           color: '#bce0d8',
           trimColor: '#fff6ec',
           neonColor: '#36f1e6',
@@ -156,23 +156,23 @@ export function generateCityLayout(): CityLayout {
         continue;
       }
 
-      // Split each 22.4 x 22.4 buildable block interior into 2 buildings separated by a narrow walkable alley
+      // Split each 34.4 x 34.4 buildable 1.5x block interior into 2 grand Art-Deco buildings separated by a walkable alley
       const splitHorizontal = (row + col) % 2 === 0;
-      const alleyGap = 2.6;
+      const alleyGap = 3.6;
 
       if (splitHorizontal) {
-        const d1 = 9.4 + rand() * 1.4;
-        const d2 = 21.4 - alleyGap - d1;
-        const z1 = cz - 10.7 + d1 / 2;
-        const z2 = cz + 10.7 - d2 / 2;
+        const d1 = 14.2 + rand() * 2.2;
+        const d2 = 33.6 - alleyGap - d1;
+        const z1 = cz - 16.8 + d1 / 2;
+        const z2 = cz + 16.8 - d2 / 2;
 
-        const h1 = (isOceanFront ? 10 : 12) + rand() * 10;
-        const h2 = (isOceanFront ? 9 : 11) + rand() * 12;
+        const h1 = (isOceanFront ? 12 : 14) + rand() * 12;
+        const h2 = (isOceanFront ? 11 : 13) + rand() * 14;
 
         buildings.push({
           x: cx,
           z: z1,
-          w: 20.8,
+          w: 33.0,
           h: h1,
           d: d1,
           color: PASTEL_PALETTE[Math.floor(rand() * PASTEL_PALETTE.length)],
@@ -186,7 +186,7 @@ export function generateCityLayout(): CityLayout {
         buildings.push({
           x: cx,
           z: z2,
-          w: 20.8,
+          w: 33.0,
           h: h2,
           d: d2,
           color: PASTEL_PALETTE[Math.floor(rand() * PASTEL_PALETTE.length)],
@@ -197,20 +197,20 @@ export function generateCityLayout(): CityLayout {
           hasCrown: rand() > 0.35,
         });
       } else {
-        const w1 = 9.4 + rand() * 1.4;
-        const w2 = 21.4 - alleyGap - w1;
-        const x1 = cx - 10.7 + w1 / 2;
-        const x2 = cx + 10.7 - w2 / 2;
+        const w1 = 14.2 + rand() * 2.2;
+        const w2 = 33.6 - alleyGap - w1;
+        const x1 = cx - 16.8 + w1 / 2;
+        const x2 = cx + 16.8 - w2 / 2;
 
-        const h1 = (isOceanFront ? 11 : 12) + rand() * 11;
-        const h2 = (isOceanFront ? 9 : 10) + rand() * 10;
+        const h1 = (isOceanFront ? 13 : 14) + rand() * 13;
+        const h2 = (isOceanFront ? 11 : 12) + rand() * 12;
 
         buildings.push({
           x: x1,
           z: cz,
           w: w1,
           h: h1,
-          d: 20.8,
+          d: 33.0,
           color: PASTEL_PALETTE[Math.floor(rand() * PASTEL_PALETTE.length)],
           trimColor: '#fff3e4',
           neonColor: NEON_PALETTE[Math.floor(rand() * NEON_PALETTE.length)],
@@ -224,7 +224,7 @@ export function generateCityLayout(): CityLayout {
           z: cz,
           w: w2,
           h: h2,
-          d: 20.8,
+          d: 33.0,
           color: PASTEL_PALETTE[Math.floor(rand() * PASTEL_PALETTE.length)],
           trimColor: '#fff3e4',
           neonColor: NEON_PALETTE[Math.floor(rand() * NEON_PALETTE.length)],
@@ -243,10 +243,10 @@ export function generateCityLayout(): CityLayout {
     blockSize: BLOCK_SIZE,
     sidewalkWidth: SIDEWALK_WIDTH,
     playableBounds: {
-      minX: -124, // extends west through Little Havana, Vice Airfield Runway 18/36 & West Havana Blvd (x=-66..-124)
-      maxX: 228, // extends across Causeway Bridge, Starfish Island & open east ocean
-      minZ: -168, // extends north through North Point, Vice Marina Bay & Cape Vice Cliff
-      maxZ: 158, // extends south through Vice Port Docks, Vice Airfield & south bay
+      minX: -146, // extends west through Little Havana, Vice Airfield Runway 18/36 & West Havana Blvd
+      maxX: 250, // extends across Causeway Bridge, Starfish Island, Smuggler's Cay & open east ocean
+      minZ: -190, // extends north through North Point, Vice Marina Bay & Cape Vice Cliff
+      maxZ: 180, // extends south through Vice Port Docks, Vice Airfield & south bay
     },
     buildings,
   };

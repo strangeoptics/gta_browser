@@ -182,23 +182,31 @@ export function whenGlbCharacterReady(cb: (tpl: CachedGlbTemplate) => void): voi
 }
 
 /**
+ * Finds a bone by name, handling Three.js GLTFLoader's PropertyBinding.sanitizeNodeName()
+ * which strips dots from Blender bone names (e.g. 'UpperLeg.L' -> 'UpperLegL').
+ */
+export function findGlbBone(root: THREE.Object3D, name: string): THREE.Object3D | null {
+  return root.getObjectByName(name) ?? root.getObjectByName(name.replace(/\./g, '')) ?? null;
+}
+
+/**
  * Applies anatomically balanced body-build proportions (slim, tall-lean, muscular,
  * heavy, stocky, average) using root + non-animated bone scales while counter-scaling
  * the neck/head so head proportions always stay natural!
  */
 export function applyCharacterBodyBuild(model: THREE.Object3D, uniformScale: number, build: CharacterBuildType): void {
-  const hips = model.getObjectByName('Hips');
-  const abdomen = model.getObjectByName('Abdomen');
-  const torso = model.getObjectByName('Torso');
-  const neck = model.getObjectByName('Neck');
-  const upperArmL = model.getObjectByName('UpperArm.L');
-  const upperArmR = model.getObjectByName('UpperArm.R');
-  const lowerArmL = model.getObjectByName('LowerArm.L');
-  const lowerArmR = model.getObjectByName('LowerArm.R');
-  const palmL = model.getObjectByName('Palm.L');
-  const palmR = model.getObjectByName('Palm.R');
-  const upperLegL = model.getObjectByName('UpperLeg.L');
-  const upperLegR = model.getObjectByName('UpperLeg.R');
+  const hips = findGlbBone(model, 'Hips');
+  const abdomen = findGlbBone(model, 'Abdomen');
+  const torso = findGlbBone(model, 'Torso');
+  const neck = findGlbBone(model, 'Neck');
+  const upperArmL = findGlbBone(model, 'UpperArm.L');
+  const upperArmR = findGlbBone(model, 'UpperArm.R');
+  const lowerArmL = findGlbBone(model, 'LowerArm.L');
+  const lowerArmR = findGlbBone(model, 'LowerArm.R');
+  const palmL = findGlbBone(model, 'Palm.L');
+  const palmR = findGlbBone(model, 'Palm.R');
+  const upperLegL = findGlbBone(model, 'UpperLeg.L');
+  const upperLegR = findGlbBone(model, 'UpperLeg.R');
 
   let sx = 1.0;
   let sy = 1.0;
@@ -378,22 +386,21 @@ export function instantiateGlbCharacter(
     currentAnim = key;
   };
 
-  const headBone = model.getObjectByName('Head') ?? null;
-  const neckBone = model.getObjectByName('Neck') ?? null;
-  const torsoBone = model.getObjectByName('Torso') ?? null;
-  const upperArmR = model.getObjectByName('UpperArm.R') ?? null;
-  const lowerArmR = model.getObjectByName('LowerArm.R') ?? null;
-  const upperArmL = model.getObjectByName('UpperArm.L') ?? null;
-  const lowerArmL = model.getObjectByName('LowerArm.L') ?? null;
-  const upperLegL = model.getObjectByName('UpperLeg.L') ?? null;
-  const upperLegR = model.getObjectByName('UpperLeg.R') ?? null;
-  const lowerLegL = model.getObjectByName('LowerLeg.L') ?? null;
-  const lowerLegR = model.getObjectByName('LowerLeg.R') ?? null;
+  const headBone = findGlbBone(model, 'Head');
+  const neckBone = findGlbBone(model, 'Neck');
+  const torsoBone = findGlbBone(model, 'Torso');
+  const upperArmR = findGlbBone(model, 'UpperArm.R');
+  const lowerArmR = findGlbBone(model, 'LowerArm.R');
+  const upperArmL = findGlbBone(model, 'UpperArm.L');
+  const lowerArmL = findGlbBone(model, 'LowerArm.L');
+  const upperLegL = findGlbBone(model, 'UpperLeg.L');
+  const upperLegR = findGlbBone(model, 'UpperLeg.R');
+  const lowerLegL = findGlbBone(model, 'LowerLeg.L');
+  const lowerLegR = findGlbBone(model, 'LowerLeg.R');
   const rightHandBone =
-    model.getObjectByName('MiddleHand.R') ??
-    model.getObjectByName('Palm.R') ??
-    model.getObjectByName('LowerArm.R') ??
-    null;
+    findGlbBone(model, 'MiddleHand.R') ??
+    findGlbBone(model, 'Palm.R') ??
+    findGlbBone(model, 'LowerArm.R');
 
   const attachToBone = (bone: THREE.Object3D, worldPos: THREE.Vector3, accessory: THREE.Object3D) => {
     model.updateMatrixWorld(true);

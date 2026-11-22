@@ -5,6 +5,7 @@ import {
   createGoldChainMesh,
   createPoliceCapMesh,
   createSunglassesMesh,
+  findGlbBone,
   instantiateGlbCharacter,
   whenGlbCharacterReady,
   type GlbCharacterInstance,
@@ -804,44 +805,44 @@ export class GarageRidesSystem {
     let rightLegOutZ = 0;
 
     if (!r.grounded) {
-      // Mid-air Ollie tuck: both knees pulled up over the deck & arms spread wide for style!
-      tgtBodyY = 0.12;
-      torsoPitch = 0.24;
-      tgtLegLX = -0.78;
-      tgtLegRX = -0.72;
-      tgtKneeLX = 1.05;
-      tgtKneeRX = 0.98;
-      tgtArmLX = -0.2;
-      tgtArmRX = -0.2;
-      tgtArmLZ = 0.85;
-      tgtArmRZ = -0.85;
+      // Mid-air Ollie tuck: both knees pulled up high over the deck & arms spread wide for style!
+      tgtBodyY = 0.14;
+      torsoPitch = 0.28;
+      tgtLegLX = -0.95;
+      tgtLegRX = -0.88;
+      tgtKneeLX = 1.25;
+      tgtKneeRX = 1.18;
+      tgtArmLX = -0.25;
+      tgtArmRX = -0.25;
+      tgtArmLZ = 0.92;
+      tgtArmRZ = -0.92;
     } else if (pushing && r.speed >= -0.1) {
-      // Rhythmic kick-push: front leg planted on deck bolts, rear leg swings back & forth!
-      r.animPhase += dt * (sprinting ? 6.4 : 4.8);
+      // Rhythmic kick-push: front leg planted on deck bolts, rear leg swings back & forth off the board!
+      r.animPhase += dt * (sprinting ? 7.2 : 5.4);
       const pushWave = Math.sin(r.animPhase);
-      tgtBodyY = -0.02 - Math.max(0, pushWave) * 0.04;
-      torsoPitch = 0.22;
-      tgtLegLX = -0.26;
-      tgtKneeLX = 0.36;
-      tgtLegRX = pushWave * 0.65;
-      tgtKneeRX = Math.max(0.1, -pushWave * 0.55 + 0.28);
-      rightLegOutZ = -0.22;
-      tgtArmLX = -0.35 - pushWave * 0.45;
-      tgtArmRX = -0.35 + pushWave * 0.45;
-      tgtArmLZ = 0.38;
-      tgtArmRZ = -0.38;
+      tgtBodyY = -0.02 - Math.max(0, pushWave) * 0.05;
+      torsoPitch = 0.26;
+      tgtLegLX = -0.32;
+      tgtKneeLX = 0.44;
+      tgtLegRX = pushWave * 0.85;
+      tgtKneeRX = Math.max(0.12, -pushWave * 0.65 + 0.35);
+      rightLegOutZ = -0.24;
+      tgtArmLX = -0.4 - pushWave * 0.55;
+      tgtArmRX = -0.4 + pushWave * 0.55;
+      tgtArmLZ = 0.42;
+      tgtArmRZ = -0.42;
     } else {
       // Poised cruising carve stance: both feet planted sideways, knees gently bent, arms out for balance
-      tgtBodyY = -0.03;
-      torsoPitch = 0.14;
-      tgtLegLX = -0.2;
-      tgtLegRX = 0.16;
-      tgtKneeLX = 0.26;
-      tgtKneeRX = 0.24;
+      tgtBodyY = -0.04;
+      torsoPitch = 0.16;
+      tgtLegLX = -0.24;
+      tgtLegRX = 0.2;
+      tgtKneeLX = 0.32;
+      tgtKneeRX = 0.3;
       tgtArmLX = -0.22;
       tgtArmRX = -0.22;
-      tgtArmLZ = 0.44 + steer * 0.22;
-      tgtArmRZ = -0.44 + steer * 0.22;
+      tgtArmLZ = 0.48 + steer * 0.26;
+      tgtArmRZ = -0.48 + steer * 0.26;
     }
 
     rider.bodyRoot.position.y += (tgtBodyY - rider.bodyRoot.position.y) * blend;
@@ -1640,8 +1641,17 @@ export class GarageRidesSystem {
       // Capture clean standing rest quaternions & model-space axes BEFORE parenting under rotated bodyRoot!
       const m = inst.model;
       m.updateMatrixWorld(true);
+
+      // Re-parent Blender IK Foot bones under LowerLeg_end so shoes & ankles follow every leg & knee motion!
+      const footL = findGlbBone(m, 'Foot.L');
+      const footR = findGlbBone(m, 'Foot.R');
+      const lowerLegLEnd = findGlbBone(m, 'LowerLeg.L_end');
+      const lowerLegREnd = findGlbBone(m, 'LowerLeg.R_end');
+      if (footL && lowerLegLEnd) lowerLegLEnd.attach(footL);
+      if (footR && lowerLegREnd) lowerLegREnd.attach(footR);
+
       rider.bones = {
-        abdomen: bindBoneAxes(m, m.getObjectByName('Abdomen') ?? null),
+        abdomen: bindBoneAxes(m, findGlbBone(m, 'Abdomen')),
         torso: bindBoneAxes(m, inst.torsoBone),
         head: bindBoneAxes(m, inst.headBone),
         upperArmL: bindBoneAxes(m, inst.upperArmL),

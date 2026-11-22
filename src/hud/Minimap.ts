@@ -92,6 +92,27 @@ export class Minimap {
     sctx.fillRect(wx(148), wz(-84), 50 * scale, 64 * scale);
     sctx.strokeRect(wx(148), wz(-84), 50 * scale, 64 * scale);
 
+    // Smuggler's Cay & Offshore Rig 86 (SE Ocean: center 162, 96)
+    sctx.fillStyle = 'rgba(78, 158, 108, 0.52)';
+    sctx.strokeStyle = 'rgba(235, 208, 162, 0.65)';
+    sctx.lineWidth = 1.6;
+    sctx.beginPath();
+    sctx.ellipse(wx(162), wz(96), 23 * scale, 21 * scale, 0, 0, Math.PI * 2);
+    sctx.fill();
+    sctx.stroke();
+    // Wooden Boat Jetty (x = 126..145, z = 96)
+    sctx.fillStyle = 'rgba(184, 142, 98, 0.8)';
+    sctx.fillRect(wx(126), wz(94), 19 * scale, 4 * scale);
+    sctx.fillRect(wx(126), wz(90), 3.4 * scale, 12 * scale);
+    // Offshore Steel Rig Helipad (163, 118)
+    sctx.fillStyle = 'rgba(84, 92, 106, 0.78)';
+    sctx.fillRect(wx(156), wz(111), 14 * scale, 14 * scale);
+    sctx.strokeStyle = 'rgba(255, 209, 92, 0.85)';
+    sctx.lineWidth = 1.3;
+    sctx.beginPath();
+    sctx.arc(wx(163), wz(118), 5 * scale, 0, Math.PI * 2);
+    sctx.stroke();
+
     // Vice Port Industrial Docks (x = -68..78, z = 66..126) & Cargo Freighter (x = -21..37, z = 128..142)
     sctx.fillStyle = 'rgba(92, 96, 110, 0.45)';
     sctx.fillRect(wx(-68), wz(66), 146 * scale, 60 * scale);
@@ -201,6 +222,8 @@ export class Minimap {
     sctx.fillText('L', wx(81), wz(-114));
     sctx.fillStyle = '#36f1e6';
     sctx.fillText('✈', wx(-96), wz(102));
+    sctx.fillStyle = '#ffd15c';
+    sctx.fillText('☠', wx(162), wz(96));
 
     this.staticCanvas = c;
     return c;

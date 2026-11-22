@@ -22,6 +22,7 @@ import { buildBeachHighlights } from './BeachProps';
 import { buildNeonClub } from './NeonClub';
 import { buildPoliceStation } from './PoliceStation';
 import { buildSafehouse, type CabinetWeapon, type FoodItem } from './Safehouse';
+import { buildSmugglersCay } from './SmugglersCay';
 import { buildStarfishIsland, type SuperyachtHandle } from './StarfishIsland';
 import { buildStuntRamps, type StuntRamp } from './StuntRamps';
 import { buildTrafficLights } from './TrafficLights';
@@ -66,6 +67,10 @@ export interface MiamiWorld {
   isNearAirfieldLoot: (pos: THREE.Vector3) => boolean;
   takeAirfieldLoot: () => void;
   isNearAirfieldCafe: (pos: THREE.Vector3) => boolean;
+  isInsideSmugglersShack: (pos: THREE.Vector3) => boolean;
+  isNearSmugglersLoot: (pos: THREE.Vector3) => boolean;
+  takeSmugglersLoot: () => void;
+  isNearSmugglersBar: (pos: THREE.Vector3) => boolean;
   cycleTimeOfDay: () => string;
   toggleRain: () => boolean;
   setRetrowaveMode: (active: boolean) => void;
@@ -758,6 +763,9 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
   // 6e) Vice International Airfield: Runway 18/36, Walk-in Terminal 1, 22m ATC Tower & Hangar 06 (x = -124..-68, z = 66..138)
   const viceAirfield = buildViceAirfield(scene, colliders, worldMeshes, palmPositions);
 
+  // 6f) Smuggler's Cay & Offshore Rig 86 in the Southeast Ocean (x = 120..200, z = 55..135)
+  const smugglersCay = buildSmugglersCay(scene, colliders, worldMeshes, palmPositions);
+
   const palms = buildPalmTrees(scene, palmPositions);
 
   // 6f) Vice Port Industrial Container Docks, 26m Gantry Cranes, Cargo Freighter & Import/Export (z = 66..140)
@@ -1024,6 +1032,10 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
     isNearAirfieldLoot: (pos: THREE.Vector3) => viceAirfield.isNearAirfieldLoot(pos),
     takeAirfieldLoot: () => viceAirfield.takeAirfieldLoot(),
     isNearAirfieldCafe: (pos: THREE.Vector3) => viceAirfield.isNearAirfieldCafe(pos),
+    isInsideSmugglersShack: (pos: THREE.Vector3) => smugglersCay.isInsideShack(pos),
+    isNearSmugglersLoot: (pos: THREE.Vector3) => smugglersCay.isNearLoot(pos),
+    takeSmugglersLoot: () => smugglersCay.takeLoot(),
+    isNearSmugglersBar: (pos: THREE.Vector3) => smugglersCay.isNearTikiBar(pos),
     cycleTimeOfDay: () => {
       timeIndex = (timeIndex + 1) % timePresets.length;
       return applyTimePreset(timeIndex);
@@ -1077,6 +1089,7 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
       northPoint.getGroundHeight(x, z) ??
       starfish.getGroundHeight(x, z) ??
       viceAirfield.getGroundHeight(x, z) ??
+      smugglersCay.getGroundHeight(x, z) ??
       getBeachHeight(x, z),
     shouldTrafficStop: (x: number, z: number, yaw: number) => trafficLights.shouldAiStop(x, z, yaw),
     update: (
@@ -1095,6 +1108,7 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
       westDistrict.update(elapsed, playerPos);
       northPoint.update(elapsed, playerPos);
       viceAirfield.update(elapsed, playerPos);
+      smugglersCay.update(elapsed, playerPos);
       vicePort.update(elapsed, playerPos);
       neonClub.update(elapsed, playerPos);
       safehouse.update(elapsed, dt, playerPos, cash, wantedStars, cameraYaw, performanceMode);

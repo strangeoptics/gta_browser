@@ -1695,7 +1695,8 @@ function animate(now: number): void {
     world.isInsideClub(player.position) ||
     world.isInsidePoliceStation(player.position) ||
     world.isInsideWestInterior(player.position) ||
-    world.isInsideAirfieldInterior(player.position);
+    world.isInsideAirfieldInterior(player.position) ||
+    world.isInsideSmugglersShack(player.position);
   let playerCoverState: typeof playerCoverScratch | undefined;
   if (playerInCover) {
     playerCoverScratch.peeking = playerCoverPeeking;

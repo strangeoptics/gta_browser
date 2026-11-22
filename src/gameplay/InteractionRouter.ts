@@ -520,6 +520,26 @@ export function handleInteractKeyF(ctx: InteractionContext): void {
     } else {
       showQuickToast(`TERMINAL 1 CAFÉ · ZU WENIG CASH (BENÖTIGT $${cafeCost})`);
     }
+  } else if (world.isNearSmugglersLoot(pos)) {
+    world.takeSmugglersLoot();
+    objectives.cash += 3500;
+    wanted.addHeat(120);
+    audio.playMissionPassed();
+    persistProgress();
+    showQuickToast("SMUGGLER'S CAY · SCHMUGGLER-SCHATZ GEKLAUT (+$3.500 · ⚠ 3★ ALARM)");
+    sendPoliceDispatch("CODE 3 auf Smuggler's Cay! Kartell-Versteck geplündert — Küstenwache & Air-One ausrücken!", true);
+  } else if (world.isNearSmugglersBar(pos)) {
+    const rumCost = 45;
+    if (objectives.cash >= rumCost) {
+      objectives.cash -= rumCost;
+      ctx.setPlayerHp(maxHp);
+      ctx.setCocktailScore(Math.min(6.0, ctx.getCocktailScore() + 1.0));
+      audio.playPurchase();
+      persistProgress();
+      showQuickToast(`CAYO TIKI BAR · COCONUT RUM (${maxHp} HP · -$45 · 🍹)`);
+    } else {
+      showQuickToast(`CAYO TIKI BAR · ZU WENIG CASH (BENÖTIGT $${rumCost})`);
+    }
   } else if (world.isNearClubBar(pos)) {
     if (objectives.cash >= 50) {
       objectives.cash -= 50;

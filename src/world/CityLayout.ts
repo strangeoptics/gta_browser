@@ -54,6 +54,7 @@ export const WORLD_LANDMARKS = {
   VICE_CUSTOMS: { x: -85, z: -37.5 },
   LOWRIDER_ARENA: { x: -87, z: 1.6 },
   VICE_AIRFIELD: { x: -96, z: 102 },
+  SMUGGLERS_CAY: { x: 162, z: 96 },
   VICE_PORT_GOAL_Z: 68,
   OCEAN_DEEP_X: 107,
 } as const;

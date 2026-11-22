@@ -26,6 +26,33 @@ export class PlayerController {
   private thirdPerson = false;
   private readonly camRaycaster = new THREE.Raycaster();
 
+  // GTA-style Cover System state
+  private inCover = false;
+  private coverPeeking = false;
+  private coverLow = false;
+  private coverNormalX = 0;
+  private coverNormalZ = 1;
+  private coverWallCoord = 0; // X or Z coordinate of the cover surface
+  private coverAxis: 'x' | 'z' = 'z'; // 'z' means normal is along Z (wall runs along X)
+  private coverSpanMin = -10;
+  private coverSpanMax = 10;
+  private coverBoxMaxY = 2.0;
+  private coverPeekOffset = 0; // smoothed lateral corner peek
+  private coverPeekDir = 1;
+  private coverPullAwayTimer = 0;
+  private cachedCoverCandidate: {
+    axis: 'x' | 'z';
+    normalX: number;
+    normalZ: number;
+    wallCoord: number;
+    snapX: number;
+    snapZ: number;
+    spanMin: number;
+    spanMax: number;
+    boxMaxY: number;
+    isLow: boolean;
+  } | null = null;
+
   // Tuning constants
   private readonly walkSpeed = 6.2;
   private readonly sprintSpeed = 10.2;
@@ -121,6 +148,135 @@ export class PlayerController {
     this.velocity.set(0, 0, 0);
     this.yaw = yaw;
     this.pitch = 0;
+    this.exitCover();
+  }
+
+  public isInCover(): boolean {
+    return this.inCover;
+  }
+
+  public canTakeCover(): boolean {
+    return !this.inCover && !this.swimming && this.grounded && this.cachedCoverCandidate !== null;
+  }
+
+  public exitCover(): void {
+    this.inCover = false;
+    this.coverPeeking = false;
+    this.coverPeekOffset = 0;
+    this.coverPullAwayTimer = 0;
+  }
+
+  /**
+   * Toggles GTA-style cover against the nearest wall, car, barricade, or low ledge.
+   * Returns true if cover state changed (entered or exited), false if no cover nearby.
+   */
+  public toggleCover(): boolean {
+    if (this.inCover) {
+      this.exitCover();
+      return true;
+    }
+    if (this.swimming || !this.grounded || !this.cachedCoverCandidate) {
+      return false;
+    }
+    const c = this.cachedCoverCandidate;
+    this.inCover = true;
+    this.coverPeeking = false;
+    this.coverLow = c.isLow;
+    this.coverAxis = c.axis;
+    this.coverNormalX = c.normalX;
+    this.coverNormalZ = c.normalZ;
+    this.coverWallCoord = c.wallCoord;
+    this.coverSpanMin = c.spanMin;
+    this.coverSpanMax = c.spanMax;
+    this.coverBoxMaxY = c.boxMaxY;
+    this.coverPullAwayTimer = 0;
+    this.velocity.set(0, 0, 0);
+    // Snap cleanly onto the cover wall surface
+    this.position.x = c.snapX;
+    this.position.z = c.snapZ;
+    return true;
+  }
+
+  private findCoverCandidate(colliders: AABB[]): typeof this.cachedCoverCandidate {
+    const px = this.position.x;
+    const py = this.position.y;
+    const pz = this.position.z;
+    const maxDist = 1.65;
+    const snapPad = this.radius + 0.08;
+    const lookX = -Math.sin(this.yaw);
+    const lookZ = -Math.cos(this.yaw);
+
+    let best: typeof this.cachedCoverCandidate = null;
+    let bestScore = Infinity;
+
+    for (const box of colliders) {
+      if (box.tag === 'npc') continue;
+      // Cover must rise at least 0.72m above feet and start below chest height
+      if (box.maxY < py + 0.72 || box.minY > py + 1.15) continue;
+      // Quick broad-phase rejection
+      if (
+        px < box.minX - maxDist ||
+        px > box.maxX + maxDist ||
+        pz < box.minZ - maxDist ||
+        pz > box.maxZ + maxDist
+      ) {
+        continue;
+      }
+
+      const cx = THREE.MathUtils.clamp(px, box.minX, box.maxX);
+      const cz = THREE.MathUtils.clamp(pz, box.minZ, box.maxZ);
+      const dx = px - cx;
+      const dz = pz - cz;
+      const dist = Math.hypot(dx, dz);
+      if (dist > maxDist || dist < 0.001) continue;
+
+      let axis: 'x' | 'z';
+      let nx = 0;
+      let nz = 0;
+      let wallCoord = 0;
+      let snapX = px;
+      let snapZ = pz;
+      let spanMin = 0;
+      let spanMax = 0;
+
+      if (Math.abs(dx) >= Math.abs(dz)) {
+        axis = 'x';
+        nx = dx >= 0 ? 1 : -1;
+        wallCoord = nx > 0 ? box.maxX : box.minX;
+        snapX = wallCoord + nx * snapPad;
+        snapZ = THREE.MathUtils.clamp(pz, box.minZ + 0.2, box.maxZ - 0.2);
+        spanMin = box.minZ;
+        spanMax = box.maxZ;
+      } else {
+        axis = 'z';
+        nz = dz >= 0 ? 1 : -1;
+        wallCoord = nz > 0 ? box.maxZ : box.minZ;
+        snapZ = wallCoord + nz * snapPad;
+        snapX = THREE.MathUtils.clamp(px, box.minX + 0.2, box.maxX - 0.2);
+        spanMin = box.minX;
+        spanMax = box.maxX;
+      }
+
+      // Slightly prefer walls the player is facing toward (look dot -normal > 0)
+      const facingWall = -(lookX * nx + lookZ * nz);
+      const score = dist - facingWall * 0.35;
+      if (score < bestScore) {
+        bestScore = score;
+        best = {
+          axis,
+          normalX: nx,
+          normalZ: nz,
+          wallCoord,
+          snapX,
+          snapZ,
+          spanMin,
+          spanMax,
+          boxMaxY: box.maxY,
+          isLow: box.maxY - py <= 1.68,
+        };
+      }
+    }
+    return best;
   }
 
   private onKeyDown = (e: KeyboardEvent): void => {
@@ -202,10 +358,13 @@ export class PlayerController {
     const padCrouch = Boolean(pad?.connected && pad.crouch);
     const padSprint = Boolean(pad?.connected && pad.sprint && pad.moveY > 0.25);
 
+    this.cachedCoverCandidate = !this.inCover && !this.swimming && this.grounded ? this.findCoverCandidate(colliders) : null;
+
     this.crouching = active && (this.keys.has('KeyC') || this.keys.has('ControlLeft') || padCrouch);
     const wantsSprint =
       active &&
       !this.crouching &&
+      !this.inCover &&
       (((this.keys.has('ShiftLeft') || this.keys.has('ShiftRight')) && this.keys.has('KeyW')) || padSprint);
 
     // Compute horizontal wish direction from yaw
@@ -229,35 +388,107 @@ export class PlayerController {
       this.wishDir.normalize();
     }
 
+    // --- GTA-Style Cover Movement, Peeking & Auto-Exit ---
+    const wantsJump = this.keys.has('Space') || Boolean(pad?.connected && pad.jump);
+    if (this.inCover) {
+      if (!active || this.swimming || wantsJump) {
+        this.exitCover();
+      } else {
+        // Tangent vector along cover wall
+        const tanX = -this.coverNormalZ;
+        const tanZ = this.coverNormalX;
+        const alongInput = this.wishDir.x * tanX + this.wishDir.z * tanZ;
+        const awayInput = this.wishDir.x * this.coverNormalX + this.wishDir.z * this.coverNormalZ;
+
+        // Pulling strongly away from the cover wall exits cover smoothly
+        if (awayInput > 0.65 && !isAds) {
+          this.coverPullAwayTimer += clampedDt;
+          if (this.coverPullAwayTimer > 0.24) {
+            this.exitCover();
+          }
+        } else {
+          this.coverPullAwayTimer = 0;
+        }
+
+        if (this.inCover) {
+          this.coverLow = this.coverBoxMaxY - this.position.y <= 1.68;
+          this.coverPeeking = isAds;
+          // Duck behind low cover when not peeking
+          this.crouching = this.coverLow && !this.coverPeeking;
+
+          // Slide smoothly along the cover edge (zero slide while peeking so aim stays rock-steady!)
+          const slideSpeed = this.coverPeeking ? 0 : 3.4;
+          this.velocity.x = tanX * alongInput * slideSpeed;
+          this.velocity.z = tanZ * alongInput * slideSpeed;
+
+          // Keep hugged to the cover surface & clamped within cover span
+          const snapPad = this.radius + 0.08;
+          if (this.coverAxis === 'x') {
+            this.position.x += (this.coverWallCoord + this.coverNormalX * snapPad - this.position.x) * (1 - Math.exp(-16 * clampedDt));
+            const nextSpan = THREE.MathUtils.clamp(
+              this.position.z + this.velocity.z * clampedDt,
+              this.coverSpanMin + 0.25,
+              this.coverSpanMax - 0.25,
+            );
+            this.velocity.z = (nextSpan - this.position.z) / Math.max(clampedDt, 0.001);
+          } else {
+            this.position.z += (this.coverWallCoord + this.coverNormalZ * snapPad - this.position.z) * (1 - Math.exp(-16 * clampedDt));
+            const nextSpan = THREE.MathUtils.clamp(
+              this.position.x + this.velocity.x * clampedDt,
+              this.coverSpanMin + 0.25,
+              this.coverSpanMax - 0.25,
+            );
+            this.velocity.x = (nextSpan - this.position.x) / Math.max(clampedDt, 0.001);
+          }
+
+          // Determine corner-peek lean direction for high cover (towards nearer edge or camera right)
+          const curSpan = this.coverAxis === 'x' ? this.position.z : this.position.x;
+          const distToMin = Math.abs(curSpan - this.coverSpanMin);
+          const distToMax = Math.abs(this.coverSpanMax - curSpan);
+          if (Math.min(distToMin, distToMax) < 1.35) {
+            this.coverPeekDir = distToMax < distToMin ? 1 : -1;
+          } else {
+            const rightDotTan = this.rightVec.x * tanX + this.rightVec.z * tanZ;
+            this.coverPeekDir = rightDotTan >= 0 ? 1 : -1;
+          }
+          const targetPeek = this.coverPeeking && !this.coverLow ? this.coverPeekDir * 0.58 : 0;
+          this.coverPeekOffset += (targetPeek - this.coverPeekOffset) * (1 - Math.exp(-12 * clampedDt));
+        }
+      }
+    } else {
+      this.coverPeekOffset += (0 - this.coverPeekOffset) * (1 - Math.exp(-12 * clampedDt));
+    }
+
     // Drunken lateral stagger only while walking (keeps standing still steady & controllable)
-    if (drunkLevel > 0.005 && active && this.wishDir.lengthSq() > 0.05) {
+    if (!this.inCover && drunkLevel > 0.005 && active && this.wishDir.lengthSq() > 0.05) {
       const t = performance.now() * 0.001;
       const stagger = (Math.sin(t * 2.15) * 0.65 + Math.cos(t * 3.45) * 0.35) * drunkLevel;
       this.wishDir.addScaledVector(this.rightVec, stagger * 0.42);
       this.yaw += Math.sin(t * 1.45) * drunkLevel * 0.14 * clampedDt;
     }
 
-    const targetSpeed = this.swimming
-      ? wantsSprint
-        ? 6.6
-        : 4.5
-      : this.crouching
-        ? this.crouchSpeed
-        : wantsSprint
-          ? this.sprintSpeed
-          : this.walkSpeed;
+    if (!this.inCover) {
+      const targetSpeed = this.swimming
+        ? wantsSprint
+          ? 6.6
+          : 4.5
+        : this.crouching
+          ? this.crouchSpeed
+          : wantsSprint
+            ? this.sprintSpeed
+            : this.walkSpeed;
 
-    const targetVx = this.wishDir.x * targetSpeed;
-    const targetVz = this.wishDir.z * targetSpeed;
-    const accel = this.swimming ? 5.2 : this.grounded ? this.accelGround : this.accelAir;
-    const blend = 1 - Math.exp(-accel * clampedDt);
+      const targetVx = this.wishDir.x * targetSpeed;
+      const targetVz = this.wishDir.z * targetSpeed;
+      const accel = this.swimming ? 5.2 : this.grounded ? this.accelGround : this.accelAir;
+      const blend = 1 - Math.exp(-accel * clampedDt);
 
-    this.velocity.x += (targetVx - this.velocity.x) * blend;
-    this.velocity.z += (targetVz - this.velocity.z) * blend;
+      this.velocity.x += (targetVx - this.velocity.x) * blend;
+      this.velocity.z += (targetVz - this.velocity.z) * blend;
+    }
 
     // Jump (Space or Gamepad A)
-    const wantsJump = this.keys.has('Space') || Boolean(pad?.connected && pad.jump);
-    if (active && this.grounded && wantsJump && !this.crouching && !this.swimming) {
+    if (active && this.grounded && wantsJump && !this.crouching && !this.swimming && !this.inCover) {
       this.velocity.y = this.jumpSpeed;
       this.grounded = false;
     }
@@ -343,15 +574,20 @@ export class PlayerController {
       this.bobTimer = 0;
     }
 
+    // Corner-peek world offset along the cover wall tangent
+    const peekTanX = -this.coverNormalZ * this.coverPeekOffset;
+    const peekTanZ = this.coverNormalX * this.coverPeekOffset;
+
     if (this.thirdPerson) {
       // GTA Over-the-Shoulder 3rd-Person Camera with wall-clip avoidance
+      const shoulderShift = this.inCover ? 0.65 : 0.52;
       const pivot = new THREE.Vector3(
-        this.position.x + this.rightVec.x * 0.52,
+        this.position.x + this.rightVec.x * shoulderShift + peekTanX,
         this.position.y + this.currentEyeHeight + 0.08,
-        this.position.z + this.rightVec.z * 0.52,
+        this.position.z + this.rightVec.z * shoulderShift + peekTanZ,
       );
       const lookDir = new THREE.Vector3(0, 0, -1).applyEuler(new THREE.Euler(this.pitch, this.yaw, 0, 'YXZ'));
-      const desiredDist = isAds ? 2.15 : 3.55;
+      const desiredDist = isAds ? 2.15 : this.inCover ? 3.05 : 3.55;
       const backDir = lookDir.clone().negate();
 
       let actualDist = desiredDist;
@@ -370,9 +606,9 @@ export class PlayerController {
       this.camera.rotation.z = 0;
     } else {
       this.camera.position.set(
-        this.position.x + this.rightVec.x * bobOffsetX,
+        this.position.x + this.rightVec.x * bobOffsetX + peekTanX,
         this.position.y + this.currentEyeHeight + bobOffsetY,
-        this.position.z + this.rightVec.z * bobOffsetX,
+        this.position.z + this.rightVec.z * bobOffsetX + peekTanZ,
       );
       this.camera.rotation.y = this.yaw;
       this.camera.rotation.x = this.pitch;
@@ -388,6 +624,12 @@ export class PlayerController {
       sprinting: wantsSprint && horizSpeed > 1.0,
       crouching: this.crouching,
       swimming: this.swimming,
+      inCover: this.inCover,
+      coverPeeking: this.coverPeeking,
+      coverLow: this.coverLow,
+      coverNormalX: this.coverNormalX,
+      coverNormalZ: this.coverNormalZ,
+      canTakeCover: this.canTakeCover(),
     };
   }
 }

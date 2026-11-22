@@ -36,27 +36,28 @@ src/
 ├── engine/
 │   ├── GamepadInput.ts      # Browser Gamepad API poller returning GamepadSnapshot
 │   ├── Physics.ts           # AABB cylinder-approx player collision with wall-sliding, step-up (0.28m) & terrain height
-│   ├── Storage.ts           # localStorage persistence ($300 cash, missions, armor, launcher, 5 outfits, invertMouseY & settings)
+│   ├── Storage.ts           # localStorage persistence ($300 cash, missions, armor, launcher, 5 outfits, paramedicRescues/150 Max-HP, invertMouseY & settings)
 │   └── TouchControls.ts     # Mobile/tablet virtual stick + buttons (merges into GamepadSnapshot; hidden on desktop)
 ├── entities/
 │   ├── CharacterTextures.ts # Cached 128×128 procedural face (sunglasses/mustache) & 80s outfit canvas textures
 │   ├── HelicopterSystem.ts  # Vice PD Chopper (deploys at 3+ stars, sweeping SpotLight, shootable)
-│   └── NpcSystem.ts         # Articulated civilians, Vice PD & bounty NPCs, world/Safehouse wall-sliding collisions & precinct spawns
+│   └── NpcSystem.ts         # Articulated civilians, Vice PD & bounty NPCs, cover-aware gunfire, water-cannon knockback & precinct spawns
 ├── gameplay/
 │   ├── HeistSystem.ts       # 3-stage "Ocean Club Finale" story heist (+$3,500)
 │   ├── ObjectiveSystem.ts   # 5 rotating mini-objectives (stash, race, bounty, dropoff, survive)
 │   ├── PayNSpray.ts         # Drive-in respray bay at (-56, -38): repairs, repaints & clears Wanted stars
 │   ├── ShopSystem.ts        # AMMU-NEON kiosk at Central Plaza (-4.5, 4.5)
+│   ├── SpecialVehicleMissions.ts # Taxi (VICE CAB w/ drift/jump tips), Firefighter (aimable water cannon) & Paramedic (5 rescues -> 150 Max-HP)
 │   ├── VigilanteSystem.ts   # Police Vigilante mode ([G]) in Vice PD vehicles with escalating bounties
 │   └── WantedSystem.ts      # 0–5 star heat & decay system
 ├── hud/
 │   └── Minimap.ts           # 30-Hz rotating circular 2D-canvas radar (all 4 expansion districts + $, P, C, ⌂, PD, IE, T, D, B, ⚓, L, M, ★, H)
 ├── player/
-│   ├── PlayerAvatar.ts      # 3rd-person 80s protagonist model with 5 outfits, held weapon & freestyle/treading swimming animations
-│   └── PlayerController.ts  # Pointer-Lock + drag/arrow FPS & 3rd-person camera (invertMouseY, wall-clip raycast, ocean buoyancy & swimming)
+│   ├── PlayerAvatar.ts      # 3rd-person 80s protagonist model with 5 outfits, held weapon, cover pose & swimming animations
+│   └── PlayerController.ts  # Pointer-Lock + drag/arrow FPS & 3rd-person camera (invertMouseY, GTA cover & peeking [Q/X], wall-clip raycast & swimming)
 ├── vehicles/
 │   ├── BoatSystem.ts        # Drivable Stinger Speedboat (beach pier, Starfish Island & Superyacht docking)
-│   ├── CarBuilder.ts        # 8 detailed extruded 3D car models (DeLorean, Cybertruck, Trans Am K.I.T.T., Bounder RV, Monaco, Challenger, Police, Supercar)
+│   ├── CarBuilder.ts        # 11 detailed extruded 3D car models (DeLorean, Cybertruck, Trans Am K.I.T.T., Bounder RV, Monaco, Challenger, Police, Checker Taxi, Ambulance, Firetruck w/ water turret, Supercar)
 │   ├── MotorcycleBuilder.ts # Detailed procedural 80s superbike ("PCJ-86 NEON BIKE") with torus tires, forks, engine & rider
 │   ├── PlayerHelicopterSystem.ts # Flyable 80s executive helicopter ("VICE MAVERICK") stationed on Starfish Island Helipad
 │   └── VehicleSystem.ts     # Vehicle physics, Vice Customs Turbo/Underglow tuning, cliff launches, height-aware collisions, pooled VFX & AI traffic/police

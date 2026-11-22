@@ -33,11 +33,16 @@ Gebaut mit **Three.js**, **TypeScript**, **Vite** und der **Web Audio API** — 
     - **Asservaten- & Waffenkammer:** Kostenlose **Kevlar-Weste (`100 %`)**, **Shotgun + Munition**, **Vice-PD-Uniform** (5. Outfit) sowie ein **Syndikat-Geldkoffer (`+$1.500`)** — Diebstahl löst sofort rotes Alarmlicht, Code-3-Funk & Fahndung aus!
     - **Kaution, „VERHAFTET“ & Vigilante:** Sterne am Tresen wegbestechen (`F`), GTA-Verhaftung bei 2+★ mit **Knast-Respawn in Zelle 2** (Waffen bleiben erhalten), Verstärkung direkt vom Revier & **Bürgerwehr-Modus (`G`)** in jedem Vice-PD-Streifenwagen.
   - **Tageszeit, Wetter & Zerstörung:** `T` (Golden Hour / Sunset / Neon Night), `Y` (Tropenschauer mit Blitz & Donner), zerstörbare Hydranten (mit Wasserfontäne!), Café-Tische & Mülltonnen.
-- **First- & Third-Person-Gunplay (5 Waffen inkl. Nahkampf) & Drive-By:**
+- **First- & Third-Person-Gunplay (5 Waffen inkl. Nahkampf), Deckungssystem & Drive-By:**
   - Umschaltbar zu Fuß per **`V`** zwischen **First-Person** und **3rd-Person (Over-the-Shoulder mit 80s-Spielermodell)**.
+  - **GTA-Deckungssystem (`Q` / `X`):** An Wänden, Autos, Barrikaden & Mauern in Deckung gehen, mit **`A/D`** entlanggleiten, per **Rechtsklick (ADS)** über niedrige Deckungen auftauchen oder um Hausecken spähen — inkl. echtem Kugelschutz gegen feindliches Feuer.
   - **Neon Katana (`0`)**, **Vice 9mm (`1`)**, **Neon Mac-10 SMG (`2`)**, **Palm 12G Shotgun (`3`)**, **Neon Launcher (`4 · RPG`)** + **Drive-By-Schießen (`LMB`)** aus dem Fahrzeug.
-- **Kult-Fahrzeuge, Superbike, Speedboat & Fliegbarer Helikopter:**
-  - **8 individuelle 3D-Fahrzeugmodelle** mit extrudierten Karosserieprofilen & detaillierten Rädern: **DeLorean DMC-12**, **Tesla Cybertruck**, **1982 Pontiac Firebird Trans Am** (mit animiertem rotem **K.I.T.T.-Scanner**!), **Dodge Challenger**, **1986 Fleetwood Bounder** (Breaking-Bad-Wohnmobil), **1974 Dodge Monaco** (*Bluesmobile* mit Dach-Megaphon), **Vice PD Cruiser / Interceptor** & **Cheetah GT** — plus die hochdetaillierte **PCJ-86 Neon-Superbike**, das **Stinger Speedboat** und der **fliegbare „VICE MAVERICK“-Helikopter** (`Space`/`C` Höhe, `WASD` Fliegen)!
+- **Kult- & Spezialfahrzeuge, Superbike, Speedboat & Fliegbarer Helikopter:**
+  - **11 individuelle 3D-Automodelle** mit extrudierten Karosserieprofilen & detaillierten Rädern: **DeLorean DMC-12**, **Tesla Cybertruck**, **1982 Pontiac Firebird Trans Am** (mit animiertem rotem **K.I.T.T.-Scanner**!), **Dodge Challenger**, **1986 Fleetwood Bounder** (Wohnmobil), **1974 Dodge Monaco** (*Bluesmobile* mit Dach-Megaphon), **Vice PD Cruiser / Interceptor**, **Cheetah GT** sowie die **3 klassischen GTA-Spezialfahrzeuge**:
+    - **80s-Checker-Taxi („VICE CAB“):** Fahrgäste per **`G`** unter Zeitlimit mit **Drift- & Sprung-Trinkgeld-Bonus** durch alle Bezirke kutschieren.
+    - **Feuerwehrwagen („VICE FIRE ENGINE 06“):** Mit schwenk- & neigbarer **Hochdruck-Wasserkanone** (`LMB` / `C` + Maus/Pfeile) brennende Autowracks im Einsatz (`G`) löschen oder Passanten & Polizisten wegspritzen.
+    - **Rettungswagen („VICE EMS AMBULANCE“):** Verletzte per **`G`** retten & zum EMS-Depot bringen — schaltet nach **5 Rettungen dauerhaft 150 Max-HP** frei!
+  - Plus die hochdetaillierte **PCJ-86 Neon-Superbike**, das **Stinger Speedboat** und der **fliegbare „VICE MAVERICK“-Helikopter** (`Space`/`C` Höhe, `WASD` Fliegen)!
   - Auto-zu-Auto-Kollisionen, Crash-Schaden, **Explosionen**, **Brems- & Rückfahrlichter**, Drift-Rauch & `InstancedMesh`-Skidmarks sowie **Pay ’n’ Spray (`F`)**.
   - **1–5 Wanted-Sterne:** Solide Gebäude-, Fahrzeug- & Safehouse-Kollision für alle NPCs, verfolgende **Vice-PD-Streifenwagen** (ab 2★), **Polizei-Straßensperren** & abschießbarer **Vice-PD-Helikopter mit Suchscheinwerfer** (ab 3★) plus **Polizeifunk**.
 - **Eigene Basis — VICE SAFEHOUSE (`⌂` am Nord-Ocean-Drive):**
@@ -60,16 +65,17 @@ Gebaut mit **Three.js**, **TypeScript**, **Vite** und der **Web Audio API** — 
 | :--- | :--- |
 | `W` `A` `S` `D` | Bewegen / Fahren / Boot steuern |
 | `Maus` | Umsehen / Zielen |
-| `Linksklick` / `Rechtsklick` | Schießen (auch Drive-By) · Interagieren (3D-Hand: Essen, Waffenschrank, TV) / Zielen (ADS) |
+| `Linksklick` / `Rechtsklick` | Schießen (auch Drive-By) · Feuerwehr-Wasserwerfer · Interagieren (3D-Hand) / Zielen (ADS & Spähen aus Deckung) |
 | `0` `1` `2` `3` `4` / `Mausrad` | Waffe wechseln (Katana / 9mm / SMG / Shotgun / Launcher) |
 | `R` | Nachladen |
 | `H` | Ocean Club Story-Heist starten (`+$3.500`) |
-| `G` | Bürgerwehr-Modus (Vigilante) im Vice-PD-Streifenwagen starten / beenden |
-| `Shift` / `C` | Sprinten / Ducken |
+| `G` | Spezialfahrzeug-Einsatz starten / beenden (Vigilante / Taxi / Feuerwehr / Rettungswagen) |
+| `X` / `Q` (zu Fuß an Deckung) | In Deckung gehen / verlassen (`A/D` entlanggleiten, `RMB` spähen & feuern) |
+| `Shift` / `C` | Sprinten / Ducken (im Feuerwehrwagen: Wasserwerfer-Alternative) |
 | `Space` / `C` | Springen / Ducken · Im Auto: Drift-Handbremse · Im Helikopter: Steigen / Sinken |
 | `E` | Auto, Motorrad, Speedboat oder Helikopter ein- / aussteigen |
 | `V` | Kamera wechseln (zu Fuß: 1st/3rd-Person · im Auto: Chase/Cockpit) |
-| `Q` | 80s-Radio-Sender wechseln |
+| `Q` | 80s-Radio-Sender wechseln (oder zu Fuß nahe Deckung: Deckung ein/aus) |
 | `F` | Interagieren: Pay ’n’ Spray / Vice Customs Tuning / Safehouse / PD / Diner / Bank / Marina / Leuchtturm / Club |
 | `B` | AMMU-NEON Shop öffnen (am Central Plaza) |
 | `T` / `Y` | Tageszeit wechseln / Tropenschauer an & aus |
@@ -126,15 +132,17 @@ src/
 │   ├── ObjectiveSystem.ts     # 5 rotierende Mini-Missionen & 3D-Neon-Beacon
 │   ├── PayNSpray.ts           # Lackiererei (Reparatur, Neulack & Sterne löschen)
 │   ├── ShopSystem.ts          # AMMU-NEON Upgrade-Kiosk am Central Plaza
+│   ├── SpecialVehicleMissions.ts # Taxi (VICE CAB), Feuerwehr (Wasserwerfer) & Rettungswagen (150 Max-HP)
 │   ├── VigilanteSystem.ts     # Bürgerwehr-Modus ([G]) in Vice-PD-Streifenwagen
 │   └── WantedSystem.ts        # 1–5 Wanted-Sterne & Heat-Abbau
 ├── hud/
 │   └── Minimap.ts             # Mitdrehendes Miami-Radar (2D-Canvas)
 ├── player/
-│   └── PlayerController.ts    # Pointer-Lock FPS-Controller mit Fallback-Steuerung
+│   ├── PlayerAvatar.ts        # 3rd-Person-Protagonist (5 Outfits, Schwimmen & Deckungspose)
+│   └── PlayerController.ts    # Pointer-Lock FPS/3rd-Person-Controller mit Deckungssystem & Spähen
 ├── vehicles/
 │   ├── BoatSystem.ts          # Fahrbares Stinger Speedboat (Strand, Starfish Island & Yacht)
-│   ├── CarBuilder.ts          # 8 individuelle 3D-Automodelle (DeLorean, Cybertruck, Trans Am, Bounder, Monaco, Challenger…)
+│   ├── CarBuilder.ts          # 11 individuelle 3D-Automodelle (inkl. Checker Taxi, Ambulance & Feuerwehr mit Wasserkanone)
 │   ├── MotorcycleBuilder.ts   # Hochdetailliertes 80s-Superbike (PCJ-86 Neon Bike)
 │   ├── PlayerHelicopterSystem.ts # Fliegbarer „VICE MAVERICK“-Helikopter auf Starfish Island
 │   └── VehicleSystem.ts       # Fahrzeugphysik, Kollisionen, Crash-Schaden, Explosionen & Polizei-Jäger

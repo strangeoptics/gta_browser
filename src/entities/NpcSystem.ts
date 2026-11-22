@@ -334,7 +334,13 @@ export class NpcSystem {
     this.onNpcKilled?.(npc);
   }
 
-  public update(dt: number, playerPos: THREE.Vector3, wantedStars: number, worldColliders: AABB[] = []): void {
+  public update(
+    dt: number,
+    playerPos: THREE.Vector3,
+    wantedStars: number,
+    worldColliders: AABB[] = [],
+    playerCover?: { inCover: boolean; peeking: boolean; normalX: number; normalZ: number },
+  ): void {
     const clampedDt = Math.min(dt, 0.05);
 
     // worldColliders passed from main.ts are already pre-filtered to solid NPC blockers
@@ -480,7 +486,7 @@ export class NpcSystem {
           npc.fireCooldown -= clampedDt;
           if (aiming && npc.fireCooldown <= 0) {
             npc.fireCooldown = npc.role === 'bounty' ? 0.95 : 1.35;
-            this.fireNpcShot(npc, playerPos);
+            this.fireNpcShot(npc, playerPos, playerCover);
           }
         }
       }
@@ -596,7 +602,11 @@ export class NpcSystem {
     }
   }
 
-  private fireNpcShot(npc: NpcEntity, playerPos: THREE.Vector3): void {
+  private fireNpcShot(
+    npc: NpcEntity,
+    playerPos: THREE.Vector3,
+    playerCover?: { inCover: boolean; peeking: boolean; normalX: number; normalZ: number },
+  ): void {
     if (npc.muzzleFlash) {
       npc.muzzleFlash.visible = true;
       npc.muzzleTimer = 0.07;
@@ -612,6 +622,30 @@ export class NpcSystem {
     );
     const end = playerPos.clone().add(jitter);
 
+    // Check if the player's cover wall blocks the incoming line of fire!
+    let coverBlocksShot = false;
+    let coverPartial = false;
+    if (playerCover?.inCover) {
+      const toShooterX = npc.position.x - playerPos.x;
+      const toShooterZ = npc.position.z - playerPos.z;
+      const shooterLen = Math.hypot(toShooterX, toShooterZ) || 1;
+      // Cover normal points FROM wall TOWARD player; if shooter is on the wall side, dot < 0.25
+      const dot = (toShooterX / shooterLen) * playerCover.normalX + (toShooterZ / shooterLen) * playerCover.normalZ;
+      if (dot < 0.25) {
+        if (!playerCover.peeking) {
+          coverBlocksShot = true;
+          // Impact point stops against the cover obstacle!
+          end.set(
+            playerPos.x - playerCover.normalX * 0.55,
+            playerPos.y + 0.9 + Math.random() * 0.4,
+            playerPos.z - playerCover.normalZ * 0.55,
+          );
+        } else {
+          coverPartial = true;
+        }
+      }
+    }
+
     const geo = new THREE.BufferGeometry().setFromPoints([start, end]);
     const mat = new THREE.LineBasicMaterial({
       color: npc.role === 'police' ? 0x5ec8ff : 0xff4fa3,
@@ -622,8 +656,11 @@ export class NpcSystem {
     this.scene.add(line);
     this.enemyTracers.push({ line, life: 0.1 });
 
+    if (coverBlocksShot) return;
+
     const dist = npc.position.distanceTo(playerPos);
-    const hitChance = THREE.MathUtils.clamp(0.52 - dist * 0.012, 0.12, 0.48);
+    const baseHitChance = THREE.MathUtils.clamp(0.52 - dist * 0.012, 0.12, 0.48);
+    const hitChance = coverPartial ? baseHitChance * 0.5 : baseHitChance;
     if (Math.random() < hitChance) {
       this.onPlayerDamaged?.(npc.role === 'bounty' ? 11 : 7);
     }

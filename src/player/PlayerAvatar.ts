@@ -230,13 +230,23 @@ export class PlayerAvatar {
     aiming: boolean,
     isKatana: boolean,
     swimming = false,
+    coverState?: { inCover: boolean; peeking: boolean; normalX: number; normalZ: number },
   ): void {
     if (!this.group.visible) return;
     const clampedDt = Math.min(dt, 0.05);
 
     this.group.position.copy(position);
-    // Player camera looks along (-sin(yaw), -cos(yaw)); avatar faces +Z locally -> yaw + PI
-    this.group.rotation.y = yaw + Math.PI;
+    // In cover (not peeking), press back flat against the cover wall (face along outward normal)!
+    if (coverState?.inCover && !coverState.peeking) {
+      const targetRot = Math.atan2(coverState.normalX, coverState.normalZ);
+      let diff = targetRot - this.group.rotation.y;
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      this.group.rotation.y += diff * (1 - Math.exp(-14 * clampedDt));
+    } else {
+      // Player camera looks along (-sin(yaw), -cos(yaw)); avatar faces +Z locally -> yaw + PI
+      this.group.rotation.y = yaw + Math.PI;
+    }
 
     this.gunMesh.visible = !isKatana && !swimming;
     this.katanaMesh.visible = isKatana && !swimming;

@@ -17,4 +17,10 @@ export interface PlayerStatus {
   sprinting: boolean;
   crouching: boolean;
   swimming: boolean;
+  inCover: boolean;
+  coverPeeking: boolean;
+  coverLow: boolean;
+  coverNormalX: number;
+  coverNormalZ: number;
+  canTakeCover: boolean;
 }

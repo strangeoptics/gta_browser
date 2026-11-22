@@ -1355,7 +1355,46 @@ window.addEventListener('keydown', (e) => {
     return;
   }
 
+  if (e.code === 'KeyX' && player.getIsActive() && !shopOpen && !petShopOpen && wastedTimer <= 0) {
+    const onFoot =
+      !vehicles.isInVehicle() &&
+      !boat.isInBoat() &&
+      !superyacht.isInYacht() &&
+      !maverick.isInHeli() &&
+      !garageRides.isRiding();
+    if (onFoot) {
+      const wasInCover = player.isInCover();
+      if (player.toggleCover()) {
+        showQuickToast(
+          wasInCover
+            ? 'DECKUNG VERLASSEN'
+            : 'IN DECKUNG · [A/D] ENTLANG · [RMB] SPÄHEN & SCHIESSEN · [Q/X] RAUS',
+        );
+      } else {
+        showQuickToast('KEINE DECKUNG IN DER NÄHE · NAH AN WAND ODER AUTO STELLEN');
+      }
+    }
+    return;
+  }
+
   if (e.code === 'KeyQ' && player.getIsActive() && !shopOpen) {
+    const onFoot =
+      !vehicles.isInVehicle() &&
+      !boat.isInBoat() &&
+      !superyacht.isInYacht() &&
+      !maverick.isInHeli() &&
+      !garageRides.isRiding();
+    if (onFoot && (player.isInCover() || player.canTakeCover())) {
+      const wasInCover = player.isInCover();
+      if (player.toggleCover()) {
+        showQuickToast(
+          wasInCover
+            ? 'DECKUNG VERLASSEN'
+            : 'IN DECKUNG · [A/D] ENTLANG · [RMB] SPÄHEN & SCHIESSEN · [Q/X] RAUS',
+        );
+      }
+      return;
+    }
     const station = audio.nextRadioStation();
     showQuickToast(`RADIO · ${station}`);
     return;
@@ -1927,13 +1966,20 @@ function animate(now: number): void {
   let playerGrounded = true;
   let playerCrouching = false;
   let playerSwimming = false;
+  let playerInCover = false;
+  let playerCoverPeeking = false;
+  let playerCoverNormalX = 0;
+  let playerCoverNormalZ = 1;
+  let playerCanTakeCover = false;
   let headingYaw = player.getYaw();
+  const rbColliders = roadblocks.getActiveColliders();
 
   if (!inAnyCraft) {
     const allColliders = [
       ...world.colliders,
       ...vehicles.getVehicleColliders(),
       ...npcs.getNpcColliders(),
+      ...rbColliders,
     ];
     const status = player.update(
       dt,
@@ -1948,30 +1994,39 @@ function animate(now: number): void {
     playerGrounded = status.grounded;
     playerCrouching = status.crouching;
     playerSwimming = status.swimming;
+    playerInCover = status.inCover;
+    playerCoverPeeking = status.coverPeeking;
+    playerCoverNormalX = status.coverNormalX;
+    playerCoverNormalZ = status.coverNormalZ;
+    playerCanTakeCover = status.canTakeCover;
   } else if (inVehicle) {
+    player.exitCover();
     const car = vehicles.getActiveVehicle();
     if (car) {
       player.position.copy(car.position);
       headingYaw = car.yaw + Math.PI;
     }
   } else if (inGarageRide) {
+    player.exitCover();
     const gr = garageRides.getActiveRide();
     if (gr) {
       player.position.copy(gr.position);
       headingYaw = gr.yaw + Math.PI;
     }
   } else if (inBoat) {
+    player.exitCover();
     player.position.copy(boat.position);
     headingYaw = boat.yaw + Math.PI;
   } else if (inYacht) {
+    player.exitCover();
     player.position.copy(superyacht.position);
     headingYaw = superyacht.yaw + Math.PI;
   } else if (inHeli) {
+    player.exitCover();
     player.position.copy(maverick.position);
     headingYaw = maverick.yaw + Math.PI;
   }
 
-  const rbColliders = roadblocks.getActiveColliders();
   const vehicleWorldColliders =
     rbColliders.length > 0 ? [...world.solidVehicleColliders, ...rbColliders] : world.solidVehicleColliders;
   const driveHud = vehicles.update(
@@ -2070,11 +2125,21 @@ function animate(now: number): void {
     world.isInsideSafehouse(player.position) ||
     world.isInsidePoliceStation(player.position) ||
     world.isInsideWestInterior(player.position);
-  npcs.update(dt, player.position, wanted.stars, [
-    ...world.solidNpcColliders,
-    ...vehicles.getVehicleColliders(),
-    ...rbColliders,
-  ]);
+  const playerCoverState = playerInCover
+    ? {
+        inCover: true,
+        peeking: playerCoverPeeking,
+        normalX: playerCoverNormalX,
+        normalZ: playerCoverNormalZ,
+      }
+    : undefined;
+  npcs.update(
+    dt,
+    player.position,
+    wanted.stars,
+    [...world.solidNpcColliders, ...vehicles.getVehicleColliders(), ...rbColliders],
+    playerCoverState,
+  );
 
   // GTA-style close-range arrest ("BUSTED") when cornered by Vice PD at 2+ stars (never while flying in the Maverick!)
   if (isPlaying && wanted.stars >= 2 && !inBoat && !inHeli) {
@@ -2326,6 +2391,7 @@ function animate(now: number): void {
     wHud.ads,
     wHud.isMelee,
     playerSwimming,
+    playerCoverState,
   );
   if (inVehicle) {
     const car = vehicles.getActiveVehicle();
@@ -2587,6 +2653,12 @@ function animate(now: number): void {
       nextPrompt = garageRideHud.nearbyMountPrompt;
     } else if (driveHud.nearbyVehicleName) {
       nextPrompt = `[E] EINSTEIGEN · ${driveHud.nearbyVehicleName}`;
+    } else if (playerInCover) {
+      nextPrompt = playerCoverPeeking
+        ? '[DECKUNG · SPÄHEN] [LMB] FEUERN · [Q / X] DECKUNG VERLASSEN'
+        : '[DECKUNG] [A/D] ENTLANG · [RMB] SPÄHEN · [Q / X] VERLASSEN';
+    } else if (playerCanTakeCover) {
+      nextPrompt = '[Q / X] IN DECKUNG GEHEN';
     }
   }
 

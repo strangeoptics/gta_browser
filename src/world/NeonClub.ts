@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { AABB } from '../types';
 import { createNeonSignTexture } from './Textures';
-import { getFaceTexture } from '../entities/CharacterTextures';
+import { buildLowPolyCharacter, type CharacterHairStyle } from '../entities/CharacterBuilder';
 
 export interface NeonClubHandle {
   isInside: (pos: THREE.Vector3) => boolean;
@@ -545,48 +545,42 @@ interface ClubCharacter {
   rightArm: THREE.Group;
 }
 
+let clubCharSeed = 0;
+
 function createClubCharacter(shirtColor: string, pantsColor: string, sunglasses: boolean): ClubCharacter {
-  const group = new THREE.Group();
-  const skinColor = '#dda687';
-  const skinMat = new THREE.MeshStandardMaterial({ color: skinColor, roughness: 0.7 });
-  const shirtMat = new THREE.MeshStandardMaterial({
-    color: shirtColor,
-    emissive: shirtColor,
-    emissiveIntensity: 0.22,
-    roughness: 0.55,
+  const seed = clubCharSeed++;
+  const isFemale = seed % 2 === 1;
+  const styles: CharacterHairStyle[] = isFemale ? ['ponytail', 'bob', 'feathered'] : ['pompadour', 'feathered'];
+  const rig = buildLowPolyCharacter({
+    role: 'civilian',
+    bodyType: isFemale ? 'female' : 'male',
+    skinColor: seed % 3 === 0 ? '#e6b89c' : seed % 3 === 1 ? '#d49a76' : '#b87a56',
+    hairColor: seed % 4 === 0 ? '#d9b06a' : '#1f1620',
+    primaryColor: shirtColor,
+    accentColor: '#36f1e6',
+    pantsColor,
+    shoeColor: '#f4eee8',
+    outfitVariant: seed,
+    hairStyle: styles[seed % styles.length],
+    wearsSunglasses: sunglasses,
+    hasMustache: false,
+    shortSleeves: true,
+    scale: isFemale ? 0.96 : 1.0,
   });
-  const pantsMat = new THREE.MeshStandardMaterial({ color: pantsColor, roughness: 0.75 });
-  const hairMat = new THREE.MeshStandardMaterial({ color: '#1f1620', roughness: 0.8 });
 
-  const legs = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.74, 0.22), pantsMat);
-  legs.position.y = 0.37;
-  group.add(legs);
+  // Subtle neon club bounce glow on club outfits (safe under 0.86 bloom threshold)
+  rig.materials.torsoFront.emissive.set(shirtColor);
+  rig.materials.torsoFront.emissiveIntensity = 0.2;
+  rig.materials.torsoBack.emissive.set(shirtColor);
+  rig.materials.torsoBack.emissiveIntensity = 0.2;
+  rig.materials.sleeve.emissive.set(shirtColor);
+  rig.materials.sleeve.emissiveIntensity = 0.18;
 
-  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.58, 0.24), shirtMat);
-  torso.position.y = 1.05;
-  group.add(torso);
+  // Natural slight elbow bend for dancing/DJ/bartending
+  rig.leftElbowPivot.rotation.x = -0.45;
+  rig.rightElbowPivot.rotation.x = -0.45;
 
-  const faceTex = getFaceTexture(skinColor, sunglasses, false);
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.28, 0.26), [
-    skinMat,
-    skinMat,
-    hairMat,
-    skinMat,
-    new THREE.MeshStandardMaterial({ map: faceTex, roughness: 0.6 }),
-    hairMat,
-  ]);
-  head.position.y = 1.54;
-  group.add(head);
-
-  const buildArm = (side: -1 | 1): THREE.Group => {
-    const pivot = new THREE.Group();
-    pivot.position.set(side * 0.3, 1.3, 0);
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.52, 0.12), shirtMat);
-    arm.position.y = -0.24;
-    pivot.add(arm);
-    group.add(pivot);
-    return pivot;
-  };
-
-  return { group, leftArm: buildArm(-1), rightArm: buildArm(1) };
+  const group = new THREE.Group();
+  group.add(rig.bodyRoot);
+  return { group, leftArm: rig.leftArmPivot, rightArm: rig.rightArmPivot };
 }

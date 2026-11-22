@@ -1792,11 +1792,16 @@ function requestLockSafely(): void {
   }
 }
 
-function startGame(): void {
+function startGame(fromGamepad = false): void {
   audio.unlock();
   overlay.classList.add('hidden');
   player.setActive(true);
-  requestLockSafely();
+  if (fromGamepad) {
+    // Gamepad play does not need mouse Pointer Lock (and requestPointerLock fails outside DOM click/key gestures!)
+    pointerLockFallback = true;
+  } else {
+    requestLockSafely();
+  }
 }
 
 function pauseGame(): void {
@@ -1908,18 +1913,36 @@ function animate(now: number): void {
   }
 
   const rawPad = gamepad.poll();
+  const gpStatusEl = document.getElementById('gamepad-status');
+  if (gpStatusEl && gpStatusEl.textContent !== rawPad.diagnostic) {
+    gpStatusEl.textContent = rawPad.diagnostic;
+    gpStatusEl.style.color = rawPad.connected ? '#6bf7c8' : '#ffb86c';
+  }
   if (rawPad.connected && !padConnectedToastShown) {
     padConnectedToastShown = true;
     showQuickToast('GAMEPAD VERBUNDEN · CONTROLLER AKTIV');
-  } else if (!rawPad.connected) {
+  } else if (!rawPad.connected && padConnectedToastShown) {
     padConnectedToastShown = false;
   }
   const pad = touch.mergeInto(rawPad);
 
-  if (pad.connected && pad.startPressed) {
-    if (shopOpen) closeShop();
-    else if (player.getIsActive()) pauseGame();
-    else startGame();
+  if (pad.connected) {
+    // Menu/Start toggles pause or closes any open modal; A resumes from title screen; B closes open modals!
+    if (pad.startPressed) {
+      if (shopOpen) closeShop();
+      else if (petShopOpen) closePetShop();
+      else if (phoneOpen) closePhone();
+      else if (devOpen) closeDevPanel();
+      else if (player.getIsActive()) pauseGame();
+      else startGame(true);
+    } else if (pad.bPressed && (shopOpen || petShopOpen || phoneOpen || devOpen)) {
+      if (shopOpen) closeShop();
+      else if (petShopOpen) closePetShop();
+      else if (phoneOpen) closePhone();
+      else if (devOpen) closeDevPanel();
+    } else if (pad.aPressed && !player.getIsActive() && !shopOpen && !petShopOpen && !phoneOpen && !devOpen) {
+      startGame(true);
+    }
   }
 
   const isPlaying = player.getIsActive() && !shopOpen && !petShopOpen && !devOpen && !phoneOpen && wastedTimer <= 0;
@@ -1937,12 +1960,29 @@ function animate(now: number): void {
       pad.camTogglePressed &&
       !vehicles.isInVehicle() &&
       !boat.isInBoat() &&
+      !superyacht.isInYacht() &&
       !maverick.isInHeli() &&
       !garageRides.isRiding()
     ) {
       const is3p = player.toggleThirdPerson();
       weapons.setViewmodelVisible(!is3p);
       showQuickToast(is3p ? 'KAMERA · 3RD PERSON' : 'KAMERA · FIRST PERSON');
+    }
+    if (
+      pad.coverPressed &&
+      !vehicles.isInVehicle() &&
+      !boat.isInBoat() &&
+      !superyacht.isInYacht() &&
+      !maverick.isInHeli() &&
+      !garageRides.isRiding()
+    ) {
+      const wasInCover = player.isInCover();
+      if (player.toggleCover()) {
+        showQuickToast(wasInCover ? 'DECKUNG VERLASSEN' : 'IN DECKUNG · [LT] ZUM HERVORLUGEN');
+      }
+    }
+    if (pad.phonePressed) {
+      openPhone();
     }
     if (pad.reloadOrSprayPressed && vehicles.isInVehicle()) tryUsePayNSpray();
     if (pad.prevWeaponPressed && (vehicles.isInVehicle() || boat.isInBoat() || garageRides.isRiding())) {

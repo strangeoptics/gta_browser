@@ -25,10 +25,11 @@ export class TouchControls {
   private lastLookY = 0;
 
   constructor(container: HTMLElement, canvas: HTMLCanvasElement) {
-    this.isTouchDevice =
-      window.matchMedia('(pointer: coarse)').matches ||
-      'ontouchstart' in window ||
-      navigator.maxTouchPoints > 0;
+    // Only treat primarily coarse-pointer mobile/tablet devices as touch-only;
+    // Windows 10/11 desktops often report maxTouchPoints > 0 due to pen/touch drivers!
+    const hasFineMouse = window.matchMedia('(pointer: fine)').matches;
+    const hasCoarsePrimary = window.matchMedia('(pointer: coarse)').matches;
+    this.isTouchDevice = hasCoarsePrimary && !hasFineMouse;
 
     if (!this.isTouchDevice) {
       container.style.display = 'none';

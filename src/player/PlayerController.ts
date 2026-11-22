@@ -21,6 +21,7 @@ export class PlayerController {
   private lastMouseY = 0;
   private grounded = false;
   private crouching = false;
+  private padSprintToggle = false;
   private swimming = false;
   private swimTimer = 0;
   private thirdPerson = false;
@@ -340,10 +341,10 @@ export class PlayerController {
 
     // Analog right-stick camera look (Gamepad)
     if (active && pad && pad.connected) {
-      const lookSpeed = 2.6 * this.sensitivityMult * clampedDt;
+      const lookSpeed = 3.1 * this.sensitivityMult * clampedDt;
       const ySign = this.invertY ? -1 : 1;
       this.yaw -= pad.lookX * lookSpeed;
-      this.pitch = Math.max(-maxPitch, Math.min(maxPitch, this.pitch - pad.lookY * lookSpeed * 0.8 * ySign));
+      this.pitch = Math.max(-maxPitch, Math.min(maxPitch, this.pitch - pad.lookY * lookSpeed * 0.82 * ySign));
     }
 
     // Arrow-key look fallback when not pointer-locked
@@ -356,7 +357,18 @@ export class PlayerController {
     }
 
     const padCrouch = Boolean(pad?.connected && pad.crouch);
-    const padSprint = Boolean(pad?.connected && pad.sprint && pad.moveY > 0.25);
+    // Comfortable Xbox L3 Toggle-Sprint (click L3 once while moving forward; resets when stick released)
+    if (pad?.connected) {
+      if (pad.sprintPressed && pad.moveY > 0.25) {
+        this.padSprintToggle = !this.padSprintToggle;
+      }
+      if (pad.moveY <= 0.2 || padCrouch || this.inCover) {
+        this.padSprintToggle = false;
+      }
+    } else {
+      this.padSprintToggle = false;
+    }
+    const padSprint = Boolean(pad?.connected && (pad.sprint || this.padSprintToggle) && pad.moveY > 0.25);
 
     this.cachedCoverCandidate = !this.inCover && !this.swimming && this.grounded ? this.findCoverCandidate(colliders) : null;
 

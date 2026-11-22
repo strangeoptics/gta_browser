@@ -306,7 +306,7 @@ export class WeaponSystem {
     this.hitmarkerAlpha = Math.max(0, this.hitmarkerAlpha - clampedDt * 4.5);
     this.updateEffects(clampedDt);
 
-    const wantsDriveBy = this.triggerDown || Boolean(pad?.connected && pad.nextWeaponPressed);
+    const wantsDriveBy = this.triggerDown || Boolean(pad?.connected && pad.rbHeld);
     if (!isPlaying || !wantsDriveBy || this.fireCooldown > 0) return;
 
     const smg = WEAPONS[2];

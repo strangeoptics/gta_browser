@@ -89,6 +89,7 @@ interface FlamingoAgent {
   yaw: number;
   phase: number;
   oneLeg: boolean;
+  dead?: boolean;
 }
 
 interface DolphinAgent {
@@ -100,6 +101,7 @@ interface DolphinAgent {
   radius: number;
   speed: number;
   phase: number;
+  dead?: boolean;
 }
 
 interface SharkAgent {
@@ -112,6 +114,7 @@ interface SharkAgent {
   phase: number;
   isStalker?: boolean;
   stalkAngle?: number;
+  dead?: boolean;
 }
 
 interface PelicanAgent {
@@ -123,6 +126,7 @@ interface PelicanAgent {
   pos: THREE.Vector3;
   baseYaw: number;
   phase: number;
+  dead?: boolean;
 }
 
 interface SeaTurtleAgent {
@@ -134,6 +138,7 @@ interface SeaTurtleAgent {
   centerZ: number;
   radius: number;
   phase: number;
+  dead?: boolean;
 }
 
 interface RoosterAgent {
@@ -153,6 +158,19 @@ interface RoosterAgent {
   spookTimer: number;
   walkPhase: number;
   phase: number;
+  dead?: boolean;
+}
+
+interface KillableWildlifeEntry {
+  owner: { group: THREE.Group; dead?: boolean };
+  hitbox: THREE.Mesh;
+  label: string;
+  hp: number;
+  maxHp: number;
+  kind: 'land' | 'sea' | 'air';
+  deathTimer: number;
+  respawnTimer: number;
+  isThiefGull?: boolean;
 }
 
 /**
@@ -173,6 +191,9 @@ export class WildlifeSystem {
   private readonly pelicans: PelicanAgent[] = [];
   private readonly turtles: SeaTurtleAgent[] = [];
   private readonly roosters: RoosterAgent[] = [];
+  private readonly killables: KillableWildlifeEntry[] = [];
+  private readonly animalHitboxMat = new THREE.MeshBasicMaterial({ visible: false });
+  private readonly thiefGullOwner: { group: THREE.Group; dead?: boolean } = { group: null as unknown as THREE.Group };
 
   private sharkBiteCooldown = 0;
   private roosterCluckCooldown = 0;
@@ -204,6 +225,7 @@ export class WildlifeSystem {
   public onSeagullStealSnack?: (hadSnack: boolean) => void;
   public onBeachBallBounce?: (intensity: number) => void;
   public onBeachBallPortGoal?: () => void;
+  public onAnimalKilled?: (animalName: string) => void;
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
@@ -215,10 +237,85 @@ export class WildlifeSystem {
     this.spawnHavanaRoosters();
     this.spawnThiefSeagull();
     this.spawnGiantBeachBall();
+    this.registerAllKillables();
+  }
+
+  private registerKillable(
+    owner: { group: THREE.Group; dead?: boolean },
+    label: string,
+    maxHp: number,
+    w: number,
+    h: number,
+    d: number,
+    offsetY: number,
+    kind: 'land' | 'sea' | 'air',
+    isThiefGull = false,
+  ): void {
+    const hitbox = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), this.animalHitboxMat);
+    hitbox.position.y = offsetY;
+    hitbox.userData.dynamic = true;
+    const entry: KillableWildlifeEntry = {
+      owner,
+      hitbox,
+      label,
+      hp: maxHp,
+      maxHp,
+      kind,
+      deathTimer: 0,
+      respawnTimer: 0,
+      isThiefGull,
+    };
+    const target: ShootableTarget = {
+      id: `wildlife-${this.killables.length}`,
+      mesh: hitbox,
+      onHit: (damage: number) => {
+        if (entry.owner.dead) return false;
+        entry.hp -= damage;
+        if (entry.hp <= 0) {
+          this.killEntry(entry);
+          return true;
+        }
+        return false;
+      },
+    };
+    hitbox.userData.shootableTarget = target;
+    owner.group.add(hitbox);
+    this.killables.push(entry);
+  }
+
+  private killEntry(entry: KillableWildlifeEntry): void {
+    if (entry.owner.dead) return;
+    entry.owner.dead = true;
+    entry.hp = 0;
+    entry.deathTimer = 0;
+    entry.respawnTimer = entry.isThiefGull ? 22.0 : 38.0;
+    if (entry.isThiefGull) {
+      this.thiefState = 'idle';
+      this.thiefCooldown = 28.0;
+      this.thiefDonutMesh.visible = false;
+    }
+    this.onAnimalKilled?.(entry.label);
+  }
+
+  private registerAllKillables(): void {
+    for (const f of this.flamingos) this.registerKillable(f, 'FLAMINGO', 35, 0.9, 1.35, 0.9, 0.72, 'land');
+    for (const d of this.dolphins) this.registerKillable(d, 'DELFIN', 60, 1.1, 0.95, 2.6, 0.1, 'sea');
+    for (const s of this.sharks) this.registerKillable(s, 'RIFFHAI', 110, 1.3, 1.1, 3.2, 0.25, 'sea');
+    for (const p of this.pelicans) this.registerKillable(p, 'PELIKAN', 30, 0.95, 0.9, 1.1, 0.48, 'land');
+    for (const t of this.turtles) this.registerKillable(t, 'MEERESSCHILDKRÖTE', 70, 1.15, 0.65, 1.35, 0.1, 'sea');
+    for (const r of this.roosters) this.registerKillable(r, 'HAHN', 25, 0.7, 0.72, 0.75, 0.36, 'land');
+    this.thiefGullOwner.group = this.thiefGullGroup;
+    this.registerKillable(this.thiefGullOwner, 'DIEB-MÖWE', 25, 1.1, 0.55, 0.9, 0.05, 'air', true);
   }
 
   public appendShootableHitboxes(out: THREE.Object3D[]): void {
     if (this.beachBallHitbox) out.push(this.beachBallHitbox);
+    for (let i = 0; i < this.killables.length; i++) {
+      const k = this.killables[i];
+      if (!k.owner.dead && k.owner.group.visible) {
+        out.push(k.hitbox);
+      }
+    }
   }
 
   public kickBeachBall(impulseX: number, impulseY: number, impulseZ: number): void {
@@ -939,8 +1036,41 @@ export class WildlifeSystem {
 
     const lodDistSq = 105 * 105;
 
+    // 0) Update dead animals (tip-over / sink / tumble animations & timed respawn) + vehicle roadkill!
+    for (let i = 0; i < this.killables.length; i++) {
+      const k = this.killables[i];
+      if (k.owner.dead) {
+        k.deathTimer += clampedDt;
+        k.respawnTimer -= clampedDt;
+        if (k.kind === 'land') {
+          k.owner.group.rotation.z = THREE.MathUtils.lerp(k.owner.group.rotation.z, Math.PI / 2, Math.min(1, clampedDt * 8));
+          if (k.deathTimer > 3.5) k.owner.group.visible = false;
+        } else if (k.kind === 'sea') {
+          k.owner.group.rotation.z = THREE.MathUtils.lerp(k.owner.group.rotation.z, Math.PI, Math.min(1, clampedDt * 5));
+          k.owner.group.position.y -= clampedDt * 1.1;
+          if (k.deathTimer > 3.5) k.owner.group.visible = false;
+        } else {
+          k.owner.group.position.y -= clampedDt * 9.0;
+          k.owner.group.rotation.z += clampedDt * 7.5;
+          if (k.owner.group.position.y < -0.5 || k.deathTimer > 2.5) k.owner.group.visible = false;
+        }
+        if (k.respawnTimer <= 0) {
+          k.owner.dead = false;
+          k.hp = k.maxHp;
+          k.owner.group.rotation.z = 0;
+          k.owner.group.visible = !k.isThiefGull;
+        }
+      } else if (k.kind === 'land' && activeCarPos && Math.abs(activeCarSpeed) > 4.0) {
+        const gp = k.owner.group.position;
+        if (Math.hypot(gp.x - activeCarPos.x, gp.z - activeCarPos.z) < 2.1 && Math.abs(gp.y - activeCarPos.y) < 1.8) {
+          this.killEntry(k);
+        }
+      }
+    }
+
     // 1) Flamingos (foraging dip + scatter slightly when player sprints close)
     for (const f of this.flamingos) {
+      if (f.dead) continue;
       const dxP = f.baseX + f.offsetX - playerPos.x;
       const dzP = f.baseZ + f.offsetZ - playerPos.z;
       const dSq = dxP * dxP + dzP * dzP;
@@ -970,6 +1100,7 @@ export class WildlifeSystem {
 
     // 2) Dolphins (cruising & parabolic leaps above ocean waves!)
     for (const d of this.dolphins) {
+      if (d.dead) continue;
       const ang = elapsed * d.speed + d.phase;
       const dx = d.centerX + Math.cos(ang) * d.radius;
       const dz = d.centerZ + Math.sin(ang) * d.radius;
@@ -1006,6 +1137,7 @@ export class WildlifeSystem {
     let sharkDanger = 0;
 
     for (const s of this.sharks) {
+      if (s.dead) continue;
       let sx: number;
       let sz: number;
       let yaw: number;
@@ -1059,6 +1191,7 @@ export class WildlifeSystem {
 
     // 4) Coastal Pelicans
     for (const p of this.pelicans) {
+      if (p.dead) continue;
       const dSq = (p.pos.x - playerPos.x) ** 2 + (p.pos.z - playerPos.z) ** 2;
       if (dSq > lodDistSq) continue;
       p.headPivot.rotation.y = Math.sin(elapsed * 0.9 + p.phase) * 0.45;
@@ -1076,6 +1209,7 @@ export class WildlifeSystem {
 
     // 5) Sea Turtles (graceful underwater breaststroke flipper sweeps!)
     for (const t of this.turtles) {
+      if (t.dead) continue;
       const ang = elapsed * 0.24 + t.phase;
       const tx = t.centerX + Math.cos(ang) * t.radius;
       const tz = t.centerZ + Math.sin(ang) * t.radius;
@@ -1094,6 +1228,7 @@ export class WildlifeSystem {
 
     // 6) Little Havana Calle Ocho Roosters (strutting, ground pecking & fluttering away!)
     for (const r of this.roosters) {
+      if (r.dead) continue;
       const dxP = r.pos.x - playerPos.x;
       const dzP = r.pos.z - playerPos.z;
       const dSqP = dxP * dxP + dzP * dzP;

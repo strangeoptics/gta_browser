@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { ShootableTarget } from '../combat/WeaponSystem';
 
 export type PetId = 'cleo' | 'rico' | 'zeus' | 'elvis';
 
@@ -232,13 +233,61 @@ export class SafehousePets {
     roughness: 0.25,
   });
 
+  public onPetKilled?: (petName: string) => void;
+  private readonly petCombat: Record<
+    PetId,
+    { hp: number; maxHp: number; dead: boolean; deathTimer: number; respawnTimer: number }
+  > = {
+    cleo: { hp: 40, maxHp: 40, dead: false, deathTimer: 0, respawnTimer: 0 },
+    rico: { hp: 30, maxHp: 30, dead: false, deathTimer: 0, respawnTimer: 0 },
+    zeus: { hp: 70, maxHp: 70, dead: false, deathTimer: 0, respawnTimer: 0 },
+    elvis: { hp: 120, maxHp: 120, dead: false, deathTimer: 0, respawnTimer: 0 },
+  };
+
   constructor(scene: THREE.Scene) {
     this.scene = scene;
     this.buildCleoCat();
     this.buildRicoParrot();
     this.buildZeusDoberman();
     this.buildElvisAlligator();
+    this.registerPetShootables();
     this.syncVisibility();
+  }
+
+  private registerPetShootables(): void {
+    const entries: [PetId, string, THREE.Mesh][] = [
+      ['cleo', 'CLEO', this.cleoHitbox],
+      ['rico', 'RICO', this.ricoHitbox],
+      ['zeus', 'ZEUS', this.zeusHitbox],
+      ['elvis', 'ELVIS', this.elvisHitbox],
+    ];
+    for (const [id, name, hitbox] of entries) {
+      const target: ShootableTarget = {
+        id: `pet-${id}`,
+        mesh: hitbox,
+        onHit: (damage: number) => {
+          const st = this.petCombat[id];
+          if (!this.owned.has(id) || st.dead) return false;
+          st.hp -= damage;
+          if (st.hp <= 0) {
+            st.dead = true;
+            st.deathTimer = 0;
+            st.respawnTimer = 30.0;
+            this.onPetKilled?.(name);
+            return true;
+          }
+          return false;
+        },
+      };
+      hitbox.userData.shootableTarget = target;
+    }
+  }
+
+  public appendShootableHitboxes(out: THREE.Object3D[]): void {
+    if (this.owned.has('cleo') && !this.petCombat.cleo.dead) out.push(this.cleoHitbox);
+    if (this.owned.has('rico') && !this.petCombat.rico.dead) out.push(this.ricoHitbox);
+    if (this.owned.has('zeus') && !this.petCombat.zeus.dead) out.push(this.zeusHitbox);
+    if (this.owned.has('elvis') && !this.petCombat.elvis.dead) out.push(this.elvisHitbox);
   }
 
   public setOwnedPets(ids: PetId[]): void {
@@ -1293,8 +1342,30 @@ export class SafehousePets {
       }
     }
 
+    // Tick dead pet tip-over & 30s respawn
+    const petGroups: [PetId, THREE.Group][] = [
+      ['cleo', this.cleoGroup],
+      ['rico', this.ricoGroup],
+      ['zeus', this.zeusGroup],
+      ['elvis', this.elvisGroup],
+    ];
+    for (const [id, grp] of petGroups) {
+      const st = this.petCombat[id];
+      if (!st.dead) continue;
+      st.deathTimer += clampedDt;
+      st.respawnTimer -= clampedDt;
+      grp.rotation.z = THREE.MathUtils.lerp(grp.rotation.z, Math.PI / 2, Math.min(1, clampedDt * 8));
+      if (st.deathTimer > 3.5) grp.visible = false;
+      if (st.respawnTimer <= 0) {
+        st.dead = false;
+        st.hp = st.maxHp;
+        grp.rotation.z = 0;
+        grp.visible = this.owned.has(id);
+      }
+    }
+
     // 3) Animate Zeus the Doberman (greets player happily, pants softly & patrols lounge)
-    if (this.owned.has('zeus')) {
+    if (this.owned.has('zeus') && !this.petCombat.zeus.dead) {
       if (this.zeusReactTimer > 0) this.zeusReactTimer = Math.max(0, this.zeusReactTimer - clampedDt);
 
       let targetX = this.zeusWanderTarget.x;

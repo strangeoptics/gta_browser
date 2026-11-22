@@ -689,6 +689,12 @@ world.onThunder = () => {
 wildlife.onRoosterSpooked = () => {
   audio.playRoosterCluck();
 };
+wildlife.onAnimalKilled = (animalName) => {
+  showQuickToast(`${animalName} ERLEGT`);
+};
+pets.onPetKilled = (petName) => {
+  showQuickToast(`${petName} WURDE ERLEGT (RESPAWN IN 30s)`);
+};
 
 wildlife.onSharkNipPlayer = () => {
   audio.playWaterSplash();
@@ -1901,6 +1907,8 @@ function animate(now: number): void {
   destructibles.appendShootableHitboxes(shootableHitboxes);
   heli.appendShootableHitboxes(shootableHitboxes);
   wildlife.appendShootableHitboxes(shootableHitboxes);
+  world.appendAnimalHitboxes(shootableHitboxes);
+  pets.appendShootableHitboxes(shootableHitboxes);
 
   // Crosshair raycast for Safehouse food items, gun cabinet weapons, CRT TV & Safehouse Pets -> switches weapon to open Hand!
   if (handHoldTimer > 0) handHoldTimer = Math.max(0, handHoldTimer - dt);

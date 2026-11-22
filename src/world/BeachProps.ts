@@ -1,8 +1,10 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import type { ShootableTarget } from '../combat/WeaponSystem';
 import type { AABB } from '../types';
 
 export interface BeachPropsHandle {
+  appendShootableHitboxes: (out: THREE.Object3D[]) => void;
   update: (elapsed: number, playerPos?: THREE.Vector3) => void;
 }
 
@@ -261,15 +263,21 @@ export function buildBeachHighlights(
     group: THREE.Group;
     leftWing: THREE.Mesh;
     rightWing: THREE.Mesh;
+    hitbox: THREE.Mesh;
     centerX: number;
     centerZ: number;
     radius: number;
     altitude: number;
     speed: number;
     phase: number;
+    hp: number;
+    dead: boolean;
+    deathTimer: number;
+    respawnTimer: number;
   }
   const gulls: Seagull[] = [];
   const gullMat = new THREE.MeshStandardMaterial({ color: '#f7f4f0', roughness: 0.6 });
+  const gullHitboxMat = new THREE.MeshBasicMaterial({ visible: false });
   const wingGeo = new THREE.BoxGeometry(0.65, 0.04, 0.24);
 
   for (let i = 0; i < 5; i++) {
@@ -288,22 +296,58 @@ export function buildBeachHighlights(
     rightWing.userData.dynamic = true;
     g.add(rightWing);
 
-    scene.add(g);
-    gulls.push({
+    const hitbox = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.5, 0.9), gullHitboxMat);
+    hitbox.userData.dynamic = true;
+    g.add(hitbox);
+
+    const gull: Seagull = {
       group: g,
       leftWing,
       rightWing,
+      hitbox,
       centerX: 96 + (i % 3) * 14,
       centerZ: -38 + i * 20,
       radius: 14 + (i % 3) * 6,
       altitude: 14 + (i % 4) * 2.4,
       speed: 0.26 + (i % 3) * 0.06,
       phase: i * 1.4,
-    });
+      hp: 20,
+      dead: false,
+      deathTimer: 0,
+      respawnTimer: 0,
+    };
+    const target: ShootableTarget = {
+      id: `beach-gull-${i}`,
+      mesh: hitbox,
+      onHit: (damage: number) => {
+        if (gull.dead) return false;
+        gull.hp -= damage;
+        if (gull.hp <= 0) {
+          gull.dead = true;
+          gull.deathTimer = 0;
+          gull.respawnTimer = 35.0;
+          return true;
+        }
+        return false;
+      },
+    };
+    hitbox.userData.shootableTarget = target;
+
+    scene.add(g);
+    gulls.push(gull);
   }
 
+  let lastGullElapsed = -1;
+
   return {
+    appendShootableHitboxes: (out: THREE.Object3D[]) => {
+      for (let i = 0; i < gulls.length; i++) {
+        if (!gulls[i].dead) out.push(gulls[i].hitbox);
+      }
+    },
     update: (elapsed: number, playerPos?: THREE.Vector3) => {
+      const dt = lastGullElapsed < 0 ? 0.016 : Math.min(0.05, Math.max(0.001, elapsed - lastGullElapsed));
+      lastGullElapsed = elapsed;
       if (!playerPos || playerPos.x >= 15) {
         for (const g of grassTufts) {
           g.mesh.rotation.z = Math.sin(elapsed * 2.1 + g.phase) * 0.12;
@@ -314,6 +358,20 @@ export function buildBeachHighlights(
         }
       }
       for (const gull of gulls) {
+        if (gull.dead) {
+          gull.deathTimer += dt;
+          gull.respawnTimer -= dt;
+          gull.group.position.y -= dt * 9.5;
+          gull.group.rotation.z += dt * 7.0;
+          if (gull.group.position.y < -0.5 || gull.deathTimer > 2.8) gull.group.visible = false;
+          if (gull.respawnTimer <= 0) {
+            gull.dead = false;
+            gull.hp = 20;
+            gull.group.rotation.z = 0;
+            gull.group.visible = true;
+          }
+          continue;
+        }
         const a = elapsed * gull.speed + gull.phase;
         const gx = gull.centerX + Math.cos(a) * gull.radius;
         const gz = gull.centerZ + Math.sin(a) * gull.radius;

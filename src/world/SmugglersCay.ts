@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { ShootableTarget } from '../combat/WeaponSystem';
 import type { AABB } from '../types';
 import { createWorldHelpers } from './BuildHelpers';
 import { createNeonSignTexture } from './Textures';
@@ -9,6 +10,7 @@ export interface SmugglersCayHandle {
   isNearLoot: (pos: THREE.Vector3) => boolean;
   takeLoot: () => void;
   isNearTikiBar: (pos: THREE.Vector3) => boolean;
+  appendShootableHitboxes: (out: THREE.Object3D[]) => void;
   update: (elapsed: number, playerPos?: THREE.Vector3) => void;
 }
 
@@ -494,8 +496,22 @@ export function buildSmugglersCay(
   hamMesh.rotation.set(Math.PI / 2, 0.46, Math.PI);
   scene.add(hamMesh);
 
-  // Circling Tropical Sea Birds high above Smuggler's Cay
-  const skyBirds: { group: THREE.Group; wingL: THREE.Mesh; wingR: THREE.Mesh; radius: number; height: number; speed: number; phase: number }[] = [];
+  // Circling Tropical Sea Birds high above Smuggler's Cay (shootable!)
+  const cayHitboxMat = new THREE.MeshBasicMaterial({ visible: false });
+  const skyBirds: {
+    group: THREE.Group;
+    wingL: THREE.Mesh;
+    wingR: THREE.Mesh;
+    hitbox: THREE.Mesh;
+    radius: number;
+    height: number;
+    speed: number;
+    phase: number;
+    hp: number;
+    dead: boolean;
+    deathTimer: number;
+    respawnTimer: number;
+  }[] = [];
   for (let b = 0; b < 4; b++) {
     const bg = new THREE.Group();
     bg.userData.dynamic = true;
@@ -509,16 +525,41 @@ export function buildSmugglersCay(
     const wingR = new THREE.Mesh(wingGeo, birdWhiteMat);
     wingR.position.set(0.48, 0.04, 0);
     bg.add(wingR);
+    const bHitbox = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.55, 1.0), cayHitboxMat);
+    bHitbox.userData.dynamic = true;
+    bg.add(bHitbox);
     scene.add(bg);
-    skyBirds.push({
+    const birdEntry = {
       group: bg,
       wingL,
       wingR,
+      hitbox: bHitbox,
       radius: 18 + b * 4.5,
       height: 15.5 + b * 2.4,
       speed: 0.34 + b * 0.05,
       phase: b * 1.57,
-    });
+      hp: 20,
+      dead: false,
+      deathTimer: 0,
+      respawnTimer: 0,
+    };
+    const bTarget: ShootableTarget = {
+      id: `cay-bird-${b}`,
+      mesh: bHitbox,
+      onHit: (damage: number) => {
+        if (birdEntry.dead) return false;
+        birdEntry.hp -= damage;
+        if (birdEntry.hp <= 0) {
+          birdEntry.dead = true;
+          birdEntry.deathTimer = 0;
+          birdEntry.respawnTimer = 35.0;
+          return true;
+        }
+        return false;
+      },
+    };
+    bHitbox.userData.shootableTarget = bTarget;
+    skyBirds.push(birdEntry);
   }
 
   // ===========================================================================
@@ -1127,6 +1168,7 @@ export function buildSmugglersCay(
     legsB: THREE.Group;
     clawL: THREE.Group;
     clawR: THREE.Group;
+    hitbox: THREE.Mesh;
     x: number;
     z: number;
     scale: number;
@@ -1135,6 +1177,11 @@ export function buildSmugglersCay(
     stateTimer: number;
     paused: boolean;
     phase: number;
+    hp: number;
+    maxHp: number;
+    dead: boolean;
+    deathTimer: number;
+    respawnTimer: number;
   }
 
   const crabShellGeo = new THREE.SphereGeometry(0.24, 10, 8);
@@ -1224,14 +1271,20 @@ export function buildSmugglersCay(
 
     const cy = getSmugglersCayHeight(cx, cz) ?? 1.2;
     g.position.set(cx, cy + 0.02, cz);
+    const cHitbox = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.45, 0.85), cayHitboxMat);
+    cHitbox.position.y = 0.18;
+    cHitbox.userData.dynamic = true;
+    g.add(cHitbox);
     scene.add(g);
 
-    crabs.push({
+    const maxHp = Math.round(15 + sc * 15);
+    const crabEntry: IslandCrab = {
       group: g,
       legsA,
       legsB,
       clawL,
       clawR,
+      hitbox: cHitbox,
       x: cx,
       z: cz,
       scale: sc,
@@ -1240,7 +1293,29 @@ export function buildSmugglersCay(
       stateTimer: 1.5 + (idx % 5) * 0.9,
       paused: idx % 3 === 0,
       phase: idx * 1.37,
-    });
+      hp: maxHp,
+      maxHp,
+      dead: false,
+      deathTimer: 0,
+      respawnTimer: 0,
+    };
+    const cTarget: ShootableTarget = {
+      id: `cay-crab-${idx}`,
+      mesh: cHitbox,
+      onHit: (damage: number) => {
+        if (crabEntry.dead) return false;
+        crabEntry.hp -= damage;
+        if (crabEntry.hp <= 0) {
+          crabEntry.dead = true;
+          crabEntry.deathTimer = 0;
+          crabEntry.respawnTimer = 35.0;
+          return true;
+        }
+        return false;
+      },
+    };
+    cHitbox.userData.shootableTarget = cTarget;
+    crabs.push(crabEntry);
   });
 
   let lastUpdateElapsed = -1;
@@ -1264,6 +1339,15 @@ export function buildSmugglersCay(
     isNearTikiBar: (pos: THREE.Vector3) =>
       Math.hypot(pos.x - barX, pos.z - (barZ - 1.55)) < 2.3 && Math.abs(pos.y - barY) < 2.2,
 
+    appendShootableHitboxes: (out: THREE.Object3D[]) => {
+      for (let i = 0; i < crabs.length; i++) {
+        if (!crabs[i].dead) out.push(crabs[i].hitbox);
+      }
+      for (let i = 0; i < skyBirds.length; i++) {
+        if (!skyBirds[i].dead) out.push(skyBirds[i].hitbox);
+      }
+    },
+
     update: (elapsed: number, playerPos?: THREE.Vector3) => {
       const dt = lastUpdateElapsed < 0 ? 0.016 : Math.min(0.05, Math.max(0.001, elapsed - lastUpdateElapsed));
       lastUpdateElapsed = elapsed;
@@ -1273,6 +1357,19 @@ export function buildSmugglersCay(
       // Update 14 tropical crabs scuttling sideways across the island!
       for (let i = 0; i < crabs.length; i++) {
         const c = crabs[i];
+        if (c.dead) {
+          c.deathTimer += dt;
+          c.respawnTimer -= dt;
+          c.group.rotation.z = THREE.MathUtils.lerp(c.group.rotation.z, Math.PI, Math.min(1, dt * 9));
+          if (c.deathTimer > 3.5) c.group.visible = false;
+          if (c.respawnTimer <= 0) {
+            c.dead = false;
+            c.hp = c.maxHp;
+            c.group.rotation.z = 0;
+            c.group.visible = true;
+          }
+          continue;
+        }
         let fleeing = false;
         if (playerPos) {
           const dxP = c.x - playerPos.x;
@@ -1354,6 +1451,20 @@ export function buildSmugglersCay(
       // Glide circling tropical sea birds high above the island
       for (let i = 0; i < skyBirds.length; i++) {
         const sb = skyBirds[i];
+        if (sb.dead) {
+          sb.deathTimer += dt;
+          sb.respawnTimer -= dt;
+          sb.group.position.y -= dt * 9.5;
+          sb.group.rotation.z += dt * 7.5;
+          if (sb.group.position.y < -0.5 || sb.deathTimer > 2.8) sb.group.visible = false;
+          if (sb.respawnTimer <= 0) {
+            sb.dead = false;
+            sb.hp = 20;
+            sb.group.rotation.z = 0;
+            sb.group.visible = true;
+          }
+          continue;
+        }
         const a = elapsed * sb.speed + sb.phase;
         sb.group.position.set(
           CAY_X + Math.cos(a) * sb.radius,

@@ -116,6 +116,7 @@ export interface MiamiWorld {
   isNearClubBar: (pos: THREE.Vector3) => boolean;
   getClubProximity: (pos: THREE.Vector3) => number;
   getGroundHeight: (x: number, z: number, currentY?: number) => number;
+  appendAnimalHitboxes: (out: THREE.Object3D[]) => void;
   shouldTrafficStop: (x: number, z: number, yaw: number) => boolean;
   onThunder?: () => void;
   update: (
@@ -1128,6 +1129,10 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
       viceAirfield.getGroundHeight(x, z) ??
       smugglersCay.getGroundHeight(x, z) ??
       getBeachHeight(x, z),
+    appendAnimalHitboxes: (out: THREE.Object3D[]) => {
+      beachHighlights.appendShootableHitboxes(out);
+      smugglersCay.appendShootableHitboxes(out);
+    },
     shouldTrafficStop: (x: number, z: number, yaw: number) => trafficLights.shouldAiStop(x, z, yaw),
     update: (
       elapsed: number,

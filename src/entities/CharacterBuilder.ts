@@ -2,8 +2,16 @@ import * as THREE from 'three';
 import type { NpcRole } from './NpcSystem';
 import { getOutfitBackTexture, getOutfitTexture } from './CharacterTextures';
 
-export type CharacterBodyType = 'male' | 'female';
-export type CharacterHairStyle = 'pompadour' | 'feathered' | 'ponytail' | 'bob' | 'cap' | 'police';
+export type CharacterBodyType = 'male' | 'female' | 'muscular';
+export type CharacterHairStyle =
+  | 'pompadour'
+  | 'feathered'
+  | 'ponytail'
+  | 'bob'
+  | 'cap'
+  | 'police'
+  | 'rambo'
+  | 'flattop';
 
 export interface LowPolyCharacterOptions {
   role: NpcRole;
@@ -20,6 +28,10 @@ export interface LowPolyCharacterOptions {
   hasMustache: boolean;
   isShorts?: boolean;
   shortSleeves?: boolean;
+  sleeveless?: boolean;
+  dogTags?: boolean;
+  bikerJacket?: boolean;
+  terminatorShades?: boolean;
   withHalo?: boolean;
   scale?: number;
 }
@@ -379,6 +391,7 @@ export function buildLowPolyCharacter(opts: LowPolyCharacterOptions): LowPolyCha
   const g = getSharedGeos();
   const acc = getSharedAccessories();
   const isFemale = opts.bodyType === 'female';
+  const isMuscular = opts.bodyType === 'muscular';
 
   const bodyRoot = new THREE.Group();
   if (opts.scale && opts.scale !== 1) {
@@ -436,11 +449,51 @@ export function buildLowPolyCharacter(opts: LowPolyCharacterOptions): LowPolyCha
     torsoBack,
   ]);
   torso.position.y = 0.94;
+  if (isMuscular) {
+    // Broad V-taper 80s action-hero chest & shoulders
+    torso.scale.set(1.22, 1.03, 1.18);
+  }
   torso.castShadow = true;
   bodyRoot.add(torso);
 
-  // 3D Outfit Details (Blazer lapels / Vice PD badge / Gold chain)
-  if (opts.role === 'police') {
+  // 3D Outfit Details (Biker leather jacket / Dog tags / Blazer lapels / Vice PD badge / Gold chain)
+  if (opts.bikerJacket) {
+    const leatherMat = new THREE.MeshStandardMaterial({ color: '#17161c', roughness: 0.34, metalness: 0.2, flatShading: true });
+    const chromeMat = new THREE.MeshStandardMaterial({ color: '#d8e0ea', metalness: 0.9, roughness: 0.2, flatShading: true });
+    const lapelZ = isMuscular ? 0.16 : 0.136;
+    const lapelX = isMuscular ? 0.092 : 0.074;
+    for (const side of [-1, 1] as const) {
+      const lapel = new THREE.Mesh(g.lapel, leatherMat);
+      lapel.scale.set(1.25, 1.05, 1.2);
+      lapel.position.set(side * lapelX, 1.32, lapelZ);
+      lapel.rotation.z = side * 0.24;
+      lapel.rotation.y = side * -0.15;
+      bodyRoot.add(lapel);
+
+      const stud = new THREE.Mesh(new THREE.OctahedronGeometry(0.012, 0), chromeMat);
+      stud.position.set(side * (lapelX + 0.025), 1.35, lapelZ + 0.018);
+      bodyRoot.add(stud);
+    }
+    // Diagonal silver biker zipper across the chest
+    const zip = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.36, 0.014), chromeMat);
+    zip.position.set(0.045, 1.16, lapelZ + 0.005);
+    zip.rotation.z = -0.1;
+    bodyRoot.add(zip);
+  } else if (opts.dogTags) {
+    const silverMat = new THREE.MeshStandardMaterial({ color: '#d6dee8', metalness: 0.88, roughness: 0.22, flatShading: true });
+    const tagZ = isMuscular ? 0.162 : 0.136;
+    const chain = new THREE.Mesh(new THREE.TorusGeometry(0.058, 0.006, 5, 10, Math.PI), silverMat);
+    chain.position.set(0, 1.43, tagZ);
+    chain.rotation.z = Math.PI;
+    bodyRoot.add(chain);
+    const tag1 = new THREE.Mesh(new THREE.BoxGeometry(0.024, 0.04, 0.008), silverMat);
+    tag1.position.set(-0.008, 1.35, tagZ + 0.006);
+    tag1.rotation.z = 0.08;
+    const tag2 = new THREE.Mesh(new THREE.BoxGeometry(0.024, 0.04, 0.008), silverMat);
+    tag2.position.set(0.012, 1.335, tagZ + 0.01);
+    tag2.rotation.z = -0.12;
+    bodyRoot.add(tag1, tag2);
+  } else if (opts.role === 'police') {
     const badge = new THREE.Mesh(new THREE.OctahedronGeometry(0.028, 0), acc.gold);
     badge.scale.set(1, 1.15, 0.35);
     badge.position.set(0.09, 1.33, 0.136);
@@ -492,8 +545,36 @@ export function buildLowPolyCharacter(opts: LowPolyCharacterOptions): LowPolyCha
     headGroup.add(ear);
   }
 
-  // 3D Sunglasses OR Stylized Low-Poly Eyes & Brows
-  if (opts.wearsSunglasses) {
+  // 3D Terminator Wraparound Shades OR 80s Sunglasses OR Stylized Low-Poly Eyes & Brows
+  if (opts.terminatorShades) {
+    const shades = new THREE.Group();
+    shades.position.set(0, 0.026, 0.12);
+    const darkLens = new THREE.MeshStandardMaterial({
+      color: '#09090d',
+      metalness: 0.9,
+      roughness: 0.08,
+      flatShading: true,
+    });
+    const visor = new THREE.Mesh(new THREE.BoxGeometry(0.195, 0.044, 0.022), darkLens);
+    shades.add(visor);
+    for (const side of [-1, 1] as const) {
+      const temple = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.016, 0.12), acc.sunglassFrame);
+      temple.position.set(side * 0.098, 0.006, -0.055);
+      shades.add(temple);
+    }
+    // Subtle iconic T-800 red cyber-eye glint on right lens
+    const cyberEye = new THREE.Mesh(
+      new THREE.OctahedronGeometry(0.011, 0),
+      new THREE.MeshStandardMaterial({
+        color: '#ff2233',
+        emissive: '#ff1a2a',
+        emissiveIntensity: 0.85,
+      }),
+    );
+    cyberEye.position.set(0.046, 0.0, 0.014);
+    shades.add(cyberEye);
+    headGroup.add(shades);
+  } else if (opts.wearsSunglasses) {
     const shades = new THREE.Group();
     shades.position.set(0, 0.025, 0.118);
 
@@ -561,24 +642,28 @@ export function buildLowPolyCharacter(opts: LowPolyCharacterOptions): LowPolyCha
   }
 
   // 5. 2-Segment Articulated Arms (Shoulder -> Elbow -> Forearm -> Hand)
-  const shoulderX = isFemale ? 0.225 : 0.268;
-  const shoulderY = isFemale ? 1.40 : 1.42;
+  const shoulderX = isFemale ? 0.225 : isMuscular ? 0.325 : 0.268;
+  const shoulderY = isFemale ? 1.40 : isMuscular ? 1.44 : 1.42;
   const upperArmLen = isFemale ? 0.25 : 0.27;
   const forearmLen = isFemale ? 0.235 : 0.25;
   const upperArmGeo = isFemale ? g.upperArmFemale : g.upperArmMale;
   const forearmGeo = isFemale ? g.forearmFemale : g.forearmMale;
-  const forearmMat = opts.shortSleeves ? skinMat : sleeveMat;
+  const upperArmMat = opts.sleeveless ? skinMat : sleeveMat;
+  const forearmMat = opts.sleeveless || opts.shortSleeves ? skinMat : sleeveMat;
+  const armGirth = isMuscular ? 1.28 : 1.0;
 
   const buildArm = (side: -1 | 1) => {
     const armPivot = new THREE.Group();
     armPivot.position.set(side * shoulderX, shoulderY, 0);
 
-    const shoulderCap = new THREE.Mesh(g.shoulderJoint, sleeveMat);
+    const shoulderCap = new THREE.Mesh(g.shoulderJoint, upperArmMat);
     if (isFemale) shoulderCap.scale.setScalar(0.84);
+    else if (isMuscular) shoulderCap.scale.setScalar(1.32);
     armPivot.add(shoulderCap);
 
-    const upper = new THREE.Mesh(upperArmGeo, sleeveMat);
+    const upper = new THREE.Mesh(upperArmGeo, upperArmMat);
     upper.position.y = -upperArmLen * 0.5;
+    if (isMuscular) upper.scale.set(armGirth, 1.0, armGirth);
     upper.castShadow = true;
     armPivot.add(upper);
 
@@ -588,10 +673,12 @@ export function buildLowPolyCharacter(opts: LowPolyCharacterOptions): LowPolyCha
 
     const elbowCap = new THREE.Mesh(g.elbowJoint, forearmMat);
     if (isFemale) elbowCap.scale.setScalar(0.84);
+    else if (isMuscular) elbowCap.scale.setScalar(1.22);
     elbowPivot.add(elbowCap);
 
     const lower = new THREE.Mesh(forearmGeo, forearmMat);
     lower.position.y = -forearmLen * 0.5;
+    if (isMuscular) lower.scale.set(1.2, 1.0, 1.2);
     lower.castShadow = true;
     elbowPivot.add(lower);
 
@@ -630,7 +717,7 @@ export function buildLowPolyCharacter(opts: LowPolyCharacterOptions): LowPolyCha
 
     const thigh = new THREE.Mesh(thighGeo, pantsMat);
     thigh.position.y = -thighLen * 0.5;
-    thigh.scale.set(1, 1, 1.06);
+    thigh.scale.set(isMuscular ? 1.16 : 1, 1, isMuscular ? 1.22 : 1.06);
     thigh.castShadow = true;
     legPivot.add(thigh);
 
@@ -763,6 +850,30 @@ function addLowPolyHairOrHat(
     tail.position.set(0, -0.055, -0.175);
     tail.rotation.x = -0.32;
     headGroup.add(tail);
+  } else if (style === 'rambo') {
+    // 80s Sylvester Stallone / Rambo: voluminous dark hair + iconic crimson headband & trailing ribbons!
+    for (const side of [-1, 1] as const) {
+      const wing = new THREE.Mesh(new THREE.ConeGeometry(0.068, 0.18, 5), hairMat);
+      wing.position.set(side * 0.11, 0.025, -0.025);
+      wing.rotation.z = side * 0.22;
+      headGroup.add(wing);
+    }
+    const bandMat = new THREE.MeshStandardMaterial({ color: '#d91e2a', roughness: 0.65, flatShading: true });
+    const headband = new THREE.Mesh(new THREE.CylinderGeometry(0.126, 0.126, 0.038, 8), bandMat);
+    headband.position.set(0, 0.078, 0.002);
+    headGroup.add(headband);
+    for (const side of [-1, 1] as const) {
+      const ribbon = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.16, 0.01), bandMat);
+      ribbon.position.set(side * 0.024, 0.01, -0.145);
+      ribbon.rotation.x = 0.28;
+      ribbon.rotation.z = side * 0.18;
+      headGroup.add(ribbon);
+    }
+  } else if (style === 'flattop') {
+    // 80s Arnold Schwarzenegger / T-800 iconic flat-top brush cut!
+    const flattop = new THREE.Mesh(new THREE.BoxGeometry(0.205, 0.088, 0.215), hairMat);
+    flattop.position.set(0, 0.132, -0.004);
+    headGroup.add(flattop);
   } else if (style === 'bob') {
     // Stylish 80s angled bob framing the face
     for (const side of [-1, 1] as const) {

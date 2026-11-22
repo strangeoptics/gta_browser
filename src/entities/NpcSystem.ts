@@ -2,7 +2,12 @@ import * as THREE from 'three';
 import type { AABB } from '../types';
 import type { ShootableTarget } from '../combat/WeaponSystem';
 import { BLOCK_CENTERS } from '../world/CityLayout';
-import { buildLowPolyCharacter, type CharacterBodyType, type CharacterHairStyle } from './CharacterBuilder';
+import {
+  buildLowPolyCharacter,
+  type CharacterBodyType,
+  type CharacterHairStyle,
+  type LowPolyCharacterOptions,
+} from './CharacterBuilder';
 
 export type NpcRole = 'civilian' | 'police' | 'bounty' | 'guard';
 
@@ -81,6 +86,78 @@ export class NpcSystem {
       this.spawnCivilian();
     }
     this.spawnEstateGuards();
+    this.spawnActionLegends();
+  }
+
+  /**
+   * Spawns two iconic 80s action-movie legends patrolling Vice Dusk:
+   * - Sylvester Stallone (Rambo/Cobra look: red headband, sleeveless black tank top, dog tags, muscular) along Ocean Drive
+   * - Arnold Schwarzenegger (T-800 look: massive 1.98m frame, black biker leather jacket, flat-top, Terminator shades) at Central Plaza
+   */
+  public spawnActionLegends(): void {
+    // 1. Sylvester Stallone — Ocean Drive Boardwalk strip
+    const slyStart = new THREE.Vector3(64.5, 0.18, -14);
+    const slyEnd = new THREE.Vector3(64.5, 0.18, 16);
+    const sly = this.createCustomNpc(
+      'npc-stallone',
+      'civilian',
+      slyStart.x,
+      slyStart.z,
+      160,
+      slyStart.y,
+      {
+        role: 'civilian',
+        bodyType: 'muscular',
+        skinColor: '#d99e78',
+        hairColor: '#171316',
+        primaryColor: '#1d201c',
+        accentColor: '#2a3028',
+        pantsColor: '#262b22',
+        shoeColor: '#141418',
+        outfitVariant: 1,
+        hairStyle: 'rambo',
+        wearsSunglasses: true,
+        hasMustache: false,
+        sleeveless: true,
+        dogTags: true,
+        scale: 1.03,
+      },
+    );
+    sly.patrolPoints = [slyStart, slyEnd];
+    sly.patrolIdx = 1;
+    sly.targetPos.copy(slyEnd);
+
+    // 2. Arnold Schwarzenegger — Central Plaza near AMMU-NEON ("I'll be back")
+    const arnieStart = new THREE.Vector3(11.5, 0.18, -12);
+    const arnieEnd = new THREE.Vector3(11.5, 0.18, 14);
+    const arnie = this.createCustomNpc(
+      'npc-arnold',
+      'civilian',
+      arnieStart.x,
+      arnieStart.z,
+      180,
+      arnieStart.y,
+      {
+        role: 'civilian',
+        bodyType: 'muscular',
+        skinColor: '#e2b294',
+        hairColor: '#3b2a1e',
+        primaryColor: '#15141a',
+        accentColor: '#2c2c34',
+        pantsColor: '#121216',
+        shoeColor: '#101014',
+        outfitVariant: 0,
+        hairStyle: 'flattop',
+        wearsSunglasses: false,
+        terminatorShades: true,
+        hasMustache: false,
+        bikerJacket: true,
+        scale: 1.09,
+      },
+    );
+    arnie.patrolPoints = [arnieStart, arnieEnd];
+    arnie.patrolIdx = 1;
+    arnie.targetPos.copy(arnieEnd);
   }
 
   public alertEstateGuards(): void {
@@ -819,6 +896,60 @@ export class NpcSystem {
       leftElbowPivot: rig.leftElbowPivot,
       rightElbowPivot: rig.rightElbowPivot,
       muzzleFlash,
+      deathTimer: 0,
+    };
+    this.npcs.push(npc);
+    return npc;
+  }
+
+  private createCustomNpc(
+    id: string,
+    role: NpcRole,
+    x: number,
+    z: number,
+    maxHp: number,
+    baseY: number,
+    charOpts: LowPolyCharacterOptions,
+  ): NpcEntity {
+    const group = new THREE.Group();
+    group.position.set(x, baseY, z);
+
+    const rig = buildLowPolyCharacter(charOpts);
+    group.add(rig.bodyRoot);
+
+    const hitbox = new THREE.Mesh(this.hitboxGeo, this.hitboxMat);
+    hitbox.position.y = 0.94;
+    group.add(hitbox);
+
+    this.scene.add(group);
+
+    const npc: NpcEntity = {
+      id,
+      role,
+      group,
+      hitbox,
+      bodyRoot: rig.bodyRoot,
+      position: new THREE.Vector3(x, baseY, z),
+      yaw: 0,
+      hp: maxHp,
+      maxHp,
+      alive: true,
+      state: 'walk',
+      walkPhase: Math.random() * 6,
+      fireCooldown: 0.8,
+      flinchTimer: 0,
+      muzzleTimer: 0,
+      fallProgress: 0,
+      fallDir: 1,
+      targetPos: this.randomSidewalkPoint(),
+      leftLegPivot: rig.leftLegPivot,
+      rightLegPivot: rig.rightLegPivot,
+      leftKneePivot: rig.leftKneePivot,
+      rightKneePivot: rig.rightKneePivot,
+      leftArmPivot: rig.leftArmPivot,
+      rightArmPivot: rig.rightArmPivot,
+      leftElbowPivot: rig.leftElbowPivot,
+      rightElbowPivot: rig.rightElbowPivot,
       deathTimer: 0,
     };
     this.npcs.push(npc);

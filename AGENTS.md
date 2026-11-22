@@ -30,7 +30,7 @@ src/
 ├── style.css                # Palm City '86 HUD, overlay, shop, photo mode & touch styles
 ├── types.ts                 # Shared AABB & PlayerStatus types
 ├── audio/
-│   └── AudioEngine.ts       # Procedural Web Audio SFX, 80s radio (3 stations), spatial 126-BPM club music & ocean surf
+│   └── AudioEngine.ts       # Procedural Web Audio SFX, 80s radio (3 stations + beat pulse), 8-bit ice cream jingle, Jaws 2-note shark bass, spatial 126-BPM club music & ocean surf
 ├── combat/
 │   └── WeaponSystem.ts      # 5 weapons (0: Katana, 1: 9mm, 2: SMG, 3: Shotgun, 4: Launcher), ADS, Drive-By, tracers & sparks
 ├── engine/
@@ -41,9 +41,12 @@ src/
 ├── entities/
 │   ├── CharacterTextures.ts # Cached 128×128 procedural face (sunglasses/mustache) & 80s outfit canvas textures
 │   ├── HelicopterSystem.ts  # Vice PD Chopper (deploys at 3+ stars, sweeping SpotLight, shootable)
-│   └── NpcSystem.ts         # Articulated civilians, Vice PD & bounty NPCs, cover-aware gunfire, water-cannon knockback & precinct spawns
+│   ├── NpcSystem.ts         # Articulated civilians, Vice PD & bounty NPCs, cover-aware gunfire, ice-cream/donut lure, Big Head hallucination & precinct spawns
+│   └── WildlifeSystem.ts    # Flamingos, dolphins, stalker reef sharks (Jaws alarm), pelicans, turtles, roosters, dive-bombing snack-stealing seagull & giant kickable beach ball
 ├── gameplay/
 │   ├── HeistSystem.ts       # 3-stage "Ocean Club Finale" story heist (+$3,500)
+│   ├── KittAiSystem.ts      # K.I.T.T. German sarcastic AI voice (Web Speech API) & HUD subtitles
+│   ├── LowriderBattleSystem.ts # Little Havana Plaza 16-beat Lowrider Hydraulics rhythm battle (+$1,200–$1,800)
 │   ├── ObjectiveSystem.ts   # 5 rotating mini-objectives (stash, race, bounty, dropoff, survive)
 │   ├── PayNSpray.ts         # Drive-in respray bay at (-56, -38): repairs, repaints & clears Wanted stars
 │   ├── ShopSystem.ts        # AMMU-NEON kiosk at Central Plaza (-4.5, 4.5)
@@ -57,10 +60,10 @@ src/
 │   └── PlayerController.ts  # Pointer-Lock + drag/arrow FPS & 3rd-person camera (invertMouseY, GTA cover & peeking [Q/X], wall-clip raycast & swimming)
 ├── vehicles/
 │   ├── BoatSystem.ts        # Drivable Stinger Speedboat (beach pier, Starfish Island & Superyacht docking)
-│   ├── CarBuilder.ts        # 11 detailed extruded 3D car models (DeLorean, Cybertruck, Trans Am K.I.T.T., Bounder RV, Monaco, Challenger, Police, Checker Taxi, Ambulance, Firetruck w/ water turret, Supercar)
+│   ├── CarBuilder.ts        # 12 detailed extruded 3D car models (DeLorean, Cybertruck, Trans Am K.I.T.T., Bounder RV, Monaco, Challenger, Police, Checker Taxi, Ambulance, Firetruck w/ water turret, Cherry Popper '86 Ice Cream Van, Supercar)
 │   ├── MotorcycleBuilder.ts # Detailed procedural 80s superbike ("PCJ-86 NEON BIKE") with torus tires, forks, engine & rider
 │   ├── PlayerHelicopterSystem.ts # Flyable 80s executive helicopter ("VICE MAVERICK") stationed on Starfish Island Helipad
-│   └── VehicleSystem.ts     # Vehicle physics, Vice Customs Turbo/Underglow tuning, cliff launches, height-aware collisions, pooled VFX & AI traffic/police
+│   └── VehicleSystem.ts     # Vehicle physics, Vice Customs Turbo/Underglow/Hydraulics, K.I.T.T. Turbo-Boost, DeLorean 88 MPH Time Jump, Flamingo Police hallucination, cliff launches, height-aware collisions, pooled VFX & AI traffic/police
 └── world/
     ├── BeachProps.ts        # Lifeguard tower, illuminated wooden pier, loungers, volleyball net, dune grass & circling seagulls
     ├── CityBuilder.ts       # Sky dome, PMREM reflections, instanced palms (per-palm Y), world-space wet road shader, 6m ocean & weather

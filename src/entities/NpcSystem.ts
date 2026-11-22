@@ -182,6 +182,37 @@ export class NpcSystem {
     arnie.patrolPoints = [arnieStart, arnieEnd];
     arnie.patrolIdx = 1;
     arnie.targetPos.copy(arnieEnd);
+
+    // 3. Surreal 80s Horse-Mask Guy — strolling along Ocean Drive right outside the Neon Club
+    const horseStart = new THREE.Vector3(52.8, 0.18, -12);
+    const horseEnd = new THREE.Vector3(52.8, 0.18, 16);
+    const horseGuy = this.createCustomNpc(
+      'npc-horse-mask',
+      'civilian',
+      horseStart.x,
+      horseStart.z,
+      90,
+      horseStart.y,
+      {
+        role: 'civilian',
+        bodyType: 'male',
+        skinColor: '#e2b294',
+        hairColor: '#24150d',
+        primaryColor: '#36f1e6',
+        accentColor: '#ff4fa3',
+        pantsColor: '#f4efe6',
+        shoeColor: '#1b1622',
+        outfitVariant: 0,
+        hairStyle: 'pompadour',
+        wearsSunglasses: false,
+        hasMustache: false,
+        horseMask: true,
+        scale: 1.02,
+      },
+    );
+    horseGuy.patrolPoints = [horseStart, horseEnd];
+    horseGuy.patrolIdx = 1;
+    horseGuy.targetPos.copy(horseEnd);
   }
 
   public alertEstateGuards(): void {

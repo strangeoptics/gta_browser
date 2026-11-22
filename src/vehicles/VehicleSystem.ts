@@ -55,6 +55,13 @@ export interface Vehicle {
   aiSpeed: number;
   aiTargetX: number;
   aiTargetZ: number;
+  aiNodeX: number;
+  aiNodeZ: number;
+  aiDirX: number;
+  aiDirZ: number;
+  aiStuckTimer: number;
+  aiReverseTimer: number;
+  aiReverseSteer: number;
   collider: AABB;
 }
 
@@ -81,6 +88,8 @@ interface SmokeParticle {
   maxLife: number;
 }
 
+const LANE_OFFSET = 2.75; // US right-hand lane center offset from road center (road width = 12m, curb at ±6.0m)
+
 const CAR_SPECS: {
   name: string;
   model: CarModelType;
@@ -95,23 +104,24 @@ const CAR_SPECS: {
   bike: boolean;
   specialRole?: SpecialVehicleRole;
 }[] = [
-  { name: 'DELOREAN DMC-12', model: 'delorean', color: '#c8d0d8', neon: '#36f1e6', x: 56.8, z: 16, yaw: Math.PI, ai: false, police: false, pursuit: false, bike: false },
-  { name: 'PCJ-86 NEON BIKE', model: 'supercar', color: '#36f1e6', neon: '#ff4fa3', x: 63.2, z: 20, yaw: Math.PI, ai: false, police: false, pursuit: false, bike: true },
-  { name: 'TESLA CYBERTRUCK', model: 'cybertruck', color: '#c2c9d2', neon: '#5ee8ff', x: 63.2, z: -12, yaw: 0, ai: false, police: false, pursuit: false, bike: false },
-  { name: '1982 PONTIAC TRANS AM', model: 'transam', color: '#101118', neon: '#ff1e38', x: 56.8, z: -26, yaw: 0, ai: false, police: false, pursuit: false, bike: false },
-  { name: 'DODGE CHALLENGER', model: 'challenger', color: '#e64928', neon: '#ff9f43', x: 16.8, z: 6, yaw: Math.PI, ai: false, police: false, pursuit: false, bike: false },
-  { name: '1986 FLEETWOOD BOUNDER', model: 'bounder', color: '#e8dec5', neon: '#ffbe55', x: -23.2, z: -14, yaw: 0, ai: false, police: false, pursuit: false, bike: false },
-  { name: '1974 DODGE MONACO', model: 'monaco', color: '#14151c', neon: '#36f1e6', x: -16.8, z: 24, yaw: Math.PI, ai: false, police: false, pursuit: false, bike: false },
-  { name: 'VICE PD CRUISER', model: 'police', color: '#1b1b26', neon: '#36f1e6', x: -26.8, z: 6.8, yaw: 0, ai: false, police: true, pursuit: true, bike: false },
-  { name: 'VICE PD INTERCEPTOR', model: 'police', color: '#1b1b26', neon: '#ff3355', x: 20, z: 58, yaw: Math.PI, ai: true, police: true, pursuit: true, bike: false },
+  // Parked cars positioned cleanly half on the sidewalk / curb (roadCenter ± 6.0m) so road lanes stay 100% clear!
+  { name: 'DELOREAN DMC-12', model: 'delorean', color: '#c8d0d8', neon: '#36f1e6', x: 54.0, z: 16, yaw: Math.PI, ai: false, police: false, pursuit: false, bike: false },
+  { name: 'PCJ-86 NEON BIKE', model: 'supercar', color: '#36f1e6', neon: '#ff4fa3', x: 66.2, z: 20, yaw: Math.PI, ai: false, police: false, pursuit: false, bike: true },
+  { name: 'TESLA CYBERTRUCK', model: 'cybertruck', color: '#c2c9d2', neon: '#5ee8ff', x: 65.8, z: -6, yaw: 0, ai: false, police: false, pursuit: false, bike: false },
+  { name: '1982 PONTIAC TRANS AM', model: 'transam', color: '#101118', neon: '#ff1e38', x: 54.0, z: -26, yaw: 0, ai: false, police: false, pursuit: false, bike: false },
+  { name: 'DODGE CHALLENGER', model: 'challenger', color: '#e64928', neon: '#ff9f43', x: 14.0, z: 6, yaw: Math.PI, ai: false, police: false, pursuit: false, bike: false },
+  { name: '1986 FLEETWOOD BOUNDER', model: 'bounder', color: '#e8dec5', neon: '#ffbe55', x: -26.0, z: -14, yaw: 0, ai: false, police: false, pursuit: false, bike: false },
+  { name: '1974 DODGE MONACO', model: 'monaco', color: '#14151c', neon: '#36f1e6', x: -14.0, z: 28, yaw: Math.PI, ai: false, police: false, pursuit: false, bike: false },
+  { name: 'VICE PD CRUISER', model: 'police', color: '#1b1b26', neon: '#36f1e6', x: -26.4, z: 7.5, yaw: 0, ai: false, police: true, pursuit: true, bike: false },
+  { name: 'VICE PD INTERCEPTOR', model: 'police', color: '#1b1b26', neon: '#ff3355', x: 22.75, z: 48, yaw: Math.PI, ai: true, police: true, pursuit: true, bike: false },
   // Classic GTA Special Service Vehicles: Checker Taxi, Ambulance & Firetruck!
-  { name: 'VICE CAB · CHECKER TAXI', model: 'taxi', color: '#f2c22e', neon: '#ffd15c', x: 56.8, z: -2, yaw: 0, ai: false, police: false, pursuit: false, bike: false, specialRole: 'taxi' },
-  { name: 'VICE CAB · CHECKER TAXI', model: 'taxi', color: '#f2c22e', neon: '#ffd15c', x: -20, z: -40, yaw: 0, ai: true, police: false, pursuit: false, bike: false, specialRole: 'taxi' },
-  { name: 'VICE EMS AMBULANCE', model: 'ambulance', color: '#f2f5fa', neon: '#ff3355', x: -16.8, z: -26, yaw: Math.PI, ai: false, police: false, pursuit: false, bike: false, specialRole: 'ambulance' },
-  { name: 'VICE FIRE ENGINE 06', model: 'firetruck', color: '#d9232e', neon: '#ff9f43', x: 23.2, z: 42, yaw: -Math.PI / 2, ai: false, police: false, pursuit: false, bike: false, specialRole: 'firetruck' },
-  // Cruising traffic cars on the road grid
-  { name: 'CHEETAH GT', model: 'supercar', color: '#ff4fa3', neon: '#ff4fa3', x: 20, z: -48, yaw: 0, ai: true, police: false, pursuit: false, bike: false },
-  { name: 'DODGE CHALLENGER RT', model: 'challenger', color: '#36c9c6', neon: '#36f1e6', x: -60, z: 20, yaw: Math.PI / 2, ai: true, police: false, pursuit: false, bike: false },
+  { name: 'VICE CAB · CHECKER TAXI', model: 'taxi', color: '#f2c22e', neon: '#ffd15c', x: 54.0, z: -8, yaw: 0, ai: false, police: false, pursuit: false, bike: false, specialRole: 'taxi' },
+  { name: 'VICE CAB · CHECKER TAXI', model: 'taxi', color: '#f2c22e', neon: '#ffd15c', x: -22.75, z: -40, yaw: 0, ai: true, police: false, pursuit: false, bike: false, specialRole: 'taxi' },
+  { name: 'VICE EMS AMBULANCE', model: 'ambulance', color: '#f2f5fa', neon: '#ff3355', x: -14.0, z: -28, yaw: Math.PI, ai: false, police: false, pursuit: false, bike: false, specialRole: 'ambulance' },
+  { name: 'VICE FIRE ENGINE 06', model: 'firetruck', color: '#d9232e', neon: '#ff9f43', x: 26.0, z: 42, yaw: Math.PI, ai: false, police: false, pursuit: false, bike: false, specialRole: 'firetruck' },
+  // Cruising traffic cars in right-hand lanes on the road grid
+  { name: 'CHEETAH GT', model: 'supercar', color: '#ff4fa3', neon: '#ff4fa3', x: 17.25, z: -44, yaw: 0, ai: true, police: false, pursuit: false, bike: false },
+  { name: 'DODGE CHALLENGER RT', model: 'challenger', color: '#36c9c6', neon: '#36f1e6', x: -44, z: 22.75, yaw: Math.PI / 2, ai: true, police: false, pursuit: false, bike: false },
 ];
 
 export class VehicleSystem {
@@ -215,6 +225,11 @@ export class VehicleSystem {
       hitbox.position.y = hbH * 0.5;
       built.group.add(hitbox);
 
+      const initDirX = Math.round(Math.sin(spec.yaw));
+      const initDirZ = Math.round(Math.cos(spec.yaw));
+      const initY = !spec.ai ? 0.08 : 0; // Parked cars sit cleanly half on the 0.18m sidewalk curb
+      built.group.position.set(spec.x, initY, spec.z);
+
       const v: Vehicle = {
         id: `car-${idx}`,
         name: spec.name,
@@ -230,7 +245,7 @@ export class VehicleSystem {
         kickstand: 'kickstand' in built ? built.kickstand : undefined,
         waterTurret: 'waterTurret' in built ? built.waterTurret : undefined,
         originalColor: spec.color,
-        position: new THREE.Vector3(spec.x, 0, spec.z),
+        position: new THREE.Vector3(spec.x, initY, spec.z),
         spawnX: spec.x,
         spawnZ: spec.z,
         spawnYaw: spec.yaw,
@@ -252,9 +267,16 @@ export class VehicleSystem {
         lightbarBlue: 'lightbarBlue' in built ? built.lightbarBlue : undefined,
         scannerLeds: 'scannerLeds' in built ? built.scannerLeds : undefined,
         isAiControlled: spec.ai,
-        aiSpeed: spec.ai ? 7.5 : 0,
+        aiSpeed: spec.ai ? 8.2 : 0,
         aiTargetX: spec.x,
         aiTargetZ: spec.z,
+        aiNodeX: this.nearestRoadCoord(spec.x),
+        aiNodeZ: this.nearestRoadCoord(spec.z),
+        aiDirX: initDirX,
+        aiDirZ: initDirZ,
+        aiStuckTimer: 0,
+        aiReverseTimer: 0,
+        aiReverseSteer: 1,
         collider: {
           minX: spec.x - 1.5,
           maxX: spec.x + 1.5,
@@ -741,15 +763,23 @@ export class VehicleSystem {
         v.respawnTimer -= clampedDt;
         this.emitDamageSmoke(v, clampedDt, false);
         if (v.respawnTimer <= 0) {
+          const spawnY = !v.isAiControlled ? 0.08 : 0;
           v.destroyed = false;
           v.hp = v.maxHp;
-          v.position.set(v.spawnX, 0, v.spawnZ);
+          v.position.set(v.spawnX, spawnY, v.spawnZ);
           v.yaw = v.spawnYaw;
           v.speed = 0;
+          v.aiStuckTimer = 0;
+          v.aiReverseTimer = 0;
           v.bodyMat.color.set(v.originalColor);
           v.bodyMat.roughness = 0.24;
-          v.mesh.position.set(v.spawnX, 0, v.spawnZ);
+          v.mesh.position.set(v.spawnX, spawnY, v.spawnZ);
           v.mesh.rotation.y = v.spawnYaw;
+          if (v.isAiControlled) {
+            v.aiDirX = Math.round(Math.sin(v.spawnYaw));
+            v.aiDirZ = Math.round(Math.cos(v.spawnYaw));
+            this.pickNextAiWaypoint(v);
+          }
         }
         continue;
       }
@@ -804,7 +834,7 @@ export class VehicleSystem {
         // Active Vice PD Cruiser chase!
         this.updatePolicePursuitCar(v, clampedDt, playerPos, solidColliders, bounds, vehicleGrid);
       } else if (v.isAiControlled) {
-        this.updateAiCar(v, clampedDt, playerPos, shouldTrafficStop);
+        this.updateAiCar(v, clampedDt, playerPos, solidColliders, bounds, shouldTrafficStop, vehicleGrid);
       } else {
         v.speed *= Math.exp(-3.2 * clampedDt);
         if (Math.abs(v.speed) > 0.05) {
@@ -963,6 +993,42 @@ export class VehicleSystem {
     }
   }
 
+  private nearestRoadCoord(coord: number): number {
+    let best = ROAD_COORDS[0];
+    let bestDist = Math.abs(coord - best);
+    for (let i = 1; i < ROAD_COORDS.length; i++) {
+      const d = Math.abs(coord - ROAD_COORDS[i]);
+      if (d < bestDist) {
+        bestDist = d;
+        best = ROAD_COORDS[i];
+      }
+    }
+    return best;
+  }
+
+  /**
+   * Probes whether a world point (px, pz) is blocked by a static building/roadblock collider.
+   */
+  private isPointBlockedByWorld(
+    px: number,
+    pz: number,
+    radius: number,
+    solidColliders: AABB[],
+    vehicleGrid?: SpatialGrid,
+  ): boolean {
+    const boxes = vehicleGrid
+      ? vehicleGrid.queryBox(px - radius, px + radius, pz - radius, pz + radius, solidColliders, this.localColliders)
+      : solidColliders;
+    for (let i = 0; i < boxes.length; i++) {
+      const box = boxes[i];
+      if (box.maxY <= 0.45 || box.minY >= 1.8) continue;
+      if (px + radius > box.minX && px - radius < box.maxX && pz + radius > box.minZ && pz - radius < box.maxZ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   private updatePolicePursuitCar(
     v: Vehicle,
     dt: number,
@@ -975,17 +1041,96 @@ export class VehicleSystem {
     const toZ = playerPos.z - v.position.z;
     const dist = Math.hypot(toX, toZ);
 
-    const desiredYaw = Math.atan2(toX, toZ);
+    // Handle brief reverse maneuver if cruiser got wedged on a building corner
+    if (v.aiReverseTimer > 0) {
+      v.aiReverseTimer -= dt;
+      v.speed += (-5.5 - v.speed) * (1 - Math.exp(-5.0 * dt));
+      v.yaw += v.aiReverseSteer * 1.9 * dt;
+      this.moveVehicleWithCollision(v, dt, solidColliders, bounds, vehicleGrid);
+      return;
+    }
+
+    const fwdX = Math.sin(v.yaw);
+    const fwdZ = Math.cos(v.yaw);
+    const rightX = Math.cos(v.yaw);
+    const rightZ = -Math.sin(v.yaw);
+
+    // 3-whisker obstacle avoidance so Vice PD steers smoothly around buildings & traffic!
+    let avoidSteer = 0;
+    const probeDist = Math.min(8.5, Math.max(4.5, Math.abs(v.speed) * 0.65));
+    const centerBlocked = this.isPointBlockedByWorld(
+      v.position.x + fwdX * probeDist,
+      v.position.z + fwdZ * probeDist,
+      1.65,
+      solidColliders,
+      vehicleGrid,
+    );
+    const leftBlocked = this.isPointBlockedByWorld(
+      v.position.x + (fwdX * 0.85 + rightX * 0.52) * (probeDist * 0.85),
+      v.position.z + (fwdZ * 0.85 + rightZ * 0.52) * (probeDist * 0.85),
+      1.55,
+      solidColliders,
+      vehicleGrid,
+    );
+    const rightBlocked = this.isPointBlockedByWorld(
+      v.position.x + (fwdX * 0.85 - rightX * 0.52) * (probeDist * 0.85),
+      v.position.z + (fwdZ * 0.85 - rightZ * 0.52) * (probeDist * 0.85),
+      1.55,
+      solidColliders,
+      vehicleGrid,
+    );
+
+    if (centerBlocked) {
+      avoidSteer = leftBlocked && !rightBlocked ? -1.1 : !leftBlocked && rightBlocked ? 1.1 : 1.0;
+    } else if (leftBlocked && !rightBlocked) {
+      avoidSteer = -0.65;
+    } else if (rightBlocked && !leftBlocked) {
+      avoidSteer = 0.65;
+    }
+
+    // Also steer around non-player vehicles in the pursuit path
+    for (let i = 0; i < this.vehicles.length; i++) {
+      const other = this.vehicles[i];
+      if (other === v || other === this.activeVehicle || other.destroyed) continue;
+      const dx = other.position.x - v.position.x;
+      const dz = other.position.z - v.position.z;
+      const dSq = dx * dx + dz * dz;
+      if (dSq > 100) continue;
+      const fwdProj = dx * fwdX + dz * fwdZ;
+      if (fwdProj > 0.5 && fwdProj < 9.5) {
+        const lat = dx * rightX + dz * rightZ;
+        if (Math.abs(lat) < 2.4) {
+          avoidSteer += lat >= 0 ? -0.9 : 0.9;
+        }
+      }
+    }
+
+    const desiredYaw = Math.atan2(toX, toZ) + avoidSteer * 0.85;
     let diff = desiredYaw - v.yaw;
     while (diff > Math.PI) diff -= Math.PI * 2;
     while (diff < -Math.PI) diff += Math.PI * 2;
 
-    v.yaw += THREE.MathUtils.clamp(diff, -2.6 * dt, 2.6 * dt);
+    v.yaw += THREE.MathUtils.clamp(diff, -2.75 * dt, 2.75 * dt);
 
-    const targetSpeed = dist > 7.5 ? 14.5 : 4.5;
-    v.speed += (targetSpeed - v.speed) * (1 - Math.exp(-3.5 * dt));
+    const turnSlowdown = Math.max(0.45, 1 - Math.abs(diff) * 0.35);
+    const targetSpeed = (dist > 7.5 ? 14.2 : 4.5) * (centerBlocked ? 0.55 : turnSlowdown);
+    v.speed += (targetSpeed - v.speed) * (1 - Math.exp(-3.8 * dt));
 
+    const prevX = v.position.x;
+    const prevZ = v.position.z;
     this.moveVehicleWithCollision(v, dt, solidColliders, bounds, vehicleGrid);
+
+    const moved = Math.hypot(v.position.x - prevX, v.position.z - prevZ);
+    if (dist > 6.5 && moved < 0.7 * dt) {
+      v.aiStuckTimer += dt;
+      if (v.aiStuckTimer > 1.2) {
+        v.aiStuckTimer = 0;
+        v.aiReverseTimer = 0.95;
+        v.aiReverseSteer = Math.random() > 0.5 ? 1 : -1;
+      }
+    } else {
+      v.aiStuckTimer = Math.max(0, v.aiStuckTimer - dt * 2.0);
+    }
 
     // Ram damage if police cruiser clips player
     if (dist < 3.2 && v.speed > 5.5 && this.ramCooldown <= 0) {
@@ -1253,53 +1398,189 @@ export class VehicleSystem {
     v: Vehicle,
     dt: number,
     playerPos: THREE.Vector3,
+    solidColliders: AABB[],
+    bounds: { minX: number; maxX: number; minZ: number; maxZ: number },
     shouldTrafficStop?: (x: number, z: number, yaw: number) => boolean,
+    vehicleGrid?: SpatialGrid,
   ): void {
-    const distToPlayer = v.position.distanceTo(playerPos);
-    const redLight = shouldTrafficStop ? shouldTrafficStop(v.position.x, v.position.z, v.yaw) : false;
-    const targetSpeed = distToPlayer < 8.0 || redLight ? 0 : v.aiSpeed;
-    v.speed += (targetSpeed - v.speed) * (1 - Math.exp(-3.5 * dt));
+    // Brief smooth reverse maneuver if blocked / stuck
+    if (v.aiReverseTimer > 0) {
+      v.aiReverseTimer -= dt;
+      v.speed += (-3.8 - v.speed) * (1 - Math.exp(-4.5 * dt));
+      v.yaw += v.aiReverseSteer * 1.45 * dt;
+      if (v.reverseMat) v.reverseMat.emissiveIntensity = 4.2;
+      if (v.tailMat) v.tailMat.emissiveIntensity = 2.4;
+      this.moveVehicleWithCollision(v, dt, solidColliders, bounds, vehicleGrid);
+      return;
+    }
+    if (v.reverseMat) v.reverseMat.emissiveIntensity = 0.05;
 
     const toX = v.aiTargetX - v.position.x;
     const toZ = v.aiTargetZ - v.position.z;
-    const dist = Math.hypot(toX, toZ);
+    const distToWaypoint = Math.hypot(toX, toZ);
 
-    if (dist < 2.2) {
+    if (distToWaypoint < 3.4) {
       this.pickNextAiWaypoint(v);
-      return;
     }
 
-    const desiredYaw = Math.atan2(toX, toZ);
+    const fwdX = Math.sin(v.yaw);
+    const fwdZ = Math.cos(v.yaw);
+    // In Three.js (+Z forward, +Y up), left is (+cos, -sin) and right is (-cos, +sin)
+    const leftX = Math.cos(v.yaw);
+    const leftZ = -Math.sin(v.yaw);
+
+    // 1) Red traffic light check
+    const redLight = shouldTrafficStop ? shouldTrafficStop(v.position.x, v.position.z, v.yaw) : false;
+    let targetSpeed = redLight ? 0 : v.aiSpeed;
+    let avoidLateral = 0;
+
+    // 2) Pedestrian / Player-on-foot forward cone braking (only brake if player is AHEAD, not behind!)
+    if (!this.activeVehicle) {
+      const pdx = playerPos.x - v.position.x;
+      const pdz = playerPos.z - v.position.z;
+      const pFwd = pdx * fwdX + pdz * fwdZ;
+      const pLat = pdx * leftX + pdz * leftZ;
+      if (pFwd > 0.5 && pFwd < 10.5 && Math.abs(pLat) < 2.4) {
+        targetSpeed = 0;
+      }
+    }
+
+    // 3) Predictive vehicle-ahead radar: follow smoothly, yield at intersections, or steer around parked/stopped obstacles!
+    for (let i = 0; i < this.vehicles.length; i++) {
+      const other = this.vehicles[i];
+      if (other === v || other.destroyed) continue;
+
+      const dx = other.position.x - v.position.x;
+      const dz = other.position.z - v.position.z;
+      const dSq = dx * dx + dz * dz;
+      if (dSq > 16 * 16) continue;
+
+      const fwdProj = dx * fwdX + dz * fwdZ;
+      if (fwdProj < 0.2 || fwdProj > 14.5) continue;
+
+      const latProj = dx * leftX + dz * leftZ; // positive = other is to our left, negative = to our right
+      const halfClearance = (v.isRv || other.isRv ? 2.55 : 2.25);
+
+      if (Math.abs(latProj) < halfClearance) {
+        const otherFwdDot = Math.sin(other.yaw) * fwdX + Math.cos(other.yaw) * fwdZ;
+        const otherSpeedAlong = other.speed * otherFwdDot;
+
+        if (fwdProj < 6.4) {
+          // Very close obstacle -> stop cleanly!
+          targetSpeed = 0;
+        } else if (Math.abs(other.speed) < 1.2 && fwdProj < 11.5) {
+          // Stationary car partially blocking lane -> gently nudge around it toward road center & slow down
+          const nudgeDir = latProj >= 0 ? -1 : 1; // steer away from the obstacle
+          avoidLateral += nudgeDir * 0.55;
+          targetSpeed = Math.min(targetSpeed, 3.8);
+        } else if (otherFwdDot > 0.5) {
+          // Moving car in same lane -> match its speed with safe following distance!
+          const followFactor = THREE.MathUtils.clamp((fwdProj - 6.0) / 7.5, 0, 1);
+          const safeSpeed = Math.max(0, Math.min(v.aiSpeed, otherSpeedAlong + 0.5)) * followFactor;
+          targetSpeed = Math.min(targetSpeed, safeSpeed);
+        } else {
+          // Crossing or oncoming vehicle in our path (e.g. at an intersection) -> yield!
+          if (fwdProj < 10.5) {
+            targetSpeed = Math.min(targetSpeed, fwdProj < 7.8 ? 0 : 2.2);
+          }
+        }
+      }
+    }
+
+    // 4) Static world / roadblock ahead check
+    const staticAheadDist = Math.max(4.8, Math.abs(v.speed) * 0.65);
+    const staticBlocked = this.isPointBlockedByWorld(
+      v.position.x + fwdX * staticAheadDist,
+      v.position.z + fwdZ * staticAheadDist,
+      1.55,
+      solidColliders,
+      vehicleGrid,
+    );
+    if (staticBlocked) {
+      targetSpeed = 0;
+    }
+
+    // 5) Smooth cornering speed modulation & steering toward lane waypoint
+    const steerTargetX = v.aiTargetX + leftX * avoidLateral * 2.2;
+    const steerTargetZ = v.aiTargetZ + leftZ * avoidLateral * 2.2;
+    const desiredYaw = Math.atan2(steerTargetX - v.position.x, steerTargetZ - v.position.z);
     let diff = desiredYaw - v.yaw;
     while (diff > Math.PI) diff -= Math.PI * 2;
     while (diff < -Math.PI) diff += Math.PI * 2;
-    v.yaw += THREE.MathUtils.clamp(diff, -2.5 * dt, 2.5 * dt);
 
-    v.position.x += Math.sin(v.yaw) * v.speed * dt;
-    v.position.z += Math.cos(v.yaw) * v.speed * dt;
-    v.mesh.position.x = v.position.x;
-    v.mesh.position.z = v.position.z;
-    v.mesh.rotation.y = v.yaw;
+    if (Math.abs(diff) > 0.35) {
+      targetSpeed = Math.min(targetSpeed, v.aiSpeed * Math.max(0.42, 1 - Math.abs(diff) * 0.38));
+    }
+
+    const brakeRate = targetSpeed < v.speed ? 6.2 : 3.2;
+    v.speed += (targetSpeed - v.speed) * (1 - Math.exp(-brakeRate * dt));
+    if (targetSpeed === 0 && Math.abs(v.speed) < 0.15) v.speed = 0;
+
+    // Realistic brake lights when AI slows or stops!
+    if (v.tailMat) {
+      v.tailMat.emissiveIntensity = targetSpeed < 0.8 || targetSpeed < v.speed - 1.2 ? 6.2 : 2.4;
+    }
+
+    const turnRate = (Math.abs(v.speed) > 0.4 ? 2.65 : 1.2) * dt;
+    v.yaw += THREE.MathUtils.clamp(diff, -turnRate, turnRate);
+
+    const prevX = v.position.x;
+    const prevZ = v.position.z;
+    if (Math.abs(v.speed) > 0.02) {
+      this.moveVehicleWithCollision(v, dt, solidColliders, bounds, vehicleGrid);
+    } else {
+      v.mesh.rotation.y = v.yaw;
+    }
+
+    // 6) Stuck detection (only when AI *wants* to drive, not when waiting at a red light or behind traffic!)
+    const moved = Math.hypot(v.position.x - prevX, v.position.z - prevZ);
+    if (targetSpeed > 2.5 && !redLight && moved < 0.35 * dt) {
+      v.aiStuckTimer += dt;
+      if (v.aiStuckTimer > 1.8) {
+        v.aiStuckTimer = 0;
+        v.aiReverseTimer = 1.05;
+        v.aiReverseSteer = Math.random() > 0.5 ? 1 : -1;
+      }
+    } else {
+      v.aiStuckTimer = Math.max(0, v.aiStuckTimer - dt * 2.0);
+    }
   }
 
   private pickNextAiWaypoint(v: Vehicle): void {
-    let nearestX = ROAD_COORDS[0];
-    let nearestZ = ROAD_COORDS[0];
-    for (const r of ROAD_COORDS) {
-      if (Math.abs(r - v.position.x) < Math.abs(nearestX - v.position.x)) nearestX = r;
-      if (Math.abs(r - v.position.z) < Math.abs(nearestZ - v.position.z)) nearestZ = r;
-    }
+    const curX = this.nearestRoadCoord(v.position.x);
+    const curZ = this.nearestRoadCoord(v.position.z);
+    v.aiNodeX = curX;
+    v.aiNodeZ = curZ;
 
-    const candidates: { x: number; z: number }[] = [];
-    const ix = ROAD_COORDS.indexOf(nearestX);
-    const iz = ROAD_COORDS.indexOf(nearestZ);
-    if (ix > 0) candidates.push({ x: ROAD_COORDS[ix - 1], z: nearestZ });
-    if (ix < ROAD_COORDS.length - 1) candidates.push({ x: ROAD_COORDS[ix + 1], z: nearestZ });
-    if (iz > 0) candidates.push({ x: nearestX, z: ROAD_COORDS[iz - 1] });
-    if (iz < ROAD_COORDS.length - 1) candidates.push({ x: nearestX, z: ROAD_COORDS[iz + 1] });
+    const ix = ROAD_COORDS.indexOf(curX);
+    const iz = ROAD_COORDS.indexOf(curZ);
 
-    const pick = candidates[Math.floor(Math.random() * candidates.length)] ?? { x: 20, z: 20 };
-    v.aiTargetX = pick.x;
-    v.aiTargetZ = pick.z;
+    const allDirs: { nx: number; nz: number; dx: number; dz: number }[] = [];
+    if (ix > 0) allDirs.push({ nx: ROAD_COORDS[ix - 1], nz: curZ, dx: -1, dz: 0 });
+    if (ix < ROAD_COORDS.length - 1) allDirs.push({ nx: ROAD_COORDS[ix + 1], nz: curZ, dx: 1, dz: 0 });
+    if (iz > 0) allDirs.push({ nx: curX, nz: ROAD_COORDS[iz - 1], dx: 0, dz: -1 });
+    if (iz < ROAD_COORDS.length - 1) allDirs.push({ nx: curX, nz: ROAD_COORDS[iz + 1], dx: 0, dz: 1 });
+
+    // Never make an immediate 180° U-turn if forward/left/right routes exist!
+    const nonReverse = allDirs.filter((c) => !(c.dx === -v.aiDirX && c.dz === -v.aiDirZ));
+    const pool = nonReverse.length > 0 ? nonReverse : allDirs;
+
+    // Prefer continuing straight (~50%) for natural boulevard cruising, otherwise turn cleanly
+    const straight = pool.find((c) => c.dx === v.aiDirX && c.dz === v.aiDirZ);
+    const pick =
+      straight && Math.random() < 0.52
+        ? straight
+        : pool[Math.floor(Math.random() * pool.length)] ?? { nx: 20, nz: 20, dx: 0, dz: 1 };
+
+    v.aiDirX = pick.dx;
+    v.aiDirZ = pick.dz;
+
+    // Right-hand lane offset perpendicular to travel direction (dx, dz):
+    // In Three.js (+Z south, +X east), right of (dx, dz) is (-dz, dx)!
+    const rightLaneX = -pick.dz * LANE_OFFSET;
+    const rightLaneZ = pick.dx * LANE_OFFSET;
+
+    v.aiTargetX = pick.nx + rightLaneX;
+    v.aiTargetZ = pick.nz + rightLaneZ;
   }
 }

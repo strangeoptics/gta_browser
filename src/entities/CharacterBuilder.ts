@@ -32,6 +32,7 @@ export interface LowPolyCharacterOptions {
   dogTags?: boolean;
   bikerJacket?: boolean;
   terminatorShades?: boolean;
+  horseMask?: boolean;
   withHalo?: boolean;
   scale?: number;
 }
@@ -588,109 +589,113 @@ export function buildLowPolyCharacter(opts: LowPolyCharacterOptions): LowPolyCha
   headGroup.position.set(0, 1.65, 0);
   bodyRoot.add(headGroup);
 
-  const headMesh = new THREE.Mesh(isFemale ? g.headFemale : g.headMale, skinMat);
-  headMesh.castShadow = true;
-  headGroup.add(headMesh);
-
-  // 3D Nose
-  const nose = new THREE.Mesh(g.nose, skinMat);
-  nose.position.set(0, -0.005, 0.125);
-  nose.rotation.x = Math.PI * 0.38;
-  headGroup.add(nose);
-
-  // 3D Ears
-  const earX = isFemale ? 0.106 : 0.114;
-  for (const side of [-1, 1] as const) {
-    const ear = new THREE.Mesh(g.ear, skinMat);
-    ear.scale.set(0.5, 1.15, 0.8);
-    ear.position.set(side * earX, 0.005, 0.0);
-    headGroup.add(ear);
-  }
-
-  // 3D Terminator Wraparound Shades OR 80s Sunglasses OR Stylized Low-Poly Eyes & Brows
-  if (opts.terminatorShades) {
-    const shades = new THREE.Group();
-    shades.position.set(0, 0.026, 0.12);
-    const darkLens = new THREE.MeshStandardMaterial({
-      color: '#09090d',
-      metalness: 0.9,
-      roughness: 0.08,
-      flatShading: true,
-    });
-    const visor = new THREE.Mesh(new THREE.BoxGeometry(0.195, 0.044, 0.022), darkLens);
-    shades.add(visor);
-    for (const side of [-1, 1] as const) {
-      const temple = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.016, 0.12), acc.sunglassFrame);
-      temple.position.set(side * 0.098, 0.006, -0.055);
-      shades.add(temple);
-    }
-    // Subtle iconic T-800 red cyber-eye glint on right lens
-    const cyberEye = new THREE.Mesh(
-      new THREE.OctahedronGeometry(0.011, 0),
-      new THREE.MeshStandardMaterial({
-        color: '#ff2233',
-        emissive: '#ff1a2a',
-        emissiveIntensity: 0.85,
-      }),
-    );
-    cyberEye.position.set(0.046, 0.0, 0.014);
-    shades.add(cyberEye);
-    headGroup.add(shades);
-  } else if (opts.wearsSunglasses) {
-    const shades = new THREE.Group();
-    shades.position.set(0, 0.025, 0.118);
-
-    const bridge = new THREE.Mesh(g.shadesBridge, acc.sunglassFrame);
-    bridge.position.set(0, 0.006, 0.004);
-    shades.add(bridge);
-
-    for (const side of [-1, 1] as const) {
-      const frame = new THREE.Mesh(g.shadesFrame, acc.sunglassFrame);
-      frame.position.set(side * 0.048, 0, 0);
-      frame.rotation.y = side * -0.14;
-      shades.add(frame);
-
-      const lens = new THREE.Mesh(g.shadesLens, acc.sunglassLens);
-      lens.position.set(side * 0.048, 0, 0.002);
-      lens.rotation.y = side * -0.14;
-      shades.add(lens);
-
-      // Temple arm back to ear
-      const temple = new THREE.Mesh(g.shadesTemple, acc.sunglassFrame);
-      temple.position.set(side * 0.095, 0.008, -0.058);
-      shades.add(temple);
-    }
-    headGroup.add(shades);
+  if (opts.horseMask) {
+    addHorseMaskHead(headGroup, acc);
   } else {
+    const headMesh = new THREE.Mesh(isFemale ? g.headFemale : g.headMale, skinMat);
+    headMesh.castShadow = true;
+    headGroup.add(headMesh);
+
+    // 3D Nose
+    const nose = new THREE.Mesh(g.nose, skinMat);
+    nose.position.set(0, -0.005, 0.125);
+    nose.rotation.x = Math.PI * 0.38;
+    headGroup.add(nose);
+
+    // 3D Ears
+    const earX = isFemale ? 0.106 : 0.114;
     for (const side of [-1, 1] as const) {
-      const eye = new THREE.Mesh(g.eyeBox, acc.eyeWhite);
-      eye.position.set(side * 0.042, 0.022, 0.115);
-      eye.rotation.y = side * -0.15;
-      headGroup.add(eye);
-
-      const pupil = new THREE.Mesh(g.pupilBox, acc.eyePupil);
-      pupil.position.set(side * 0.042, 0.022, 0.118);
-      headGroup.add(pupil);
-
-      const brow = new THREE.Mesh(g.browBox, hairMat);
-      brow.position.set(side * 0.043, 0.048, 0.116);
-      brow.rotation.z = side * -0.06;
-      headGroup.add(brow);
+      const ear = new THREE.Mesh(g.ear, skinMat);
+      ear.scale.set(0.5, 1.15, 0.8);
+      ear.position.set(side * earX, 0.005, 0.0);
+      headGroup.add(ear);
     }
-  }
 
-  // Optional 3D 80s Mustache & Mouth
-  if (opts.hasMustache && !isFemale) {
-    const stache = new THREE.Mesh(g.mustacheBox, hairMat);
-    stache.position.set(0, -0.046, 0.116);
-    headGroup.add(stache);
-  }
-  const mouth = new THREE.Mesh(g.mouthBox, acc.mouth);
-  mouth.position.set(0, -0.072, 0.109);
-  headGroup.add(mouth);
+    // 3D Terminator Wraparound Shades OR 80s Sunglasses OR Stylized Low-Poly Eyes & Brows
+    if (opts.terminatorShades) {
+      const shades = new THREE.Group();
+      shades.position.set(0, 0.026, 0.12);
+      const darkLens = new THREE.MeshStandardMaterial({
+        color: '#09090d',
+        metalness: 0.9,
+        roughness: 0.08,
+        flatShading: true,
+      });
+      const visor = new THREE.Mesh(new THREE.BoxGeometry(0.195, 0.044, 0.022), darkLens);
+      shades.add(visor);
+      for (const side of [-1, 1] as const) {
+        const temple = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.016, 0.12), acc.sunglassFrame);
+        temple.position.set(side * 0.098, 0.006, -0.055);
+        shades.add(temple);
+      }
+      // Subtle iconic T-800 red cyber-eye glint on right lens
+      const cyberEye = new THREE.Mesh(
+        new THREE.OctahedronGeometry(0.011, 0),
+        new THREE.MeshStandardMaterial({
+          color: '#ff2233',
+          emissive: '#ff1a2a',
+          emissiveIntensity: 0.85,
+        }),
+      );
+      cyberEye.position.set(0.046, 0.0, 0.014);
+      shades.add(cyberEye);
+      headGroup.add(shades);
+    } else if (opts.wearsSunglasses) {
+      const shades = new THREE.Group();
+      shades.position.set(0, 0.025, 0.118);
 
-  // 4. Sculpted 3D 80s Hairstyles & Headgear
-  addLowPolyHairOrHat(headGroup, opts.hairStyle, hairMat, opts.accentColor, acc, g);
+      const bridge = new THREE.Mesh(g.shadesBridge, acc.sunglassFrame);
+      bridge.position.set(0, 0.006, 0.004);
+      shades.add(bridge);
+
+      for (const side of [-1, 1] as const) {
+        const frame = new THREE.Mesh(g.shadesFrame, acc.sunglassFrame);
+        frame.position.set(side * 0.048, 0, 0);
+        frame.rotation.y = side * -0.14;
+        shades.add(frame);
+
+        const lens = new THREE.Mesh(g.shadesLens, acc.sunglassLens);
+        lens.position.set(side * 0.048, 0, 0.002);
+        lens.rotation.y = side * -0.14;
+        shades.add(lens);
+
+        // Temple arm back to ear
+        const temple = new THREE.Mesh(g.shadesTemple, acc.sunglassFrame);
+        temple.position.set(side * 0.095, 0.008, -0.058);
+        shades.add(temple);
+      }
+      headGroup.add(shades);
+    } else {
+      for (const side of [-1, 1] as const) {
+        const eye = new THREE.Mesh(g.eyeBox, acc.eyeWhite);
+        eye.position.set(side * 0.042, 0.022, 0.115);
+        eye.rotation.y = side * -0.15;
+        headGroup.add(eye);
+
+        const pupil = new THREE.Mesh(g.pupilBox, acc.eyePupil);
+        pupil.position.set(side * 0.042, 0.022, 0.118);
+        headGroup.add(pupil);
+
+        const brow = new THREE.Mesh(g.browBox, hairMat);
+        brow.position.set(side * 0.043, 0.048, 0.116);
+        brow.rotation.z = side * -0.06;
+        headGroup.add(brow);
+      }
+    }
+
+    // Optional 3D 80s Mustache & Mouth
+    if (opts.hasMustache && !isFemale) {
+      const stache = new THREE.Mesh(g.mustacheBox, hairMat);
+      stache.position.set(0, -0.046, 0.116);
+      headGroup.add(stache);
+    }
+    const mouth = new THREE.Mesh(g.mouthBox, acc.mouth);
+    mouth.position.set(0, -0.072, 0.109);
+    headGroup.add(mouth);
+
+    // 4. Sculpted 3D 80s Hairstyles & Headgear
+    addLowPolyHairOrHat(headGroup, opts.hairStyle, hairMat, opts.accentColor, acc, g);
+  }
 
   // Bounty Target Neon Halo
   if (opts.withHalo) {
@@ -942,5 +947,119 @@ function addLowPolyHairOrHat(
     const backBob = new THREE.Mesh(g.bobBack, hairMat);
     backBob.position.set(0, -0.02, -0.068);
     headGroup.add(backBob);
+  }
+}
+
+/**
+ * Builds a stylized procedural 3D rubber horse mask (Hotline Miami / 80s surreal vibe)
+ * complete with tapered snout, flared nostrils, white forehead blaze, wide side-set eyes,
+ * perked ears, and a spiky dark mane running down the back of the neck.
+ */
+function addHorseMaskHead(
+  headGroup: THREE.Group,
+  acc: ReturnType<typeof getSharedAccessories>,
+): void {
+  const horseBrownMat = new THREE.MeshStandardMaterial({ color: '#8d522c', roughness: 0.56, flatShading: true });
+  const muzzleDarkMat = new THREE.MeshStandardMaterial({ color: '#4c2d1b', roughness: 0.64, flatShading: true });
+  const maneMat = new THREE.MeshStandardMaterial({ color: '#24150d', roughness: 0.85, flatShading: true });
+  const blazeMat = new THREE.MeshStandardMaterial({ color: '#f2e7d5', roughness: 0.65, flatShading: true });
+  const innerEarMat = new THREE.MeshStandardMaterial({ color: '#c78279', roughness: 0.72, flatShading: true });
+
+  // Mask neck collar wrapping cleanly over the shoulders/neck
+  const neckCollar = new THREE.Mesh(new THREE.CylinderGeometry(0.112, 0.132, 0.16, 8), horseBrownMat);
+  neckCollar.position.set(0, -0.095, -0.01);
+  neckCollar.castShadow = true;
+  headGroup.add(neckCollar);
+
+  // Sculpted equine cranium & broad cheekbones
+  const cranium = new THREE.Mesh(new THREE.DodecahedronGeometry(0.138, 0), horseBrownMat);
+  cranium.scale.set(0.88, 1.04, 1.08);
+  cranium.position.set(0, 0.045, -0.005);
+  cranium.castShadow = true;
+  headGroup.add(cranium);
+
+  // Elongated horse nose bridge angling forward-downward (+Z)
+  const bridge = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.145, 0.24), horseBrownMat);
+  bridge.position.set(0, -0.005, 0.165);
+  bridge.rotation.x = 0.28;
+  bridge.castShadow = true;
+  headGroup.add(bridge);
+
+  // Dark velvety snout tip
+  const snout = new THREE.Mesh(new THREE.BoxGeometry(0.132, 0.125, 0.11), muzzleDarkMat);
+  snout.position.set(0, -0.048, 0.29);
+  snout.rotation.x = 0.22;
+  snout.castShadow = true;
+  headGroup.add(snout);
+
+  // Lower jaw & slightly open rubber mask mouth with white horse teeth
+  const jaw = new THREE.Mesh(new THREE.BoxGeometry(0.105, 0.046, 0.175), horseBrownMat);
+  jaw.position.set(0, -0.098, 0.195);
+  jaw.rotation.x = 0.34;
+  headGroup.add(jaw);
+
+  const teeth = new THREE.Mesh(new THREE.BoxGeometry(0.088, 0.022, 0.036), blazeMat);
+  teeth.position.set(0, -0.088, 0.282);
+  headGroup.add(teeth);
+
+  // Flared dark nostrils
+  const nostrilGeo = new THREE.SphereGeometry(0.021, 6, 5);
+  for (const side of [-1, 1] as const) {
+    const nostril = new THREE.Mesh(nostrilGeo, maneMat);
+    nostril.scale.set(0.75, 1.0, 1.25);
+    nostril.position.set(side * 0.052, -0.034, 0.328);
+    headGroup.add(nostril);
+  }
+
+  // White stripe / forehead blaze down the nose bridge
+  const blaze = new THREE.Mesh(new THREE.BoxGeometry(0.044, 0.016, 0.23), blazeMat);
+  blaze.position.set(0, 0.082, 0.145);
+  blaze.rotation.x = 0.42;
+  headGroup.add(blaze);
+
+  // Wide expressive side-set rubber horse mask eyes
+  const eyeGeo = new THREE.SphereGeometry(0.034, 7, 6);
+  const pupilGeo = new THREE.SphereGeometry(0.019, 6, 5);
+  for (const side of [-1, 1] as const) {
+    const eye = new THREE.Mesh(eyeGeo, acc.eyeWhite);
+    eye.position.set(side * 0.102, 0.068, 0.072);
+    headGroup.add(eye);
+
+    const pupil = new THREE.Mesh(pupilGeo, acc.eyePupil);
+    pupil.position.set(side * 0.121, 0.068, 0.086);
+    headGroup.add(pupil);
+  }
+
+  // Perked pointed horse ears with dusty-pink inner lining
+  const earGeo = new THREE.ConeGeometry(0.042, 0.145, 5);
+  const innerEarGeo = new THREE.ConeGeometry(0.024, 0.095, 4);
+  for (const side of [-1, 1] as const) {
+    const ear = new THREE.Mesh(earGeo, horseBrownMat);
+    ear.position.set(side * 0.072, 0.215, -0.032);
+    ear.rotation.z = side * -0.18;
+    ear.rotation.x = 0.16;
+    ear.castShadow = true;
+    headGroup.add(ear);
+
+    const inner = new THREE.Mesh(innerEarGeo, innerEarMat);
+    inner.position.set(side * 0.072, 0.208, -0.015);
+    inner.rotation.z = side * -0.18;
+    inner.rotation.x = 0.18;
+    headGroup.add(inner);
+  }
+
+  // Dark spiky mane tufts running from the crown down the back of the neck
+  const maneTufts: [number, number, number, number][] = [
+    [0.195, -0.055, 0.075, -0.35],
+    [0.135, -0.115, 0.095, -0.55],
+    [0.055, -0.145, 0.105, -0.4],
+    [-0.025, -0.15, 0.095, -0.25],
+    [-0.10, -0.14, 0.08, -0.1],
+  ];
+  for (const [my, mz, mh, rx] of maneTufts) {
+    const tuft = new THREE.Mesh(new THREE.BoxGeometry(0.048, mh, 0.075), maneMat);
+    tuft.position.set(0, my, mz);
+    tuft.rotation.x = rx;
+    headGroup.add(tuft);
   }
 }

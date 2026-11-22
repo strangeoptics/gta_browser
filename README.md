@@ -1,4 +1,4 @@
-# VICE DUSK — Browser First-Person Shooter
+# PALM CITY '86 — Browser First-Person Shooter
 
 Ein kompakter **GTA-inspirierter First-Person Shooter im Browser**, angesiedelt in einem sonnengebleichten Küstenviertel im **Miami-Stil zur Golden Hour / Dämmerung kurz nach einem Regenschauer**.
 

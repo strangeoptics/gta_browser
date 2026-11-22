@@ -90,7 +90,7 @@ export class NpcSystem {
   }
 
   /**
-   * Spawns two iconic 80s action-movie legends patrolling Vice Dusk:
+   * Spawns two iconic 80s action-movie legends patrolling Palm City '86:
    * - Sylvester Stallone (Rambo/Cobra look: red headband, sleeveless black tank top, dog tags, muscular) along Ocean Drive
    * - Arnold Schwarzenegger (T-800 look: massive 1.98m frame, black biker leather jacket, flat-top, Terminator shades) at Central Plaza
    */

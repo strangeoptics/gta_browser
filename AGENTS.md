@@ -1,10 +1,10 @@
-# AGENTS.md — VICE DUSK
+# AGENTS.md — PALM CITY '86
 
 Guidance for coding agents working in this repository.
 
 ## Project Overview
 
-**VICE DUSK** is a browser-based, GTA-inspired 1st/3rd-person shooter and driving game set in a compact 3×3 Miami coastal district at golden hour / dusk shortly after a rain shower.
+**PALM CITY '86** is a browser-based, GTA-inspired 1st/3rd-person shooter and driving game set in a compact 3×3 Miami coastal district at golden hour / dusk shortly after a rain shower.
 
 - **Stack:** TypeScript 5, Vite 6, Three.js (WebGL2 + `EffectComposer` / `UnrealBloomPass`), Web Audio API, vanilla HTML/CSS HUD overlay.
 - **Zero external assets:** All 3D geometry, PBR/canvas textures, and sound effects/music are generated procedurally in code. Keep it procedural unless the user explicitly asks to introduce external `.glb`/audio files.
@@ -27,7 +27,7 @@ Guidance for coding agents working in this repository.
 index.html                   # Canvas + all HUD panels, overlays, shop modal, touch controls
 src/
 ├── main.ts                  # Orchestrator: renderer, bloom composer, main loop, input bindings, HUD DOM updates
-├── style.css                # Vice Dusk HUD, overlay, shop, photo mode & touch styles
+├── style.css                # Palm City '86 HUD, overlay, shop, photo mode & touch styles
 ├── types.ts                 # Shared AABB & PlayerStatus types
 ├── audio/
 │   └── AudioEngine.ts       # Procedural Web Audio SFX, 80s radio (3 stations), spatial 126-BPM club music & ocean surf

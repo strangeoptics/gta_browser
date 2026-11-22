@@ -151,7 +151,7 @@ interface RoosterAgent {
 }
 
 /**
- * Populates Vice Dusk's districts & oceans with high-detail procedural 3D wildlife:
+ * Populates Palm City '86's districts & oceans with high-detail procedural 3D wildlife:
  * 1) Pink Miami Flamingos (Shallow Beach Lagoon & Starfish Island Lawn)
  * 2) Leaping Bottlenose Dolphins (East Ocean & North Marina Bay)
  * 3) Circling Reef Sharks (Deep Outer Ocean — dorsal fin cutting the waves!)

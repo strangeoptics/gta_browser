@@ -465,9 +465,9 @@ export class StoryCampaign {
         this.stageEnemies = [];
         this.beaconGroup.visible = false;
 
-        this.dialogueSpeaker = isFinale ? 'VICE DUSK · FINALE' : 'DJ ROXY';
+        this.dialogueSpeaker = isFinale ? "PALM CITY '86 · FINALE" : 'DJ ROXY';
         this.dialogueText = isFinale
-          ? 'Die ganze Küste gehört jetzt dir! Don Valdez ist Geschichte — genieße Vice Dusk!'
+          ? "Die ganze Küste gehört jetzt dir! Don Valdez ist Geschichte — genieße Palm City '86!"
           : `Kapitel ${ch.number} geschafft! Öffne das Missions-Telefon [J] für Kapitel ${ch.number + 1}!`;
         this.dialogueTimer = 6.5;
 

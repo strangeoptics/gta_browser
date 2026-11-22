@@ -1,5 +1,5 @@
 /**
- * Procedural Web Audio API synthesizer for Vice Dusk:
+ * Procedural Web Audio API synthesizer for Palm City '86:
  * - Weapon SFX (9mm, SMG, 12G Shotgun, Reload)
  * - Continuous vehicle engine hum (pitch tracks speed)
  * - Continuous Vice PD siren (fades in with Wanted level)

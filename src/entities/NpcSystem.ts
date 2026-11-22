@@ -188,6 +188,16 @@ export class NpcSystem {
     this.guardAlertTimer = 30.0;
   }
 
+  public calmAllLawAndGuards(): void {
+    this.guardAlertTimer = 0;
+    for (const n of this.npcs) {
+      if (!n.alive) continue;
+      if (n.role === 'guard' || n.role === 'civilian') {
+        n.state = 'walk';
+      }
+    }
+  }
+
   public spawnEstateGuards(): void {
     const guardRoutes: [THREE.Vector3, THREE.Vector3][] = [
       // 2 Front Colonnade Guards outside STARFISH ESTATE

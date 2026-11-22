@@ -73,6 +73,7 @@ export interface MiamiWorld {
   takePdKevlar: () => void;
   takePdEvidenceCash: () => void;
   triggerPdAlarm: () => void;
+  clearPdAlarm: () => void;
   lockPdCellBriefly: () => void;
   isInSafehouseGarage: (pos: THREE.Vector3) => boolean;
   isNearSafehouseLounge: (pos: THREE.Vector3) => boolean;
@@ -982,6 +983,7 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
     takePdKevlar: () => policeStation.takeKevlar(),
     takePdEvidenceCash: () => policeStation.takeEvidenceCash(),
     triggerPdAlarm: () => policeStation.triggerAlarm(),
+    clearPdAlarm: () => policeStation.clearAlarm(),
     lockPdCellBriefly: () => policeStation.lockCellBriefly(),
     isInSafehouseGarage: (pos: THREE.Vector3) => safehouse.isInGarage(pos),
     isNearSafehouseLounge: (pos: THREE.Vector3) => safehouse.isNearLounge(pos),

@@ -121,6 +121,7 @@ const devOverlayEl = document.getElementById('dev-overlay') as HTMLDivElement;
 const devCashEl = document.getElementById('dev-cash') as HTMLSpanElement;
 const devStarsEl = document.getElementById('dev-stars') as HTMLSpanElement;
 const devStarBtns = Array.from(document.querySelectorAll<HTMLButtonElement>('.dev-star-btn'));
+const devClearCrimeBtn = document.getElementById('dev-clear-crime') as HTMLButtonElement;
 const devCashMinusBtn = document.getElementById('dev-cash-minus') as HTMLButtonElement;
 const devCash500Btn = document.getElementById('dev-cash-500') as HTMLButtonElement;
 const devCash2500Btn = document.getElementById('dev-cash-2500') as HTMLButtonElement;
@@ -924,6 +925,23 @@ devStarBtns.forEach((btn) => {
     audio.playPurchase();
     showQuickToast(`DEV · FAHNDUNGSLEVEL AUF ${targetStars}★ GESETZT`);
   });
+});
+
+devClearCrimeBtn.addEventListener('click', () => {
+  wanted.reset();
+  lastWantedStars = 0;
+  bustProgress = 0;
+  npcs.clearPolice();
+  npcs.calmAllLawAndGuards();
+  heli.clear();
+  world.clearPdAlarm();
+  dispatchTimer = 0;
+  dispatchCooldown = 0;
+  dispatchBannerEl.classList.remove('visible');
+  refreshDevUi();
+  audio.playPurchase();
+  showQuickToast('DEV · POLIZEI-AKTE & FAHNDUNG KOMPLETT AUF 0 ZURÜCKGESETZT');
+  sendPoliceDispatch('Akten komplett gelöscht — alle Einheiten & Sperren abziehen.', true);
 });
 
 devCashMinusBtn.addEventListener('click', () => setDevCash(objectives.cash - 1000));

@@ -783,6 +783,20 @@ body,
   border-color: transparent;
 }
 
+.dev-btn-clean {
+  width: 100%;
+  margin-top: 8px;
+  border-color: rgba(82, 242, 156, 0.55);
+  background: rgba(82, 242, 156, 0.14);
+  color: #8bf7be;
+}
+
+.dev-btn-clean:hover {
+  background: rgba(82, 242, 156, 0.28);
+  border-color: #52f29c;
+  color: #ffffff;
+}
+
 /* 80s Missions-Telefon / Auftragsboard ([J]) */
 #phone-overlay {
   position: fixed;

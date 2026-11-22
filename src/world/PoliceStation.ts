@@ -18,6 +18,7 @@ export interface PoliceStationHandle {
   getDonuts: () => FoodItem[];
   consumeDonut: (item: FoodItem) => void;
   triggerAlarm: () => void;
+  clearAlarm: () => void;
   lockCellBriefly: () => void;
   update: (elapsed: number, dt: number, playerPos?: THREE.Vector3, cash?: number, wantedStars?: number) => void;
 }
@@ -584,6 +585,9 @@ export function buildPoliceStation(
     },
     triggerAlarm: () => {
       alarmTimer = 20.0;
+    },
+    clearAlarm: () => {
+      alarmTimer = 0;
     },
     lockCellBriefly: () => {
       cellLockTimer = 1.8;

@@ -78,13 +78,86 @@ interface GarageRideEntity {
   ollieTimer: number;
 }
 
+interface BoneAxisBinding {
+  bone: THREE.Object3D;
+  restQuat: THREE.Quaternion;
+  axisX: THREE.Vector3; // Model-space +X (pitch: + tilts torso forward, - lifts leg/arm forward)
+  axisY: THREE.Vector3; // Model-space +Y (yaw: + turns left)
+  axisZ: THREE.Vector3; // Model-space +Z (roll: + abducts left arm out, - abducts right arm out)
+}
+
+interface RiderBoneRig {
+  abdomen: BoneAxisBinding | null;
+  torso: BoneAxisBinding | null;
+  head: BoneAxisBinding | null;
+  upperArmL: BoneAxisBinding | null;
+  lowerArmL: BoneAxisBinding | null;
+  upperArmR: BoneAxisBinding | null;
+  lowerArmR: BoneAxisBinding | null;
+  upperLegL: BoneAxisBinding | null;
+  lowerLegL: BoneAxisBinding | null;
+  upperLegR: BoneAxisBinding | null;
+  lowerLegR: BoneAxisBinding | null;
+}
+
 interface ArticulatedRider {
   group: THREE.Group;
   bodyRoot: THREE.Group;
   glb: GlbCharacterInstance | null;
+  bones: RiderBoneRig | null;
   policeCapGroup: THREE.Group | null;
   goldChainGroup: THREE.Group | null;
   pendingOutfit: PlayerOutfitSpec | null;
+  // Smoothed pose state so transitions (cruise <-> push <-> ollie) are silky smooth
+  poseT: number;
+  legLX: number;
+  legRX: number;
+  kneeLX: number;
+  kneeRX: number;
+  armLX: number;
+  armRX: number;
+  armLZ: number;
+  armRZ: number;
+}
+
+const _tmpQ1 = new THREE.Quaternion();
+const _tmpQ2 = new THREE.Quaternion();
+const _tmpQ3 = new THREE.Quaternion();
+
+function bindBoneAxes(model: THREE.Object3D, bone: THREE.Object3D | null): BoneAxisBinding | null {
+  if (!bone) return null;
+  model.updateMatrixWorld(true);
+  const worldQuat = new THREE.Quaternion();
+  bone.getWorldQuaternion(worldQuat);
+  const invWorld = worldQuat.clone().invert();
+  return {
+    bone,
+    restQuat: bone.quaternion.clone(),
+    axisX: new THREE.Vector3(1, 0, 0).applyQuaternion(invWorld).normalize(),
+    axisY: new THREE.Vector3(0, 1, 0).applyQuaternion(invWorld).normalize(),
+    axisZ: new THREE.Vector3(0, 0, 1).applyQuaternion(invWorld).normalize(),
+  };
+}
+
+/**
+ * Sets a bone's quaternion directly from its clean standing rest pose + exact model-space
+ * Euler angles (rx = pitch, ry = yaw, rz = roll). Never accumulates drift or spins!
+ */
+function setBonePose(binding: BoneAxisBinding | null, rx = 0, ry = 0, rz = 0): void {
+  if (!binding) return;
+  binding.bone.quaternion.copy(binding.restQuat);
+  if (rx !== 0) {
+    _tmpQ1.setFromAxisAngle(binding.axisX, rx);
+    binding.bone.quaternion.multiply(_tmpQ1);
+  }
+  if (ry !== 0) {
+    _tmpQ2.setFromAxisAngle(binding.axisY, ry);
+    binding.bone.quaternion.multiply(_tmpQ2);
+  }
+  if (rz !== 0) {
+    _tmpQ3.setFromAxisAngle(binding.axisZ, rz);
+    binding.bone.quaternion.multiply(_tmpQ3);
+  }
 }
 
 let cachedSkateDeckTex: THREE.CanvasTexture | null = null;
@@ -712,38 +785,89 @@ export class GarageRidesSystem {
     }
     r.deckOrFramePivot.rotation.x += (targetPitch - r.deckOrFramePivot.rotation.x) * (1 - Math.exp(-15 * dt));
 
-    // Rigged GLB Skater Rider animation (sideways skate stance, kick-push & mid-air Ollie!)
+    // Rigged GLB Skater Rider animation (exact model-space bone poses: sideways stance, kick-push & Ollie!)
     const rider = r.rider;
-    const blend = 1 - Math.exp(-11 * dt);
-    if (!rider.glb) return;
+    const blend = 1 - Math.exp(-12 * dt);
+    const b = rider.bones;
+    if (!b) return;
+
+    let tgtLegLX: number;
+    let tgtLegRX: number;
+    let tgtKneeLX: number;
+    let tgtKneeRX: number;
+    let tgtArmLX: number;
+    let tgtArmRX: number;
+    let tgtArmLZ: number;
+    let tgtArmRZ: number;
+    let tgtBodyY: number;
+    let torsoPitch = 0.14;
+    let rightLegOutZ = 0;
 
     if (!r.grounded) {
-      // Mid-air Ollie jump pose
-      rider.bodyRoot.position.y += (0.08 - rider.bodyRoot.position.y) * blend;
-      rider.glb.playAnim('jump', 0.1);
-      rider.glb.mixer.update(dt);
-      if (rider.glb.headBone) rider.glb.headBone.rotation.y += 0.95;
-      return;
-    }
-
-    if (pushing && r.speed >= -0.1) {
+      // Mid-air Ollie tuck: both knees pulled up over the deck & arms spread wide for style!
+      tgtBodyY = 0.12;
+      torsoPitch = 0.24;
+      tgtLegLX = -0.78;
+      tgtLegRX = -0.72;
+      tgtKneeLX = 1.05;
+      tgtKneeRX = 0.98;
+      tgtArmLX = -0.2;
+      tgtArmRX = -0.2;
+      tgtArmLZ = 0.85;
+      tgtArmRZ = -0.85;
+    } else if (pushing && r.speed >= -0.1) {
+      // Rhythmic kick-push: front leg planted on deck bolts, rear leg swings back & forth!
       r.animPhase += dt * (sprinting ? 6.4 : 4.8);
       const pushWave = Math.sin(r.animPhase);
-      rider.bodyRoot.position.y = 0.02 - Math.max(0, pushWave) * 0.035;
-      rider.glb.playAnim('walk', 0.14);
-      const walkAct = rider.glb.actions.get('walk');
-      if (walkAct) walkAct.setEffectiveTimeScale(sprinting ? 1.5 : 1.15);
-      rider.glb.mixer.update(dt);
-      if (rider.glb.headBone) rider.glb.headBone.rotation.y += 0.95;
+      tgtBodyY = -0.02 - Math.max(0, pushWave) * 0.04;
+      torsoPitch = 0.22;
+      tgtLegLX = -0.26;
+      tgtKneeLX = 0.36;
+      tgtLegRX = pushWave * 0.65;
+      tgtKneeRX = Math.max(0.1, -pushWave * 0.55 + 0.28);
+      rightLegOutZ = -0.22;
+      tgtArmLX = -0.35 - pushWave * 0.45;
+      tgtArmRX = -0.35 + pushWave * 0.45;
+      tgtArmLZ = 0.38;
+      tgtArmRZ = -0.38;
     } else {
-      // Poised cruising carve stance with both feet planted sideways on the grip tape
-      rider.bodyRoot.position.y += (0.0 - rider.bodyRoot.position.y) * blend;
-      rider.glb.playAnim('idle', 0.18);
-      rider.glb.mixer.update(dt);
-      if (rider.glb.headBone) rider.glb.headBone.rotation.y += 0.95;
-      if (rider.glb.upperArmL) rider.glb.upperArmL.rotation.z += 0.35 + steer * 0.18;
-      if (rider.glb.upperArmR) rider.glb.upperArmR.rotation.z -= 0.35 - steer * 0.18;
+      // Poised cruising carve stance: both feet planted sideways, knees gently bent, arms out for balance
+      tgtBodyY = -0.03;
+      torsoPitch = 0.14;
+      tgtLegLX = -0.2;
+      tgtLegRX = 0.16;
+      tgtKneeLX = 0.26;
+      tgtKneeRX = 0.24;
+      tgtArmLX = -0.22;
+      tgtArmRX = -0.22;
+      tgtArmLZ = 0.44 + steer * 0.22;
+      tgtArmRZ = -0.44 + steer * 0.22;
     }
+
+    rider.bodyRoot.position.y += (tgtBodyY - rider.bodyRoot.position.y) * blend;
+    rider.legLX += (tgtLegLX - rider.legLX) * blend;
+    rider.legRX += (tgtLegRX - rider.legRX) * blend;
+    rider.kneeLX += (tgtKneeLX - rider.kneeLX) * blend;
+    rider.kneeRX += (tgtKneeRX - rider.kneeRX) * blend;
+    rider.armLX += (tgtArmLX - rider.armLX) * blend;
+    rider.armRX += (tgtArmRX - rider.armRX) * blend;
+    rider.armLZ += (tgtArmLZ - rider.armLZ) * blend;
+    rider.armRZ += (tgtArmRZ - rider.armRZ) * blend;
+
+    setBonePose(b.abdomen, torsoPitch * 0.45, 0, 0);
+    setBonePose(b.torso, torsoPitch * 0.55, 0.18, 0);
+    // Counter-rotate head toward +Z nose of the board (set fresh from rest pose — never spins!)
+    setBonePose(b.head, -torsoPitch * 0.6, 0.88, 0);
+
+    setBonePose(b.upperLegL, rider.legLX, 0, 0.08);
+    setBonePose(b.lowerLegL, rider.kneeLX, 0, 0);
+    setBonePose(b.upperLegR, rider.legRX, 0, -0.08 + rightLegOutZ);
+    setBonePose(b.lowerLegR, rider.kneeRX, 0, 0);
+
+    setBonePose(b.upperArmL, rider.armLX, 0, rider.armLZ);
+    setBonePose(b.lowerArmL, -0.35, 0, 0);
+    setBonePose(b.upperArmR, rider.armRX, 0, rider.armRZ);
+    setBonePose(b.lowerArmR, -0.35, 0, 0);
   }
 
   private animateRoadBike(
@@ -782,36 +906,34 @@ export class GarageRidesSystem {
       if (r.pedalRight) r.pedalRight.rotation.x = -r.animPhase;
     }
 
-    // Rigged GLB Road-Cyclist: seated aero tuck + synchronized 360° pedaling legs!
+    // Rigged GLB Road-Cyclist: exact saddle seat + aero forward tuck + 360° synchronized pedaling!
     const rider = r.rider;
-    const sprintLift = pedaling && sprinting ? 0.05 + Math.abs(Math.sin(r.animPhase)) * 0.035 : 0;
-    rider.bodyRoot.position.y += (0.28 + sprintLift - rider.bodyRoot.position.y) * (1 - Math.exp(-10 * dt));
+    const b = rider.bones;
+    const sprintLift = pedaling && sprinting ? 0.055 + Math.abs(Math.sin(r.animPhase)) * 0.035 : 0;
+    rider.bodyRoot.position.y += (0.31 + sprintLift - rider.bodyRoot.position.y) * (1 - Math.exp(-10 * dt));
+    if (!b) return;
 
-    if (!rider.glb) return;
-    rider.glb.playAnim('sit', 0.1);
-    rider.glb.mixer.update(dt);
+    // Aero road-racing forward lean from the hips up, head tilted up to watch the road
+    setBonePose(b.abdomen, 0.38, 0, 0);
+    setBonePose(b.torso, 0.44, 0, 0);
+    setBonePose(b.head, -0.68, steer * 0.18, 0);
 
-    // Aero forward torso lean & head tilt up to look down the road
-    if (rider.glb.torsoBone) rider.glb.torsoBone.rotation.x += 0.48;
-    if (rider.glb.headBone) rider.glb.headBone.rotation.x -= 0.42;
+    // Arms reaching forward onto the drop-bar brake hoods (tracking steering subtly!)
+    setBonePose(b.upperArmL, -1.18 - steer * 0.06, 0, -0.06);
+    setBonePose(b.lowerArmL, -0.24, 0, 0);
+    setBonePose(b.upperArmR, -1.18 + steer * 0.06, 0, 0.06);
+    setBonePose(b.lowerArmR, -0.24, 0, 0);
 
-    // Arms reaching forward onto the drop-bar brake hoods
-    if (rider.glb.upperArmL) {
-      rider.glb.upperArmL.rotation.x -= 0.62;
-      rider.glb.upperArmL.rotation.z -= 0.1;
-    }
-    if (rider.glb.upperArmR) {
-      rider.glb.upperArmR.rotation.x -= 0.62;
-      rider.glb.upperArmR.rotation.z += 0.1;
-    }
-
-    // Synchronized pedaling motion on Left & Right legs tracking crank phase
+    // Synchronized 360° pedaling kinematics tracking the left & right crank arms!
     const leftLift = Math.sin(r.animPhase);
+    const leftFwd = Math.cos(r.animPhase);
     const rightLift = Math.sin(r.animPhase + Math.PI);
-    if (rider.glb.upperLegL) rider.glb.upperLegL.rotation.x += leftLift * 0.36;
-    if (rider.glb.lowerLegL) rider.glb.lowerLegL.rotation.x -= leftLift * 0.34;
-    if (rider.glb.upperLegR) rider.glb.upperLegR.rotation.x += rightLift * 0.36;
-    if (rider.glb.lowerLegR) rider.glb.lowerLegR.rotation.x -= rightLift * 0.34;
+    const rightFwd = Math.cos(r.animPhase + Math.PI);
+
+    setBonePose(b.upperLegL, -0.78 - leftLift * 0.42 - leftFwd * 0.14, 0, 0.06);
+    setBonePose(b.lowerLegL, 0.92 + leftLift * 0.46 - leftFwd * 0.12, 0, 0);
+    setBonePose(b.upperLegR, -0.78 - rightLift * 0.42 - rightFwd * 0.14, 0, -0.06);
+    setBonePose(b.lowerLegR, 0.92 + rightLift * 0.46 - rightFwd * 0.12, 0, 0);
   }
 
   private updateCamera(r: GarageRideEntity, dt: number, camera: THREE.PerspectiveCamera): void {
@@ -1486,8 +1608,8 @@ export class GarageRidesSystem {
       group.position.set(0, 0.1, -0.02);
       bodyRoot.rotation.y = -1.05;
     } else {
-      // Seated aero road-cyclist position on the Rennrad saddle
-      bodyRoot.position.set(0, 0.28, -0.24);
+      // Seated aero road-cyclist position on the Rennrad saddle (saddle at y = 0.975, z = -0.28)
+      bodyRoot.position.set(0, 0.31, -0.27);
     }
 
     group.visible = false;
@@ -1496,17 +1618,43 @@ export class GarageRidesSystem {
       group,
       bodyRoot,
       glb: null,
+      bones: null,
       policeCapGroup: null,
       goldChainGroup: null,
       pendingOutfit: null,
+      poseT: 0,
+      legLX: -0.2,
+      legRX: 0.16,
+      kneeLX: 0.26,
+      kneeRX: 0.24,
+      armLX: -0.22,
+      armRX: -0.22,
+      armLZ: 0.44,
+      armRZ: -0.44,
     };
 
     whenGlbCharacterReady((tpl) => {
       const inst = instantiateGlbCharacter(tpl, 'average');
       rider.glb = inst;
-      bodyRoot.add(inst.model);
 
-      // Attach bone-mounted 80s accessories matching PlayerAvatar
+      // Capture clean standing rest quaternions & model-space axes BEFORE parenting under rotated bodyRoot!
+      const m = inst.model;
+      m.updateMatrixWorld(true);
+      rider.bones = {
+        abdomen: bindBoneAxes(m, m.getObjectByName('Abdomen') ?? null),
+        torso: bindBoneAxes(m, inst.torsoBone),
+        head: bindBoneAxes(m, inst.headBone),
+        upperArmL: bindBoneAxes(m, inst.upperArmL),
+        lowerArmL: bindBoneAxes(m, inst.lowerArmL),
+        upperArmR: bindBoneAxes(m, inst.upperArmR),
+        lowerArmR: bindBoneAxes(m, inst.lowerArmR),
+        upperLegL: bindBoneAxes(m, inst.upperLegL),
+        lowerLegL: bindBoneAxes(m, inst.lowerLegL),
+        upperLegR: bindBoneAxes(m, inst.upperLegR),
+        lowerLegR: bindBoneAxes(m, inst.lowerLegR),
+      };
+
+      // Attach bone-mounted 80s accessories BEFORE parenting under rotated bodyRoot so alignment is exact!
       if (inst.headBone) {
         inst.attachToBone(inst.headBone, new THREE.Vector3(0, 1.655, 0.118), createSunglassesMesh());
 
@@ -1523,7 +1671,7 @@ export class GarageRidesSystem {
         inst.attachToBone(inst.torsoBone, new THREE.Vector3(0, 1.44, 0.125), chain);
       }
 
-      inst.playAnim(kind === 'skateboard' ? 'idle' : 'sit', 0);
+      bodyRoot.add(inst.model);
 
       if (rider.pendingOutfit) {
         this.applyOutfitToRider(rider, rider.pendingOutfit);

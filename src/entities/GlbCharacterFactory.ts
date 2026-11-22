@@ -193,6 +193,10 @@ export function applyCharacterBodyBuild(model: THREE.Object3D, uniformScale: num
   const neck = model.getObjectByName('Neck');
   const upperArmL = model.getObjectByName('UpperArm.L');
   const upperArmR = model.getObjectByName('UpperArm.R');
+  const lowerArmL = model.getObjectByName('LowerArm.L');
+  const lowerArmR = model.getObjectByName('LowerArm.R');
+  const palmL = model.getObjectByName('Palm.L');
+  const palmR = model.getObjectByName('Palm.R');
   const upperLegL = model.getObjectByName('UpperLeg.L');
   const upperLegR = model.getObjectByName('UpperLeg.R');
 
@@ -252,12 +256,22 @@ export function applyCharacterBodyBuild(model: THREE.Object3D, uniformScale: num
       break;
   }
 
+  // Shorten the Quaternius GLB's slightly overly long arms (~18% shorter along local bone +Y)
+  // while counter-scaling Palm.L/.R so hands and held weapons keep natural proportions!
+  const upperArmLenScale = 0.9;
+  const lowerArmLenScale = 0.91;
+  const palmLenCompensation = 1 / (upperArmLenScale * lowerArmLenScale);
+
   model.scale.set(uniformScale * sx, uniformScale * sy, uniformScale * sz);
   if (hips) hips.scale.set(hipsS[0], hipsS[1], hipsS[2]);
   if (abdomen) abdomen.scale.set(abdS[0], abdS[1], abdS[2]);
   if (torso) torso.scale.set(torsoS[0], torsoS[1], torsoS[2]);
-  if (upperArmL) upperArmL.scale.set(armS[0], armS[1], armS[2]);
-  if (upperArmR) upperArmR.scale.set(armS[0], armS[1], armS[2]);
+  if (upperArmL) upperArmL.scale.set(armS[0], armS[1] * upperArmLenScale, armS[2]);
+  if (upperArmR) upperArmR.scale.set(armS[0], armS[1] * upperArmLenScale, armS[2]);
+  if (lowerArmL) lowerArmL.scale.set(1, lowerArmLenScale, 1);
+  if (lowerArmR) lowerArmR.scale.set(1, lowerArmLenScale, 1);
+  if (palmL) palmL.scale.set(1, palmLenCompensation, 1);
+  if (palmR) palmR.scale.set(1, palmLenCompensation, 1);
   if (upperLegL) upperLegL.scale.set(legS[0], legS[1], legS[2]);
   if (upperLegR) upperLegR.scale.set(legS[0], legS[1], legS[2]);
 

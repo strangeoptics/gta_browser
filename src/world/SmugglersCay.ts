@@ -267,12 +267,21 @@ export function buildSmugglersCay(
   const boatPinkMat = new THREE.MeshStandardMaterial({ color: '#c94c82', roughness: 0.55 });
   const boatCyanMat = new THREE.MeshStandardMaterial({ color: '#2fa39e', roughness: 0.55 });
   const sandbagMat = new THREE.MeshStandardMaterial({ color: '#a89674', roughness: 0.92 });
+  const rubberMat = new THREE.MeshStandardMaterial({ color: '#1b1d22', roughness: 0.88 });
+  const lifeboatOrangeMat = new THREE.MeshStandardMaterial({ color: '#e85a24', roughness: 0.36, metalness: 0.15 });
+  const pipeYellowMat = new THREE.MeshStandardMaterial({ color: '#e8b63a', roughness: 0.38, metalness: 0.3 });
+  const pipeBlueMat = new THREE.MeshStandardMaterial({ color: '#2c7ec4', roughness: 0.38, metalness: 0.35 });
+  const fernMat = new THREE.MeshStandardMaterial({ color: '#2e7d4b', roughness: 0.68, side: THREE.DoubleSide });
+  const chromeMat = new THREE.MeshStandardMaterial({ color: '#dde5ef', roughness: 0.2, metalness: 0.88 });
+  const birdWhiteMat = new THREE.MeshStandardMaterial({ color: '#f2efe9', roughness: 0.65 });
 
   // Thin emissive accents (> 1.0 bloom strictly on small bulbs/flames/neon tubes!)
   const greenBulbMat = new THREE.MeshStandardMaterial({ color: '#52f29c', emissive: '#32e880', emissiveIntensity: 3.0 });
   const redBulbMat = new THREE.MeshStandardMaterial({ color: '#ff334b', emissive: '#ff1f3a', emissiveIntensity: 3.1 });
   const amberBulbMat = new THREE.MeshStandardMaterial({ color: '#ffd17a', emissive: '#ff9f43', emissiveIntensity: 2.8 });
+  const pinkBulbMat = new THREE.MeshStandardMaterial({ color: '#ff70b8', emissive: '#ff4fa3', emissiveIntensity: 2.6 });
   const goldGlowMat = new THREE.MeshStandardMaterial({ color: '#ffd15c', emissive: '#ffaa22', emissiveIntensity: 1.9 });
+  const emeraldGlowMat = new THREE.MeshStandardMaterial({ color: '#42f59b', emissive: '#22d67c', emissiveIntensity: 1.6 });
   const flameMat = new THREE.MeshStandardMaterial({ color: '#ffbb44', emissive: '#ff6611', emissiveIntensity: 3.2 });
   const cyanNeon = new THREE.MeshStandardMaterial({ color: '#36f1e6', emissive: '#36f1e6', emissiveIntensity: 2.1 });
   const bulbGeo = new THREE.SphereGeometry(0.14, 8, 8);
@@ -402,6 +411,109 @@ export function buildSmugglersCay(
     scene.add(bush);
   }
 
+  // Instanced Lush Tropical Fern Fronds scattered across the island (48 ferns, 1 draw call!)
+  const fernGeo = new THREE.ConeGeometry(0.45, 1.35, 4);
+  fernGeo.scale(1.0, 1.0, 0.14);
+  fernGeo.rotateX(Math.PI / 2.6);
+  fernGeo.translate(0, 0.25, 0.52);
+  const fernCount = 48;
+  const fernInst = new THREE.InstancedMesh(fernGeo, fernMat, fernCount);
+  const dummy = new THREE.Object3D();
+  for (let i = 0; i < fernCount; i++) {
+    const ang = i * 2.39996; // golden angle spiral
+    const rad = 5.5 + (i % 12) * 1.45;
+    const fx = CAY_X + Math.cos(ang) * rad;
+    const fz = CAY_Z + Math.sin(ang) * rad * 0.9;
+    const fy = getSmugglersCayHeight(fx, fz);
+    if (fy !== null && fy > 0.75 && !(fx > 152 && fx < 167 && fz > 82 && fz < 94)) {
+      dummy.position.set(fx, fy - 0.04, fz);
+      dummy.rotation.set(0, ang * 2.1, 0);
+      dummy.scale.setScalar(0.8 + (i % 4) * 0.18);
+    } else {
+      dummy.position.set(0, -50, 0);
+      dummy.scale.setScalar(0.01);
+    }
+    dummy.updateMatrix();
+    fernInst.setMatrixAt(i, dummy.matrix);
+  }
+  fernInst.instanceMatrix.needsUpdate = true;
+  scene.add(fernInst);
+
+  // 8 Bamboo Tiki Torches lining the island trails (animated flickering flames!)
+  const tikiFlames: { mesh: THREE.Mesh; phase: number }[] = [];
+  for (const [tx, tz, ph] of [
+    [149.2, 93.8, 0.0],
+    [149.2, 98.2, 1.1],
+    [155.5, 95.8, 2.2],
+    [163.5, 95.8, 3.3],
+    [168.5, 93.6, 4.4],
+    [168.5, 97.6, 5.5],
+    [158.0, 104.5, 1.7],
+    [164.0, 104.5, 2.9],
+  ] as [number, number, number][]) {
+    const ty = getSmugglersCayHeight(tx, tz) ?? 1.4;
+    addVisual(new THREE.CylinderGeometry(0.05, 0.06, 1.85, 6), bambooMat, tx, ty + 0.92, tz);
+    addVisual(new THREE.CylinderGeometry(0.13, 0.07, 0.28, 8), darkWoodMat, tx, ty + 1.88, tz);
+    const fl = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.34, 6), flameMat);
+    fl.position.set(tx, ty + 2.14, tz);
+    fl.userData.dynamic = true;
+    scene.add(fl);
+    tikiFlames.push({ mesh: fl, phase: ph });
+  }
+
+  // Warm Tropical Festoon String Lights strung between Boathouse Porch, Tiki Bar & Palms
+  const addStringLightSpan = (
+    p1: THREE.Vector3,
+    p2: THREE.Vector3,
+    bulbs: number,
+    sag = 0.65,
+  ) => {
+    const mats = [amberBulbMat, pinkBulbMat, cyanNeon];
+    for (let i = 1; i <= bulbs; i++) {
+      const t = i / (bulbs + 1);
+      const bx = THREE.MathUtils.lerp(p1.x, p2.x, t);
+      const bz = THREE.MathUtils.lerp(p1.z, p2.z, t);
+      const by = THREE.MathUtils.lerp(p1.y, p2.y, t) - Math.sin(t * Math.PI) * sag;
+      addVisual(new THREE.SphereGeometry(0.09, 6, 6), mats[i % mats.length], bx, by, bz);
+    }
+  };
+  addStringLightSpan(new THREE.Vector3(153.6, 4.9, 93.8), new THREE.Vector3(152.5, 4.1, 103.5), 7, 0.75);
+  addStringLightSpan(new THREE.Vector3(165.4, 4.9, 93.8), new THREE.Vector3(169.0, 4.4, 92.0), 5, 0.45);
+  addStringLightSpan(new THREE.Vector3(153.6, 4.9, 93.8), new THREE.Vector3(148.0, 4.2, 88.0), 6, 0.6);
+
+  // Beach Hammock slung between two West-Cove Palms (x ~ 146..148, z ~ 84..88)
+  const hamMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 4.2, 8, 1, true, 0, Math.PI), boatPinkMat);
+  hamMesh.position.set(147.0, 2.35, 86.0);
+  hamMesh.rotation.set(Math.PI / 2, 0.46, Math.PI);
+  scene.add(hamMesh);
+
+  // Circling Tropical Sea Birds high above Smuggler's Cay
+  const skyBirds: { group: THREE.Group; wingL: THREE.Mesh; wingR: THREE.Mesh; radius: number; height: number; speed: number; phase: number }[] = [];
+  for (let b = 0; b < 4; b++) {
+    const bg = new THREE.Group();
+    bg.userData.dynamic = true;
+    const body = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.72, 6), birdWhiteMat);
+    body.rotation.x = Math.PI / 2;
+    bg.add(body);
+    const wingGeo = new THREE.BoxGeometry(0.95, 0.04, 0.24);
+    const wingL = new THREE.Mesh(wingGeo, birdWhiteMat);
+    wingL.position.set(-0.48, 0.04, 0);
+    bg.add(wingL);
+    const wingR = new THREE.Mesh(wingGeo, birdWhiteMat);
+    wingR.position.set(0.48, 0.04, 0);
+    bg.add(wingR);
+    scene.add(bg);
+    skyBirds.push({
+      group: bg,
+      wingL,
+      wingR,
+      radius: 18 + b * 4.5,
+      height: 15.5 + b * 2.4,
+      speed: 0.34 + b * 0.05,
+      phase: b * 1.57,
+    });
+  }
+
   // ===========================================================================
   // 2) WEATHERED WOODEN SMUGGLER BOAT JETTY & FUEL DOCK (x = 127..145, z = 96)
   // ===========================================================================
@@ -433,9 +545,53 @@ export function buildSmugglersCay(
     const sy = pierY + (s + 1) * 0.18;
     addBox(0.65, 0.18, 3.6, 145.3 + s * 0.62, sy - 0.09, 96.0, woodMat, false, 'smugglers-pier');
   }
-  // Contraband crates & fuel drum on jetty head
+  // Contraband crates, fuel dispenser, hanging rubber boat fenders & Pier Archway ("DOCK 01")
   addBox(1.1, 0.9, 1.1, 127.8, pierY + 0.45, 91.8, crateMat, true, 'smugglers-prop');
   addVisual(new THREE.CylinderGeometry(0.32, 0.32, 0.95, 10), rustBeamMat, 127.8, pierY + 0.48, 100.2);
+  // Marine Fuel Pump Dispenser on jetty
+  addBox(0.55, 1.35, 0.45, 128.4, pierY + 0.68, 99.1, lifeboatOrangeMat, true, 'smugglers-prop');
+  addVisual(new THREE.BoxGeometry(0.42, 0.35, 0.48), chromeMat, 128.4, pierY + 1.05, 99.1);
+  // Rubber tire fenders bolted along outer dock face
+  const fenderGeo = new THREE.TorusGeometry(0.28, 0.1, 8, 14);
+  for (const fz of [91.5, 94.0, 98.0, 100.5]) {
+    const fend = new THREE.Mesh(fenderGeo, rubberMat);
+    fend.position.set(125.8, pierY - 0.12, fz);
+    fend.rotation.y = Math.PI / 2;
+    scene.add(fend);
+  }
+  // Wooden Pier Welcome Archway at landward end (x = 143.8, z = 96)
+  for (const az of [94.05, 97.95]) {
+    addVisual(new THREE.BoxGeometry(0.22, 3.6, 0.22), darkWoodMat, 143.8, pierY + 1.8, az);
+  }
+  addVisual(new THREE.BoxGeometry(0.26, 0.28, 4.3), darkWoodMat, 143.8, pierY + 3.55, 96.0);
+  const dockSignTex = createNeonSignTexture("SMUGGLER'S CAY · DOCK 01", '#36f1e6');
+  const dockSignMat = new THREE.MeshStandardMaterial({
+    map: dockSignTex,
+    emissive: '#ffffff',
+    emissiveMap: dockSignTex,
+    emissiveIntensity: 1.55,
+  });
+  const dockSign = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.72, 3.6), dockSignMat);
+  dockSign.position.set(143.8, pierY + 3.65, 96.0);
+  scene.add(dockSign);
+
+  // Gently bobbing Moored Wooden Rowboat / Dinghy tied beside the North side of the Jetty (x = 134, z = 92.2)
+  const dinghyGroup = new THREE.Group();
+  dinghyGroup.position.set(134.5, -0.08, 92.2);
+  dinghyGroup.rotation.y = 0.12;
+  dinghyGroup.userData.dynamic = true;
+  const dHull = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.46, 1.45), woodMat);
+  dinghyGroup.add(dHull);
+  const dSeatA = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.08, 1.38), darkWoodMat);
+  dSeatA.position.set(-0.55, 0.2, 0);
+  dinghyGroup.add(dSeatA);
+  const dSeatB = dSeatA.clone();
+  dSeatB.position.x = 0.55;
+  dinghyGroup.add(dSeatB);
+  const dCrate = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.45, 0.55), crateMat);
+  dCrate.position.set(0, 0.36, 0);
+  dinghyGroup.add(dCrate);
+  scene.add(dinghyGroup);
 
   // ===========================================================================
   // 3) WALK-IN "CAYO CONTRABANDO" STILT BOATHOUSE & RADIO SHACK (x=153..166, z=83..92)
@@ -480,9 +636,43 @@ export function buildSmugglersCay(
   roofSlopeR.castShadow = true;
   scene.add(roofSlopeR);
 
-  // Porch Roof Columns & Neon Sign "CAYO CONTRABANDO '86"
+  // Porch Roof Columns, Wooden Porch Railings, Shortwave Radio Mast & Neon Sign "CAYO CONTRABANDO '86"
   for (const px of [153.6, 157.5, 161.5, 165.4]) {
     addVisual(new THREE.BoxGeometry(0.16, sH - 0.3, 0.16), darkWoodMat, px, sFloorY + (sH - 0.3) / 2, 93.8);
+  }
+  // Porch railing on left & right of steps (leaves center doorway x=157.5..161.5 open!)
+  for (const rx of [155.55, 163.45]) {
+    addVisual(new THREE.BoxGeometry(3.9, 0.1, 0.1), darkWoodMat, rx, sFloorY + 0.92, 93.8);
+    addVisual(new THREE.BoxGeometry(3.9, 0.08, 0.08), darkWoodMat, rx, sFloorY + 0.48, 93.8);
+  }
+  // Tall Guy-Wired Shortwave Radio Mast next to Boathouse (x = 152.2, z = 83.2)
+  addVisual(new THREE.CylinderGeometry(0.06, 0.12, 11.5, 8), rigSteelMat, 152.2, sFloorY + 5.75, 83.2);
+  addVisual(new THREE.BoxGeometry(2.4, 0.06, 0.06), chromeMat, 152.2, sFloorY + 10.6, 83.2);
+  addVisual(new THREE.BoxGeometry(0.06, 0.06, 2.4), chromeMat, 152.2, sFloorY + 9.8, 83.2);
+  addVisual(bulbGeo, redBulbMat, 152.2, sFloorY + 11.65, 83.2);
+
+  // Hanging Vintage Ceiling Fan inside Boathouse (slowly spinning!)
+  const ceilingFan = new THREE.Group();
+  ceilingFan.position.set(sX, sFloorY + sH - 0.25, sZ);
+  ceilingFan.userData.dynamic = true;
+  const fanHub = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.22, 10), darkWoodMat);
+  ceilingFan.add(fanHub);
+  for (let fb = 0; fb < 4; fb++) {
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.04, 0.22), darkWoodMat);
+    const ang = (fb * Math.PI) / 2;
+    blade.position.set(Math.cos(ang) * 0.62, 0, Math.sin(ang) * 0.62);
+    blade.rotation.y = -ang;
+    ceilingFan.add(blade);
+  }
+  const fanLight = new THREE.Mesh(bulbGeo, amberBulbMat);
+  fanLight.position.y = -0.22;
+  ceilingFan.add(fanLight);
+  scene.add(ceilingFan);
+
+  // Contraband Weapons Rack on North Interior Wall + Reel-to-Reel Tape Deck
+  addVisual(new THREE.BoxGeometry(2.6, 1.35, 0.14), darkWoodMat, 156.2, sFloorY + 1.85, 83.24);
+  for (let w = 0; w < 4; w++) {
+    addVisual(new THREE.BoxGeometry(0.08, 0.95, 0.08), rigSteelMat, 155.3 + w * 0.58, sFloorY + 1.85, 83.34);
   }
   const shackSignTex = createNeonSignTexture("CAYO CONTRABANDO '86", '#ff4fa3');
   const shackSignMat = new THREE.MeshStandardMaterial({
@@ -532,6 +722,10 @@ export function buildSmugglersCay(
   goldStackB.position.set(0.4, 0.99, 0.08);
   goldStackB.rotation.y = 0.25;
   lootGroup.add(goldStackB);
+  const emeraldPack = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.26, 0.34), emeraldGlowMat);
+  emeraldPack.position.set(0.0, 1.32, 0.02);
+  emeraldPack.rotation.y = -0.18;
+  lootGroup.add(emeraldPack);
   const lootRing = new THREE.Mesh(
     new THREE.RingGeometry(1.15, 1.42, 24),
     new THREE.MeshBasicMaterial({ color: '#ffd15c', side: THREE.DoubleSide, transparent: true, opacity: 0.85 }),
@@ -554,11 +748,21 @@ export function buildSmugglersCay(
       addVisual(new THREE.CylinderGeometry(0.55, 0.65, 9.2, 12), rustBeamMat, lx, rigY - 4.4, lz, true);
     }
   }
-  // Horizontal subsea/splash-zone cross beams
+  // Horizontal subsea/splash-zone cross beams + diagonal X-bracing
   addVisual(new THREE.BoxGeometry(12.2, 0.45, 0.45), rigSteelMat, rigX, 0.85, rigZ - 6.0);
   addVisual(new THREE.BoxGeometry(12.2, 0.45, 0.45), rigSteelMat, rigX, 0.85, rigZ + 6.0);
   addVisual(new THREE.BoxGeometry(0.45, 0.45, 12.2), rigSteelMat, rigX - 6.0, 0.85, rigZ);
   addVisual(new THREE.BoxGeometry(0.45, 0.45, 12.2), rigSteelMat, rigX + 6.0, 0.85, rigZ);
+  for (const diagSign of [-1, 1]) {
+    const diagF = new THREE.Mesh(new THREE.BoxGeometry(12.8, 0.24, 0.24), rustBeamMat);
+    diagF.position.set(rigX, 1.75, rigZ + 6.0);
+    diagF.rotation.z = diagSign * 0.26;
+    scene.add(diagF);
+    const diagW = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.24, 12.8), rustBeamMat);
+    diagW.position.set(rigX - 6.0, 1.75, rigZ);
+    diagW.rotation.x = diagSign * 0.26;
+    scene.add(diagW);
+  }
 
   // Heavy Offshore Rig Main Deck + 13x13m Steel Grate Helipad (H)
   addBox(14.0, 0.42, 14.0, rigX, rigY - 0.21, rigZ, rigSteelMat, true, 'smugglers-rig');
@@ -570,6 +774,50 @@ export function buildSmugglersCay(
   rigPad.position.set(rigX, rigY + 0.02, rigZ);
   rigPad.receiveShadow = true;
   scene.add(rigPad);
+
+  // Offshore Rig Industrial Details: NW Control Cabin, Color-Coded Pipeline Manifold & Suspended Orange Lifeboat
+  addBox(3.4, 2.4, 2.8, rigX - 4.8, rigY + 1.2, rigZ - 5.2, rustTinMat, true, 'smugglers-rig');
+  addVisual(new THREE.BoxGeometry(1.4, 0.72, 0.1), cyanNeon, rigX - 4.8, rigY + 1.5, rigZ - 3.76);
+  // Color-coded high-pressure offshore pipelines + valve wheels along South rig edge
+  const pipeY = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 9.6, 10), pipeYellowMat);
+  pipeY.rotation.z = Math.PI / 2;
+  pipeY.position.set(rigX - 0.8, rigY + 0.3, rigZ + 6.55);
+  scene.add(pipeY);
+  const pipeB = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 9.6, 10), pipeBlueMat);
+  pipeB.rotation.z = Math.PI / 2;
+  pipeB.position.set(rigX - 0.8, rigY + 0.58, rigZ + 6.55);
+  scene.add(pipeB);
+  for (const vx of [rigX - 3.5, rigX - 0.5, rigX + 2.5]) {
+    const valve = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.04, 6, 12), lifeboatOrangeMat);
+    valve.position.set(vx, rigY + 0.82, rigZ + 6.55);
+    scene.add(valve);
+  }
+  // Suspended Orange Offshore Lifeboat Capsule on Steel Davit Arms (West side of Rig!)
+  for (const dz of [rigZ + 1.2, rigZ + 4.4]) {
+    addVisual(new THREE.BoxGeometry(1.8, 0.18, 0.18), rigSteelMat, rigX - 7.5, rigY + 1.85, dz);
+    addVisual(new THREE.BoxGeometry(0.18, 2.0, 0.18), rigSteelMat, rigX - 6.75, rigY + 0.95, dz);
+  }
+  const lifeboat = new THREE.Mesh(new THREE.CapsuleGeometry(0.78, 2.4, 8, 12), lifeboatOrangeMat);
+  lifeboat.rotation.x = Math.PI / 2;
+  lifeboat.position.set(rigX - 7.9, rigY + 0.65, rigZ + 2.8);
+  lifeboat.castShadow = true;
+  scene.add(lifeboat);
+
+  // Fluttering Rig Windsock on SW Rig Corner
+  addVisual(new THREE.CylinderGeometry(0.06, 0.09, 3.8, 8), rigSteelMat, rigX - 6.4, rigY + 1.9, rigZ + 6.4);
+  const rigWindsock = new THREE.Group();
+  rigWindsock.position.set(rigX - 6.4, rigY + 3.65, rigZ + 6.4);
+  rigWindsock.userData.dynamic = true;
+  for (let ws = 0; ws < 4; ws++) {
+    const seg = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.24 - ws * 0.04, 0.28 - ws * 0.04, 0.36, 8, 1, true),
+      ws % 2 === 0 ? lifeboatOrangeMat : boatWhiteMat,
+    );
+    seg.rotation.z = -Math.PI / 2;
+    seg.position.set(0.28 + ws * 0.34, -ws * 0.04, 0);
+    rigWindsock.add(seg);
+  }
+  scene.add(rigWindsock);
 
   // Hazard border trims & perimeter green helipad LEDs + red corner beacons
   addVisual(new THREE.BoxGeometry(14.1, 0.36, 0.2), hazardMat, rigX, rigY - 0.18, rigZ + 7.05);
@@ -649,23 +897,48 @@ export function buildSmugglersCay(
       addVisual(new THREE.BoxGeometry(0.24, 4.6, 0.24), darkWoodMat, wtX + sx, wtBaseY + 2.2, wtZ + sz, true);
     }
   }
+  // Walkable 2-Flight Wooden Switchback Staircase climbing right UP into the Watchtower Platform! (riser = 0.22m!)
+  for (let i = 0; i < 10; i++) {
+    const sy = wtBaseY + (i + 1) * 0.22;
+    addBox(0.36, 0.22, 1.35, wtX - 1.55 + i * 0.34, sy - 0.11, wtZ + 2.45, woodMat, false, 'smugglers-stairs');
+  }
+  addBox(1.5, 0.22, 1.5, wtX + 2.45, wtBaseY + 2.09, wtZ + 2.45, woodMat, true, 'smugglers-stairs');
+  for (let i = 0; i < 10; i++) {
+    const sy = wtBaseY + 2.2 + (i + 1) * 0.22;
+    addBox(1.35, 0.22, 0.36, wtX + 2.45, sy - 0.11, wtZ + 1.55 - i * 0.34, woodMat, false, 'smugglers-stairs');
+  }
+  // Top landing bridging Flight 2 cleanly onto the Watchtower Deck
+  addBox(1.4, 0.26, 1.6, wtX + 2.45, wtBaseY + 4.4, wtZ - 1.55, woodMat, true, 'smugglers-tower');
+
   addBox(3.8, 0.26, 3.8, wtX, wtBaseY + 4.4, wtZ, woodMat, true, 'smugglers-tower');
-  // Sandbagged parapet walls + corrugated tin roof
+  // Sandbagged parapet walls (leaves East entry gap at z=wtZ-1.55 open for staircase!)
   for (const [bx, bz, bw, bd] of [
     [wtX, wtZ - 1.75, 3.8, 0.35],
     [wtX, wtZ + 1.75, 3.8, 0.35],
     [wtX - 1.75, wtZ, 0.35, 3.4],
-    [wtX + 1.75, wtZ, 0.35, 3.4],
+    [wtX + 1.75, wtZ + 0.7, 0.35, 1.8],
   ]) {
     addVisual(new THREE.BoxGeometry(bw, 0.85, bd), sandbagMat, bx, wtBaseY + 4.95, bz);
   }
+  // Ammo crate & mounted spotting binoculars inside Watchtower
+  addVisual(new THREE.BoxGeometry(0.9, 0.55, 0.55), crateMat, wtX - 0.9, wtBaseY + 4.8, wtZ + 1.1);
+  addVisual(new THREE.CylinderGeometry(0.05, 0.08, 1.25, 6), rigSteelMat, wtX - 1.2, wtBaseY + 5.15, wtZ - 0.9);
+  addVisual(new THREE.BoxGeometry(0.32, 0.18, 0.42), rigSteelMat, wtX - 1.2, wtBaseY + 5.82, wtZ - 0.9);
+
   for (const sx of [-1.6, 1.6]) {
     for (const sz of [-1.6, 1.6]) {
       addVisual(new THREE.BoxGeometry(0.14, 2.5, 0.14), darkWoodMat, wtX + sx, wtBaseY + 5.75, wtZ + sz);
     }
   }
   addVisual(new THREE.BoxGeometry(4.4, 0.18, 4.4), rustTinMat, wtX, wtBaseY + 7.05, wtZ, true);
-  addVisual(bulbGeo, redBulbMat, wtX, wtBaseY + 7.45, wtZ);
+  // Rotating Vintage Radar Dish on Watchtower Roof
+  const wtRadar = new THREE.Group();
+  wtRadar.position.set(wtX + 0.8, wtBaseY + 7.85, wtZ);
+  wtRadar.userData.dynamic = true;
+  const wtRadarBar = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.35, 0.14), boatWhiteMat);
+  wtRadar.add(wtRadarBar);
+  scene.add(wtRadar);
+  addVisual(bulbGeo, redBulbMat, wtX - 1.4, wtBaseY + 7.45, wtZ);
 
   // Animated Sweeping Coastal Searchlight mounted on Watchtower (0 extra PointLights!)
   const searchlightPivot = new THREE.Group();
@@ -713,11 +986,34 @@ export function buildSmugglersCay(
   tikiRoof.position.set(barX, barY + 3.35, barZ);
   tikiRoof.castShadow = true;
   scene.add(tikiRoof);
-  // Warm tropical bulbs under Tiki eaves
+  // Warm tropical bulbs under Tiki eaves + 4 Bamboo Bar Stools + Bottle Shelf + Surfboard Sign + Tiki Totem
   for (let i = 0; i < 6; i++) {
     const a = (i / 6) * Math.PI * 2;
     addVisual(bulbGeo, amberBulbMat, barX + Math.cos(a) * 2.1, barY + 2.65, barZ + Math.sin(a) * 2.1);
   }
+  for (const sx of [-1.2, -0.4, 0.4, 1.2]) {
+    addVisual(new THREE.CylinderGeometry(0.06, 0.08, 0.68, 6), bambooMat, barX + sx, barY + 0.34, barZ - 0.95);
+    addVisual(new THREE.CylinderGeometry(0.22, 0.22, 0.08, 10), darkWoodMat, barX + sx, barY + 0.7, barZ - 0.95);
+  }
+  // Colorful Rum & Cocktail Bottles on the Tiki Counter
+  const bottleMats = [greenBulbMat, amberBulbMat, pinkBulbMat, cyanNeon];
+  for (let bi = 0; bi < 6; bi++) {
+    addVisual(
+      new THREE.CylinderGeometry(0.05, 0.06, 0.32, 6),
+      bottleMats[bi % bottleMats.length],
+      barX - 1.15 + bi * 0.45,
+      barY + 1.28,
+      barZ + 0.35,
+    );
+  }
+  // Painted Surfboard Bar Sign & Carved Tiki Totem beside the Hut
+  const surfBoard = new THREE.Mesh(new THREE.CapsuleGeometry(0.28, 1.85, 6, 8), boatCyanMat);
+  surfBoard.rotation.z = Math.PI / 2;
+  surfBoard.position.set(barX, barY + 2.55, barZ - 1.05);
+  scene.add(surfBoard);
+  addVisual(new THREE.CylinderGeometry(0.26, 0.3, 2.2, 8), darkWoodMat, barX + 2.35, barY + 1.1, barZ - 0.4);
+  addVisual(bulbGeo, amberBulbMat, barX + 2.35, barY + 1.85, barZ - 0.66);
+
   const barRing = new THREE.Mesh(
     new THREE.RingGeometry(0.55, 0.78, 24),
     new THREE.MeshBasicMaterial({ color: '#ff9f43', side: THREE.DoubleSide, transparent: true, opacity: 0.8 }),
@@ -726,7 +1022,7 @@ export function buildSmugglersCay(
   barRing.position.set(barX, barY + 0.06, barZ - 1.55);
   scene.add(barRing);
 
-  // Crackling Cove Campfire with driftwood seating (x = 148.5, z = 100.0)
+  // Crackling Cove Campfire with Cooking Tripod, Iron Pot, Driftwood Benches & 80s Boombox (x = 148.5, z = 100.0)
   const fireX = 148.5;
   const fireZ = 100.0;
   const fireY = getSmugglersCayHeight(fireX, fireZ) ?? 1.35;
@@ -738,12 +1034,24 @@ export function buildSmugglersCay(
   campFlame.position.set(fireX, fireY + 0.45, fireZ);
   campFlame.userData.dynamic = true;
   scene.add(campFlame);
-  // Driftwood bench logs
+  // Wooden cooking tripod & hanging iron kettle
+  for (let tp = 0; tp < 3; tp++) {
+    const a = (tp / 3) * Math.PI * 2;
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.04, 1.75, 6), darkWoodMat);
+    pole.position.set(fireX + Math.cos(a) * 0.38, fireY + 0.75, fireZ + Math.sin(a) * 0.38);
+    pole.rotation.set(Math.sin(a) * 0.36, 0, -Math.cos(a) * 0.36);
+    scene.add(pole);
+  }
+  addVisual(new THREE.SphereGeometry(0.22, 8, 8), rubberMat, fireX, fireY + 0.92, fireZ);
+  // Driftwood bench logs & 80s Boombox on a crate
   const logA = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.24, 2.2, 8), darkWoodMat);
   logA.rotation.z = Math.PI / 2;
   logA.rotation.y = 0.4;
   logA.position.set(fireX - 1.5, fireY + 0.2, fireZ - 1.2);
   scene.add(logA);
+  addVisual(new THREE.BoxGeometry(0.65, 0.55, 0.65), crateMat, fireX + 1.5, fireY + 0.28, fireZ - 1.1);
+  addVisual(new THREE.BoxGeometry(0.58, 0.3, 0.2), rigSteelMat, fireX + 1.5, fireY + 0.72, fireZ - 1.1);
+  addVisual(new THREE.BoxGeometry(0.26, 0.06, 0.22), cyanNeon, fireX + 1.5, fireY + 0.76, fireZ - 1.1);
 
   // Beached 80s Smuggler Cigarette-Boat Wreck on North Cove Sand (x = 152, z = 75)
   const wreckY = getSmugglersCayHeight(152, 75) ?? 0.2;
@@ -763,6 +1071,20 @@ export function buildSmugglersCay(
   const wStripeB = new THREE.Mesh(new THREE.BoxGeometry(2.26, 0.12, 5.5), boatCyanMat);
   wStripeB.position.y = 0.06;
   wreckGroup.add(wStripeB);
+  // Cockpit windshield frame, seats & twin tilted outboard motors
+  const wWindshield = new THREE.Mesh(new THREE.BoxGeometry(1.85, 0.45, 0.12), rigSteelMat);
+  wWindshield.position.set(0, 0.65, 1.2);
+  wWindshield.rotation.x = -0.45;
+  wreckGroup.add(wWindshield);
+  for (const sx of [-0.55, 0.55]) {
+    const seat = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.52, 0.55), boatPinkMat);
+    seat.position.set(sx, 0.52, -0.35);
+    wreckGroup.add(seat);
+    const motor = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.85, 0.48), rubberMat);
+    motor.position.set(sx, 0.35, -3.25);
+    motor.rotation.x = 0.42;
+    wreckGroup.add(motor);
+  }
   scene.add(wreckGroup);
 
   // Floating Channel Navigation Buoys bobbing in the West Ocean Channel (x = 121, z = 88 & 104)
@@ -811,16 +1133,43 @@ export function buildSmugglersCay(
     update: (elapsed: number, playerPos?: THREE.Vector3) => {
       if (playerPos && (playerPos.x < 55 || playerPos.z < 5)) return;
 
-      // Sweep Cliffside Watchtower Searchlight across the West cove & sea
+      // Sweep Cliffside Watchtower Searchlight & Roof Radar
       searchlightPivot.rotation.y = -Math.PI / 2 + Math.sin(elapsed * 0.55) * 0.85;
+      wtRadar.rotation.y = elapsed * 1.4;
 
-      // Slowly slew Offshore Cargo Crane boom back & forth
+      // Slowly slew Offshore Cargo Crane boom & flutter Rig Windsock
       cranePivot.rotation.y = -0.75 + Math.sin(elapsed * 0.28) * 0.42;
+      rigWindsock.rotation.y = 0.35 + Math.sin(elapsed * 1.6) * 0.22;
+      rigWindsock.rotation.z = Math.sin(elapsed * 4.0) * 0.08;
 
-      // Flicker Offshore Flare Stack & Cove Campfire
+      // Spin Boathouse vintage ceiling fan & gently bob moored wooden dinghy
+      ceilingFan.rotation.y = elapsed * 2.4;
+      dinghyGroup.position.y = -0.08 + Math.sin(elapsed * 1.9) * 0.09;
+      dinghyGroup.rotation.z = Math.sin(elapsed * 1.5) * 0.07;
+
+      // Flicker Offshore Flare Stack, Campfire & 8 Bamboo Tiki Torches
       const fScale = 0.88 + Math.sin(elapsed * 14.0) * 0.16 + Math.cos(elapsed * 23.0) * 0.08;
       flareFlame.scale.set(1, fScale, 1);
       campFlame.scale.set(1, 0.85 + Math.sin(elapsed * 11.5) * 0.2, 1);
+      for (let i = 0; i < tikiFlames.length; i++) {
+        const tf = tikiFlames[i];
+        tf.mesh.scale.set(1, 0.82 + Math.sin(elapsed * 12.0 + tf.phase) * 0.24, 1);
+      }
+
+      // Glide circling tropical sea birds high above the island
+      for (let i = 0; i < skyBirds.length; i++) {
+        const sb = skyBirds[i];
+        const a = elapsed * sb.speed + sb.phase;
+        sb.group.position.set(
+          CAY_X + Math.cos(a) * sb.radius,
+          sb.height + Math.sin(elapsed * 1.2 + sb.phase) * 0.8,
+          CAY_Z + Math.sin(a) * sb.radius,
+        );
+        sb.group.rotation.y = -a;
+        const flap = Math.sin(elapsed * 5.2 + sb.phase) * 0.28;
+        sb.wingL.rotation.z = flap;
+        sb.wingR.rotation.z = -flap;
+      }
 
       // Gently bob floating channel navigation buoys in the waves
       for (let i = 0; i < buoys.length; i++) {

@@ -274,6 +274,13 @@ export function buildSmugglersCay(
   const fernMat = new THREE.MeshStandardMaterial({ color: '#2e7d4b', roughness: 0.68, side: THREE.DoubleSide });
   const chromeMat = new THREE.MeshStandardMaterial({ color: '#dde5ef', roughness: 0.2, metalness: 0.88 });
   const birdWhiteMat = new THREE.MeshStandardMaterial({ color: '#f2efe9', roughness: 0.65 });
+  const crabMats = [
+    new THREE.MeshStandardMaterial({ color: '#e04832', roughness: 0.42, metalness: 0.12 }),
+    new THREE.MeshStandardMaterial({ color: '#eb7426', roughness: 0.44, metalness: 0.1 }),
+    new THREE.MeshStandardMaterial({ color: '#b8292f', roughness: 0.4, metalness: 0.14 }),
+    new THREE.MeshStandardMaterial({ color: '#d48a3c', roughness: 0.48, metalness: 0.08 }),
+  ];
+  const crabEyeMat = new THREE.MeshStandardMaterial({ color: '#0d0e12', roughness: 0.12, metalness: 0.6 });
 
   // Thin emissive accents (> 1.0 bloom strictly on small bulbs/flames/neon tubes!)
   const greenBulbMat = new THREE.MeshStandardMaterial({ color: '#52f29c', emissive: '#32e880', emissiveIntensity: 3.0 });
@@ -1111,6 +1118,133 @@ export function buildSmugglersCay(
     buoys.push({ group: bg, phase: ph });
   }
 
+  // ===========================================================================
+  // 7) TROPICAL ISLAND CRABS (14 Crabs in Varied Sizes Scuttling Sideways!)
+  // ===========================================================================
+  interface IslandCrab {
+    group: THREE.Group;
+    legsA: THREE.Group;
+    legsB: THREE.Group;
+    clawL: THREE.Group;
+    clawR: THREE.Group;
+    x: number;
+    z: number;
+    scale: number;
+    moveAngle: number;
+    speed: number;
+    stateTimer: number;
+    paused: boolean;
+    phase: number;
+  }
+
+  const crabShellGeo = new THREE.SphereGeometry(0.24, 10, 8);
+  crabShellGeo.scale(1.35, 0.48, 0.95);
+  const crabEyeStalkGeo = new THREE.CylinderGeometry(0.018, 0.022, 0.1, 6);
+  const crabEyeGeo = new THREE.SphereGeometry(0.032, 6, 6);
+  const crabLegGeo = new THREE.BoxGeometry(0.26, 0.035, 0.04);
+  const crabClawGeo = new THREE.BoxGeometry(0.16, 0.08, 0.1);
+  const crabArmGeo = new THREE.BoxGeometry(0.14, 0.045, 0.055);
+
+  const crabSpawns: [number, number, number][] = [
+    // Tiny baby beach crabs near the West sandy cove
+    [144.5, 91.5, 0.55],
+    [146.2, 98.5, 0.62],
+    [145.0, 94.0, 0.58],
+    [148.5, 84.5, 0.68],
+    // Medium coral/orange crabs around the cove, campfire, Tiki Bar & trails
+    [149.5, 95.8, 0.92],
+    [151.8, 99.2, 1.05],
+    [155.5, 98.0, 0.88],
+    [158.2, 101.5, 1.12],
+    [164.0, 99.5, 0.96],
+    [167.2, 93.0, 1.08],
+    [154.0, 79.5, 0.95],
+    // Chunky Giant Coconut / King Crabs patrolling the beaches & rocky ridge!
+    [147.0, 103.5, 1.58],
+    [162.5, 104.2, 1.75],
+    [171.5, 89.5, 1.92],
+  ];
+
+  const crabs: IslandCrab[] = [];
+  crabSpawns.forEach(([cx, cz, sc], idx) => {
+    const mat = crabMats[idx % crabMats.length];
+    const g = new THREE.Group();
+    g.userData.dynamic = true;
+    g.scale.setScalar(sc);
+
+    const shell = new THREE.Mesh(crabShellGeo, mat);
+    shell.position.y = 0.12;
+    shell.castShadow = true;
+    g.add(shell);
+
+    // Two protruding eye stalks on the front (+Z)
+    for (const ex of [-0.11, 0.11]) {
+      const stalk = new THREE.Mesh(crabEyeStalkGeo, mat);
+      stalk.position.set(ex, 0.21, 0.16);
+      stalk.rotation.x = 0.25;
+      g.add(stalk);
+      const eye = new THREE.Mesh(crabEyeGeo, crabEyeMat);
+      eye.position.set(ex, 0.26, 0.18);
+      g.add(eye);
+    }
+
+    // Articulated front pincer claws (left & right)
+    const buildClaw = (side: -1 | 1): THREE.Group => {
+      const cg = new THREE.Group();
+      cg.position.set(side * 0.22, 0.13, 0.16);
+      const arm = new THREE.Mesh(crabArmGeo, mat);
+      arm.position.set(side * 0.06, 0, 0.08);
+      arm.rotation.y = side * -0.45;
+      cg.add(arm);
+      const pincer = new THREE.Mesh(crabClawGeo, mat);
+      pincer.position.set(side * 0.08, 0.02, 0.18);
+      pincer.rotation.y = side * 0.35;
+      cg.add(pincer);
+      return cg;
+    };
+    const clawL = buildClaw(-1);
+    const clawR = buildClaw(1);
+    g.add(clawL, clawR);
+
+    // 6 jointed walking legs split into 2 alternating tripod groups (legsA / legsB)
+    const legsA = new THREE.Group();
+    const legsB = new THREE.Group();
+    const legZOffsets = [0.09, -0.02, -0.13];
+    for (let li = 0; li < 3; li++) {
+      for (const side of [-1, 1]) {
+        const leg = new THREE.Mesh(crabLegGeo, mat);
+        leg.position.set(side * 0.34, 0.08, legZOffsets[li]);
+        leg.rotation.z = side * -0.35;
+        leg.rotation.y = (li - 1) * side * -0.22;
+        const target = (li + (side > 0 ? 1 : 0)) % 2 === 0 ? legsA : legsB;
+        target.add(leg);
+      }
+    }
+    g.add(legsA, legsB);
+
+    const cy = getSmugglersCayHeight(cx, cz) ?? 1.2;
+    g.position.set(cx, cy + 0.02, cz);
+    scene.add(g);
+
+    crabs.push({
+      group: g,
+      legsA,
+      legsB,
+      clawL,
+      clawR,
+      x: cx,
+      z: cz,
+      scale: sc,
+      moveAngle: (idx * 1.9) % (Math.PI * 2),
+      speed: (0.85 + (idx % 4) * 0.25) / Math.pow(sc, 0.25),
+      stateTimer: 1.5 + (idx % 5) * 0.9,
+      paused: idx % 3 === 0,
+      phase: idx * 1.37,
+    });
+  });
+
+  let lastUpdateElapsed = -1;
+
   return {
     getGroundHeight: (x: number, z: number) => getSmugglersCayHeight(x, z),
 
@@ -1131,7 +1265,68 @@ export function buildSmugglersCay(
       Math.hypot(pos.x - barX, pos.z - (barZ - 1.55)) < 2.3 && Math.abs(pos.y - barY) < 2.2,
 
     update: (elapsed: number, playerPos?: THREE.Vector3) => {
+      const dt = lastUpdateElapsed < 0 ? 0.016 : Math.min(0.05, Math.max(0.001, elapsed - lastUpdateElapsed));
+      lastUpdateElapsed = elapsed;
+
       if (playerPos && (playerPos.x < 55 || playerPos.z < 5)) return;
+
+      // Update 14 tropical crabs scuttling sideways across the island!
+      for (let i = 0; i < crabs.length; i++) {
+        const c = crabs[i];
+        let fleeing = false;
+        if (playerPos) {
+          const dxP = c.x - playerPos.x;
+          const dzP = c.z - playerPos.z;
+          const distP = Math.hypot(dxP, dzP);
+          if (distP < 3.6 && distP > 0.01) {
+            c.moveAngle = Math.atan2(dzP, dxP);
+            c.paused = false;
+            c.stateTimer = 1.4;
+            fleeing = true;
+          }
+        }
+
+        c.stateTimer -= dt;
+        if (c.stateTimer <= 0) {
+          c.paused = !c.paused;
+          c.stateTimer = c.paused ? 0.9 + ((i * 7 + elapsed) % 1.8) : 2.2 + ((i * 5 + elapsed) % 2.8);
+          if (!c.paused) {
+            c.moveAngle += ((i % 2 === 0 ? 1 : -1) * (0.9 + ((elapsed * 1.7 + i) % 1.8)));
+          }
+        }
+
+        if (!c.paused) {
+          const spd = c.speed * (fleeing ? 2.1 : 1.0);
+          const nx = c.x + Math.cos(c.moveAngle) * spd * dt;
+          const nz = c.z + Math.sin(c.moveAngle) * spd * dt;
+          const nh = getSmugglersCayHeight(nx, nz);
+          const inShack = nx > 152.2 && nx < 166.8 && nz > 82.2 && nz < 94.5;
+          const inBar = Math.hypot(nx - barX, nz - barZ) < 2.2;
+          const inFire = Math.hypot(nx - fireX, nz - fireZ) < 1.25;
+          if (nh !== null && nh > 0.12 && nh < 3.4 && !inShack && !inBar && !inFire) {
+            c.x = nx;
+            c.z = nz;
+            c.group.position.set(nx, nh + 0.02, nz);
+          } else {
+            // Bounce off water edge, steep cliff or buildings
+            c.moveAngle += Math.PI * 0.72 + (i % 3) * 0.35;
+          }
+
+          // Real sideways crab orientation (body faces perpendicular to travel direction!)
+          c.group.rotation.y = -c.moveAngle;
+          const legSwing = Math.sin(elapsed * (fleeing ? 24 : 15) + c.phase) * 0.24;
+          c.legsA.rotation.z = legSwing;
+          c.legsB.rotation.z = -legSwing;
+        } else {
+          c.legsA.rotation.z = 0;
+          c.legsB.rotation.z = 0;
+        }
+
+        // Claws gently wave / snap defensively when paused or fleeing
+        const snap = Math.sin(elapsed * (fleeing ? 16 : 4.5) + c.phase) * (fleeing ? 0.32 : 0.14);
+        c.clawL.rotation.x = -0.18 - Math.abs(snap);
+        c.clawR.rotation.x = -0.18 - Math.abs(snap * 0.85);
+      }
 
       // Sweep Cliffside Watchtower Searchlight & Roof Radar
       searchlightPivot.rotation.y = -Math.PI / 2 + Math.sin(elapsed * 0.55) * 0.85;

@@ -55,6 +55,7 @@ export const WORLD_LANDMARKS = {
   LOWRIDER_ARENA: { x: -87, z: 1.6 },
   VICE_AIRFIELD: { x: -96, z: 102 },
   SMUGGLERS_CAY: { x: 162, z: 96 },
+  PALM_PARKING: { x: 0, z: 40 },
   VICE_PORT_GOAL_Z: 68,
   OCEAN_DEEP_X: 107,
 } as const;
@@ -117,9 +118,10 @@ export function generateCityLayout(): CityLayout {
       const isNeonClubBlock = row === 1 && col === 2;
       const isSafehouseBlock = row === 0 && col === 2;
       const isPoliceStationBlock = row === 1 && col === 0;
+      const isPalmParkingBlock = row === 2 && col === 1;
 
-      if (isNeonClubBlock || isSafehouseBlock || isPoliceStationBlock) {
-        // Reserved for hollow walk-in interiors (NEON CLUB, VICE SAFEHOUSE & VICE PD PRECINCT) built in CityBuilder.ts
+      if (isNeonClubBlock || isSafehouseBlock || isPoliceStationBlock || isPalmParkingBlock) {
+        // Reserved for hollow walk-in/drive-in landmarks (NEON CLUB, VICE SAFEHOUSE, VICE PD & PALM PARKING)
         continue;
       }
 

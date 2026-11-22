@@ -1696,7 +1696,8 @@ function animate(now: number): void {
     world.isInsidePoliceStation(player.position) ||
     world.isInsideWestInterior(player.position) ||
     world.isInsideAirfieldInterior(player.position) ||
-    world.isInsideSmugglersShack(player.position);
+    world.isInsideSmugglersShack(player.position) ||
+    world.isInsidePalmParking(player.position);
   let playerCoverState: typeof playerCoverScratch | undefined;
   if (playerInCover) {
     playerCoverScratch.peeking = playerCoverPeeking;
@@ -2019,6 +2020,35 @@ function animate(now: number): void {
     }
   }
 
+  const activeCarForRush = vehicles.getActiveVehicle();
+  const parkingRushEvent = world.updateParkingRush(
+    elapsed,
+    dt,
+    player.position,
+    activeCarForRush?.position ?? null,
+  );
+  if (parkingRushEvent) {
+    if (parkingRushEvent.type === 'checkpoint') {
+      audio.playCheckpoint();
+      showQuickToast(
+        `DRIFT RUSH · CHECKPOINT ${parkingRushEvent.checkpointIndex}/${parkingRushEvent.totalCheckpoints} ERREICHT!`,
+      );
+    } else if (parkingRushEvent.type === 'completed') {
+      const totalReward = (parkingRushEvent.reward ?? 1800) + (parkingRushEvent.timeBonus ?? 0);
+      objectives.cash += totalReward;
+      objectives.completedCount++;
+      audio.playMissionPassed();
+      persistProgress();
+      const timeStr = (parkingRushEvent.elapsedSec ?? 0).toFixed(1);
+      const bonusPart = parkingRushEvent.timeBonus ? ` (INKL. +$${parkingRushEvent.timeBonus} SPEED-BONUS!)` : '';
+      const bestPart = parkingRushEvent.isNewBest ? ' · ★ NEUE BESTZEIT!' : '';
+      showQuickToast(`NEON DRIFT RUSH GESCHAFFT IN ${timeStr}s · +$${totalReward}${bonusPart}${bestPart}`);
+    } else if (parkingRushEvent.type === 'failed') {
+      showQuickToast('NEON DRIFT RUSH · ZEIT ABGELAUFEN! VERSUCH ES NOCHMAL AM EINGANG!');
+    }
+  }
+  const parkingRushHud = world.getParkingRushHud(player.position);
+
   yachtRadarState.x = superyacht.position.x;
   yachtRadarState.z = superyacht.position.z;
   yachtRadarState.yaw = superyacht.yaw;
@@ -2032,7 +2062,11 @@ function animate(now: number): void {
     objectives.current,
     elapsed,
     heli.active ? heli.position : null,
-    storyHud.targetPos ?? vigilanteHud.targetPos ?? specialHud.targetPos ?? heistHud.targetPos,
+    storyHud.targetPos ??
+      vigilanteHud.targetPos ??
+      specialHud.targetPos ??
+      heistHud.targetPos ??
+      parkingRushHud.targetPos,
     maverick.position,
     garageRides.getParkedMarkers(),
     yachtRadarState,
@@ -2078,6 +2112,7 @@ function animate(now: number): void {
     vigilanteHud,
     specialHud,
     heistHud,
+    parkingRushHud,
     partyHud,
     objHud,
     lowriderHud,

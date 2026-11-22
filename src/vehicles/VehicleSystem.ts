@@ -1043,7 +1043,7 @@ export class VehicleSystem {
     stuntRamps?: StuntRamp[],
     shouldTrafficStop?: (x: number, z: number, yaw: number) => boolean,
     drunkLevel = 0,
-    getGroundHeight?: (x: number, z: number) => number,
+    getGroundHeight?: (x: number, z: number, currentY?: number) => number,
     vehicleGrid?: SpatialGrid,
     radioBeatPulse = 0,
     lockDriving = false,
@@ -1592,7 +1592,7 @@ export class VehicleSystem {
     pad?: GamepadSnapshot,
     stuntRamps?: StuntRamp[],
     drunkLevel = 0,
-    getGroundHeight?: (x: number, z: number) => number,
+    getGroundHeight?: (x: number, z: number, currentY?: number) => number,
     vehicleGrid?: SpatialGrid,
     radioBeatPulse = 0,
     lockDriving = false,
@@ -1710,7 +1710,9 @@ export class VehicleSystem {
       }
     }
 
-    const baseGroundY = getGroundHeight ? Math.max(0, getGroundHeight(v.position.x, v.position.z)) : 0;
+    const baseGroundY = getGroundHeight
+      ? Math.max(0, getGroundHeight(v.position.x, v.position.z, v.position.y))
+      : 0;
 
     let slopePitch = 0;
     if (onRampHeight > 0.05 && !v.airborne) {
@@ -1749,7 +1751,11 @@ export class VehicleSystem {
       if (getGroundHeight) {
         const aheadY = Math.max(
           0,
-          getGroundHeight(v.position.x + Math.sin(v.yaw) * 1.6, v.position.z + Math.cos(v.yaw) * 1.6),
+          getGroundHeight(
+            v.position.x + Math.sin(v.yaw) * 1.6,
+            v.position.z + Math.cos(v.yaw) * 1.6,
+            v.position.y,
+          ),
         );
         slopePitch = -Math.atan2(aheadY - baseGroundY, 1.6);
         if (!v.hydraulics) {

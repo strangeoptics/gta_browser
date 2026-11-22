@@ -11,6 +11,7 @@ import type { PlayerHeliHudState } from '../vehicles/PlayerHelicopterSystem';
 import type { SuperyachtHudState } from '../vehicles/SuperyachtSystem';
 import type { DrivingHudState, Vehicle } from '../vehicles/VehicleSystem';
 import type { MiamiWorld } from '../world/CityBuilder';
+import type { ParkingRushHudState } from '../world/PalmParking';
 import type { CabinetWeapon, FoodItem } from '../world/Safehouse';
 import {
   LowriderNotePool,
@@ -50,6 +51,7 @@ export interface HudFrameInput {
   vigilanteHud: { active: boolean; title: string; description: string; timerText: string; distanceM: number };
   specialHud: { active: boolean; tag: string; title: string; description: string; timerText: string; distanceM: number };
   heistHud: { active: boolean; title: string; description: string; distanceM: number; nearStartMarker: boolean };
+  parkingRushHud: ParkingRushHudState;
   partyHud: { active: boolean; nearTributeCash: boolean; nearbyGuestName: string | null };
   objHud: { title: string; description: string; timerText: string | null; distanceM: number; toastText: string | null };
   lowriderHud: LowriderHudState;
@@ -207,6 +209,12 @@ export class HudController {
       setText(this.objTitleEl, inp.heistHud.title);
       setText(this.objDescEl, inp.heistHud.description);
       setText(this.objDistEl, `${inp.heistHud.distanceM} m`);
+    } else if (inp.parkingRushHud.active) {
+      setText(this.objTagEl, '★ DRIFT RUSH');
+      setClass(this.objTagEl, 'heist', true);
+      setText(this.objTitleEl, inp.parkingRushHud.title);
+      setText(this.objDescEl, inp.parkingRushHud.description);
+      setText(this.objDistEl, `${inp.parkingRushHud.timerText} · ${inp.parkingRushHud.distanceM} m`);
     } else {
       setText(this.objTagEl, 'ZIEL · [J] TELEFON · [H] HEIST');
       setClass(this.objTagEl, 'heist', false);
@@ -337,6 +345,8 @@ export class HudController {
 
       if (car && world.isInSafehouseGarage(car.position)) {
         nextPrompt = '[F] PRIVATE GARAGE · GRATIS REPARATUR (100%)';
+      } else if (car && world.isCarAtParkingRushStart(car.position)) {
+        nextPrompt = '[F] PALM PARKING · NEON DRIFT RUSH STARTEN (+$1.800 · 55s AUFS DACH!)';
       } else if (car && world.isCarInTuningBay(car.position)) {
         const hydroPart = car.isBike
           ? ''

@@ -20,6 +20,7 @@ import {
 import { SpatialGrid } from '../engine/SpatialGrid';
 import { buildBeachHighlights } from './BeachProps';
 import { buildNeonClub } from './NeonClub';
+import { buildPalmParking, type ParkingRushEvent, type ParkingRushHudState } from './PalmParking';
 import { buildPoliceStation } from './PoliceStation';
 import { buildSafehouse, type CabinetWeapon, type FoodItem } from './Safehouse';
 import { buildSmugglersCay } from './SmugglersCay';
@@ -71,6 +72,18 @@ export interface MiamiWorld {
   isNearSmugglersLoot: (pos: THREE.Vector3) => boolean;
   takeSmugglersLoot: () => void;
   isNearSmugglersBar: (pos: THREE.Vector3) => boolean;
+  isInsidePalmParking: (pos: THREE.Vector3) => boolean;
+  isCarAtParkingRushStart: (pos: THREE.Vector3) => boolean;
+  isParkingRushActive: () => boolean;
+  startParkingRush: () => void;
+  cancelParkingRush: () => void;
+  getParkingRushHud: (playerPos: THREE.Vector3) => ParkingRushHudState;
+  updateParkingRush: (
+    elapsed: number,
+    dt: number,
+    playerPos?: THREE.Vector3,
+    activeCarPos?: THREE.Vector3 | null,
+  ) => ParkingRushEvent | null;
   cycleTimeOfDay: () => string;
   toggleRain: () => boolean;
   setRetrowaveMode: (active: boolean) => void;
@@ -102,7 +115,7 @@ export interface MiamiWorld {
   isTvOn: () => boolean;
   isNearClubBar: (pos: THREE.Vector3) => boolean;
   getClubProximity: (pos: THREE.Vector3) => number;
-  getGroundHeight: (x: number, z: number) => number;
+  getGroundHeight: (x: number, z: number, currentY?: number) => number;
   shouldTrafficStop: (x: number, z: number, yaw: number) => boolean;
   onThunder?: () => void;
   update: (
@@ -766,9 +779,12 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
   // 6f) Smuggler's Cay & Offshore Rig 86 in the Southeast Ocean (x = 120..200, z = 55..135)
   const smugglersCay = buildSmugglersCay(scene, colliders, worldMeshes, palmPositions);
 
+  // 6g) Palm Parking '86 — 4-Story Drivable Art-Deco Neon Parking Garage on Block (0, 40)
+  const palmParking = buildPalmParking(scene, colliders, worldMeshes, palmPositions);
+
   const palms = buildPalmTrees(scene, palmPositions);
 
-  // 6f) Vice Port Industrial Container Docks, 26m Gantry Cranes, Cargo Freighter & Import/Export (z = 66..140)
+  // 6h) Vice Port Industrial Container Docks, 26m Gantry Cranes, Cargo Freighter & Import/Export (z = 66..140)
   const vicePort = buildVicePort(scene, colliders, worldMeshes, oceanMat);
 
   // ---------------------------------------------------------------------------
@@ -776,7 +792,12 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
   // ---------------------------------------------------------------------------
   const streetLights = buildStreetlights(scene);
   const trafficLights = buildTrafficLights(scene);
-  const stuntRamps = [...buildStuntRamps(scene), ...vicePort.stuntRamps, ...northPoint.stuntRamps];
+  const stuntRamps = [
+    ...buildStuntRamps(scene),
+    ...vicePort.stuntRamps,
+    ...northPoint.stuntRamps,
+    ...palmParking.stuntRamps,
+  ];
 
   // ---------------------------------------------------------------------------
   // 8) Subtle Post-Rain Mist / Lingering Drizzle Motes (GPU Vertex Animation -> 0 CPU/Upload!)
@@ -982,10 +1003,13 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
     freezeStaticSubtree(scene.children[i]);
   }
 
-  // Pre-filter static world colliders once at startup (exclude ground-level overhead lintels & roofs, but keep elevated Cape Vice Cliff structures!)
-  const elevatedTags = new Set(['cliff-guardrail', 'lighthouse-base', 'keepers-cottage']);
+  // Pre-filter static world colliders once at startup (exclude ground-level overhead lintels & roofs, but keep elevated Cape Vice Cliff & Palm Parking walls!)
+  const elevatedTags = new Set(['cliff-guardrail', 'lighthouse-base', 'keepers-cottage', 'parking-wall']);
   const solidVehicleColliders = colliders.filter(
-    (c) => c.maxY > 0.45 && (c.minY < 2.9 || (c.tag !== undefined && elevatedTags.has(c.tag))),
+    (c) =>
+      c.tag !== 'parking-floor' &&
+      c.maxY > 0.45 &&
+      (c.minY < 2.9 || (c.tag !== undefined && elevatedTags.has(c.tag))),
   );
   const solidNpcColliders = colliders.filter((c) => c.maxY > 0.45 && c.minY < 1.85);
 
@@ -1036,6 +1060,18 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
     isNearSmugglersLoot: (pos: THREE.Vector3) => smugglersCay.isNearLoot(pos),
     takeSmugglersLoot: () => smugglersCay.takeLoot(),
     isNearSmugglersBar: (pos: THREE.Vector3) => smugglersCay.isNearTikiBar(pos),
+    isInsidePalmParking: (pos: THREE.Vector3) => palmParking.isInsideGarage(pos),
+    isCarAtParkingRushStart: (pos: THREE.Vector3) => palmParking.isCarAtRushStart(pos),
+    isParkingRushActive: () => palmParking.isRushActive(),
+    startParkingRush: () => palmParking.startRush(),
+    cancelParkingRush: () => palmParking.cancelRush(),
+    getParkingRushHud: (playerPos: THREE.Vector3) => palmParking.getRushHud(playerPos),
+    updateParkingRush: (
+      elapsed: number,
+      dt: number,
+      playerPos?: THREE.Vector3,
+      activeCarPos?: THREE.Vector3 | null,
+    ) => palmParking.update(elapsed, dt, playerPos, activeCarPos),
     cycleTimeOfDay: () => {
       timeIndex = (timeIndex + 1) % timePresets.length;
       return applyTimePreset(timeIndex);
@@ -1085,7 +1121,8 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
     isTvOn: () => safehouse.isTvOn(),
     isNearClubBar: (pos: THREE.Vector3) => neonClub.isNearBar(pos),
     getClubProximity: (pos: THREE.Vector3) => neonClub.getProximity(pos),
-    getGroundHeight: (x: number, z: number) =>
+    getGroundHeight: (x: number, z: number, currentY?: number) =>
+      palmParking.getGroundHeight(x, z, currentY) ??
       northPoint.getGroundHeight(x, z) ??
       starfish.getGroundHeight(x, z) ??
       viceAirfield.getGroundHeight(x, z) ??

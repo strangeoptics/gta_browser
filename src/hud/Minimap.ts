@@ -191,6 +191,13 @@ export class Minimap {
       sctx.strokeRect(bx, bz, bw, bd);
     }
 
+    // Palm Parking '86 4-Story Neon Parking Garage on Block (0, 40)
+    sctx.fillStyle = 'rgba(64, 72, 92, 0.65)';
+    sctx.strokeStyle = '#ff4fa3';
+    sctx.lineWidth = 1.6;
+    sctx.fillRect(wx(-12.6), wz(27.4), 25.2 * scale, 25.2 * scale);
+    sctx.strokeRect(wx(-12.6), wz(27.4), 25.2 * scale, 25.2 * scale);
+
     // Static district & landmark labels
     sctx.font = '900 11px "Segoe UI", sans-serif';
     sctx.textAlign = 'center';
@@ -224,6 +231,8 @@ export class Minimap {
     sctx.fillText('✈', wx(-96), wz(102));
     sctx.fillStyle = '#ffd15c';
     sctx.fillText('☠', wx(162), wz(96));
+    sctx.fillStyle = '#36f1e6';
+    sctx.fillText('P3', wx(0), wz(40));
 
     this.staticCanvas = c;
     return c;

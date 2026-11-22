@@ -262,6 +262,13 @@ export function handleInteractKeyF(ctx: InteractionContext): void {
       car.destroyed = false;
       audio.playPurchase();
       showQuickToast(`PRIVATE GARAGE · ${car.name} REPARIERT (100%)`);
+    } else if (world.isCarAtParkingRushStart(car.position)) {
+      world.startParkingRush();
+      audio.playCheckpoint();
+      showQuickToast('PALM PARKING · NEON DRIFT RUSH GESTARTET! 6 CHECKPOINTS AUFS SKYDECK (55s)');
+    } else if (world.isParkingRushActive()) {
+      world.cancelParkingRush();
+      showQuickToast('PALM PARKING · NEON DRIFT RUSH ABGEBROCHEN');
     } else if (world.isCarInTuningBay(car.position)) {
       const tuneCost = car.tuned ? 400 : 600;
       if (objectives.cash >= tuneCost) {

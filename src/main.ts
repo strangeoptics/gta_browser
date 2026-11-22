@@ -12,6 +12,7 @@ import { WeaponSystem } from './combat/WeaponSystem';
 import { VehicleSystem } from './vehicles/VehicleSystem';
 import { BoatSystem } from './vehicles/BoatSystem';
 import { PlayerHelicopterSystem } from './vehicles/PlayerHelicopterSystem';
+import { GarageRidesSystem, type GarageWallInteractable } from './vehicles/GarageRidesSystem';
 import { DestructibleProps } from './world/DestructibleProps';
 import { DecalSystem } from './world/DecalSystem';
 import { RoadblockSystem } from './world/RoadblockSystem';
@@ -152,6 +153,7 @@ const weapons = new WeaponSystem(scene, camera);
 const vehicles = new VehicleSystem(scene);
 const boat = new BoatSystem(scene);
 const maverick = new PlayerHelicopterSystem(scene, world.maverickSpawn);
+const garageRides = new GarageRidesSystem(scene);
 const npcs = new NpcSystem(scene);
 const heli = new HelicopterSystem(scene);
 const pets = new SafehousePets(scene);
@@ -224,6 +226,7 @@ let lookedFood: FoodItem | null = null;
 let lookedCabinetWeapon: CabinetWeapon | null = null;
 let lookedAtTv = false;
 let lookedPet: PetInteractable | null = null;
+let lookedWallRide: GarageWallInteractable | null = null;
 let handHoldTimer = 0;
 
 // Dirty-checked DOM write helpers to eliminate redundant style/layout work at 60-144 FPS
@@ -384,6 +387,10 @@ function triggerBusted(): void {
     maverick.exit(world.colliders, world.getGroundHeight);
     weapons.setEnabled(true);
   }
+  if (garageRides.isRiding()) {
+    garageRides.dismountRide(world.layout.playableBounds);
+    weapons.setEnabled(true);
+  }
 }
 
 function applyPlayerDamage(amount: number): void {
@@ -416,6 +423,10 @@ function applyPlayerDamage(amount: number): void {
     audio.playWasted();
     if (vehicles.isInVehicle()) {
       vehicles.exitVehicle();
+      weapons.setEnabled(true);
+    }
+    if (garageRides.isRiding()) {
+      garageRides.dismountRide(world.layout.playableBounds);
       weapons.setEnabled(true);
     }
   }
@@ -505,6 +516,26 @@ vehicles.onActiveVehicleDestroyed = () => {
     camera.updateProjectionMatrix();
     weapons.setEnabled(true);
   }
+};
+
+garageRides.onMountStateChanged = (detachingFromWall) => {
+  audio.playWallMountToggle(detachingFromWall);
+};
+
+garageRides.onJumpTriggered = () => {
+  audio.playSkateOllie();
+};
+
+garageRides.onLanded = () => {
+  audio.playSkateLand();
+};
+
+garageRides.onStuntLanded = (distM, reward) => {
+  objectives.cash += reward;
+  audio.playMissionPassed();
+  addCameraShake(0.24);
+  persistProgress();
+  showQuickToast(`STUNT BONUS · ${distM}m SPRUNG · +$${reward}`);
 };
 
 npcs.onPlayerDamaged = (dmg) => {
@@ -732,6 +763,27 @@ function interactWithLookedPet(): boolean {
   return true;
 }
 
+function interactWithLookedWallRide(): boolean {
+  if (!lookedWallRide) return false;
+  const target = lookedWallRide;
+  weapons.triggerEatAnimation();
+  handHoldTimer = 0.4;
+  if (target.action === 'detach') {
+    garageRides.mountRide(target.id, playerAvatar.getCurrentOutfit());
+    weapons.setEnabled(false);
+    showQuickToast(
+      target.id === 'skateboard'
+        ? 'NEON SKATEBOARD ABGENOMMEN · [WASD] PUSHEN · [SPACE] OLLIE · [SHIFT] SPRINT'
+        : '80s RENNRAD ABGENOMMEN · [WASD] TRETEN · [SHIFT] SPRINT · [SPACE] HOP · [G] KLINGEL',
+    );
+  } else {
+    const res = garageRides.hangRideOnWall(target.id);
+    showQuickToast(`GARAGENWAND · ${res.name} WIEDER FEST MONTIERT`);
+  }
+  lookedWallRide = null;
+  return true;
+}
+
 function tryToggleVehicleOrBoat(): void {
   if (maverick.isInHeli()) {
     if (maverick.canExit(world.colliders, world.getGroundHeight)) {
@@ -749,6 +801,14 @@ function tryToggleVehicleOrBoat(): void {
     camera.fov = 75;
     camera.updateProjectionMatrix();
     weapons.setEnabled(true);
+  } else if (garageRides.isRiding()) {
+    const exitPos = garageRides.dismountRide(world.layout.playableBounds);
+    if (exitPos) {
+      player.setSpawn(exitPos.x, exitPos.y, exitPos.z, exitPos.yaw);
+      camera.fov = 75;
+      camera.updateProjectionMatrix();
+      weapons.setEnabled(true);
+    }
   } else if (vehicles.isInVehicle()) {
     const exitPos = vehicles.exitVehicle(world.layout.playableBounds);
     if (exitPos) {
@@ -757,6 +817,8 @@ function tryToggleVehicleOrBoat(): void {
       camera.updateProjectionMatrix();
       weapons.setEnabled(true);
     }
+  } else if (lookedWallRide && lookedWallRide.action === 'detach') {
+    interactWithLookedWallRide();
   } else if (maverick.isPlayerNear(player.position)) {
     maverick.board();
     weapons.setEnabled(false);
@@ -765,6 +827,19 @@ function tryToggleVehicleOrBoat(): void {
     boat.board();
     weapons.setEnabled(false);
   } else {
+    const nearGarageRide = garageRides.findNearestMountable(player.position);
+    if (nearGarageRide) {
+      garageRides.mountRide(nearGarageRide.id, playerAvatar.getCurrentOutfit());
+      weapons.setEnabled(false);
+      if (nearGarageRide.fromWall) {
+        showQuickToast(
+          nearGarageRide.id === 'skateboard'
+            ? 'NEON SKATEBOARD ABGENOMMEN · [WASD] PUSHEN · [SPACE] OLLIE · [SHIFT] SPRINT'
+            : '80s RENNRAD ABGENOMMEN · [WASD] TRETEN · [SHIFT] SPRINT · [SPACE] HOP · [G] KLINGEL',
+        );
+      }
+      return;
+    }
     const nearest = vehicles.findNearestVehicle(player.position, 4.4);
     if (nearest) {
       if (nearest.isPolice || nearest.isAiControlled) {
@@ -807,7 +882,9 @@ window.addEventListener('mousedown', (e) => {
     !petShopOpen &&
     !photoMode &&
     !vehicles.isInVehicle() &&
-    !boat.isInBoat()
+    !boat.isInBoat() &&
+    !maverick.isInHeli() &&
+    !garageRides.isRiding()
   ) {
     if (lookedFood && lookedFood.available) {
       eatLookedFood();
@@ -817,6 +894,8 @@ window.addEventListener('mousedown', (e) => {
       toggleSafehouseTv();
     } else if (lookedPet) {
       interactWithLookedPet();
+    } else if (lookedWallRide) {
+      interactWithLookedWallRide();
     }
   }
 });
@@ -842,7 +921,13 @@ window.addEventListener('keydown', (e) => {
       photoPitch = euler.x;
       weapons.setViewmodelVisible(false);
     } else {
-      weapons.setViewmodelVisible(!vehicles.isInVehicle() && !boat.isInBoat() && !player.isThirdPerson());
+      weapons.setViewmodelVisible(
+        !vehicles.isInVehicle() &&
+          !boat.isInBoat() &&
+          !maverick.isInHeli() &&
+          !garageRides.isRiding() &&
+          !player.isThirdPerson(),
+      );
     }
     return;
   }
@@ -896,6 +981,11 @@ window.addEventListener('keydown', (e) => {
   }
 
   if (e.code === 'KeyG' && player.getIsActive() && !shopOpen && wastedTimer <= 0) {
+    if (garageRides.getActiveRideId() === 'roadbike') {
+      audio.playBikeBell();
+      showQuickToast('KLINGELING! · FREIE BAHN FÜR DAS 80s RENNRAD!');
+      return;
+    }
     const car = vehicles.getActiveVehicle();
     if (vigilante.isActive()) {
       vigilante.stop();
@@ -912,6 +1002,23 @@ window.addEventListener('keydown', (e) => {
   }
 
   if (e.code === 'KeyF' && player.getIsActive() && !shopOpen && wastedTimer <= 0) {
+    const activeGarageRide = garageRides.getActiveRideId();
+    if (activeGarageRide && garageRides.canRehangActiveRide(player.position)) {
+      const res = garageRides.hangRideOnWall(activeGarageRide);
+      if (res.dismountedPlayerPos) {
+        player.setSpawn(
+          res.dismountedPlayerPos.x,
+          res.dismountedPlayerPos.y,
+          res.dismountedPlayerPos.z,
+          res.dismountedPlayerPos.yaw,
+        );
+        camera.fov = 75;
+        camera.updateProjectionMatrix();
+        weapons.setEnabled(true);
+      }
+      showQuickToast(`GARAGENWAND · ${res.name} WIEDER AN DER WAND BEFESTIGT`);
+      return;
+    }
     const car = vehicles.getActiveVehicle();
     if (car) {
       if (world.isInSafehouseGarage(car.position)) {
@@ -973,6 +1080,8 @@ window.addEventListener('keydown', (e) => {
       toggleSafehouseTv();
     } else if (lookedPet) {
       interactWithLookedPet();
+    } else if (lookedWallRide) {
+      interactWithLookedWallRide();
     } else if (world.isNearPetShop(player.position)) {
       if (petShopOpen) closePetShop();
       else openPetShop();
@@ -1156,7 +1265,8 @@ window.addEventListener('keydown', (e) => {
     !shopOpen &&
     !vehicles.isInVehicle() &&
     !boat.isInBoat() &&
-    !maverick.isInHeli()
+    !maverick.isInHeli() &&
+    !garageRides.isRiding()
   ) {
     const is3p = player.toggleThirdPerson();
     weapons.setViewmodelVisible(!is3p);
@@ -1328,13 +1438,19 @@ function animate(now: number): void {
 
   if (isPlaying && pad.connected) {
     if (pad.interactPressed) tryToggleVehicleOrBoat();
-    if (pad.camTogglePressed && !vehicles.isInVehicle() && !boat.isInBoat()) {
+    if (
+      pad.camTogglePressed &&
+      !vehicles.isInVehicle() &&
+      !boat.isInBoat() &&
+      !maverick.isInHeli() &&
+      !garageRides.isRiding()
+    ) {
       const is3p = player.toggleThirdPerson();
       weapons.setViewmodelVisible(!is3p);
       showQuickToast(is3p ? 'KAMERA · 3RD PERSON' : 'KAMERA · FIRST PERSON');
     }
     if (pad.reloadOrSprayPressed && vehicles.isInVehicle()) tryUsePayNSpray();
-    if (pad.prevWeaponPressed && (vehicles.isInVehicle() || boat.isInBoat())) {
+    if (pad.prevWeaponPressed && (vehicles.isInVehicle() || boat.isInBoat() || garageRides.isRiding())) {
       const station = audio.nextRadioStation();
       showQuickToast(`RADIO · ${station}`);
     }
@@ -1347,7 +1463,8 @@ function animate(now: number): void {
   const inVehicle = vehicles.isInVehicle();
   const inBoat = boat.isInBoat();
   const inHeli = maverick.isInHeli();
-  const inAnyCraft = inVehicle || inBoat || inHeli;
+  const inGarageRide = garageRides.isRiding();
+  const inAnyCraft = inVehicle || inBoat || inHeli || inGarageRide;
 
   let playerSpeed = 0;
   let playerGrounded = true;
@@ -1380,6 +1497,12 @@ function animate(now: number): void {
       player.position.copy(car.position);
       headingYaw = car.yaw + Math.PI;
     }
+  } else if (inGarageRide) {
+    const gr = garageRides.getActiveRide();
+    if (gr) {
+      player.position.copy(gr.position);
+      headingYaw = gr.yaw + Math.PI;
+    }
   } else if (inBoat) {
     player.position.copy(boat.position);
     headingYaw = boat.yaw + Math.PI;
@@ -1406,6 +1529,30 @@ function animate(now: number): void {
     drunkLevel,
     world.getGroundHeight,
   );
+  const garageRideColliders = [
+    ...world.colliders,
+    ...vehicles.getVehicleColliders(),
+    ...rbColliders,
+  ];
+  const garageRideHud = garageRides.update(
+    dt,
+    elapsed,
+    isPlaying,
+    player.position,
+    camera,
+    garageRideColliders,
+    world.layout.playableBounds,
+    pad,
+    world.stuntRamps,
+    drunkLevel,
+    world.getGroundHeight,
+  );
+  if (inGarageRide) {
+    const gr = garageRides.getActiveRide();
+    if (gr && Math.abs(gr.speed) > 5.0) {
+      destructibles.handleVehicleImpact(gr.position, gr.yaw, Math.abs(gr.speed));
+    }
+  }
   const boatHud = boat.update(dt, elapsed, isPlaying, player.position, camera, pad);
   const heliPlayerHud = maverick.update(
     dt,
@@ -1530,13 +1677,20 @@ function animate(now: number): void {
     elapsed,
     isPlaying,
     inAnyCraft,
-    inBoat ? boatHud.speedKmh : inHeli ? heliPlayerHud.speedKmh : driveHud.speedKmh,
+    inBoat
+      ? boatHud.speedKmh
+      : inHeli
+        ? heliPlayerHud.speedKmh
+        : inGarageRide
+          ? garageRideHud.speedKmh
+          : driveHud.speedKmh,
     driveHud.drifting,
     playerSpeed,
-    playerGrounded,
+    inGarageRide ? garageRideHud.grounded : playerGrounded,
     wanted.stars,
     player.position.x,
     world.getClubProximity(player.position),
+    inGarageRide && garageRideHud.rideId ? garageRideHud.rideId : 'motor',
   );
 
   const shootables = [
@@ -1551,6 +1705,7 @@ function animate(now: number): void {
   lookedCabinetWeapon = null;
   lookedAtTv = false;
   lookedPet = null;
+  lookedWallRide = null;
   const onSafehouseLot =
     player.position.x > 29 && player.position.x < 51 && player.position.z > -50 && player.position.z < -30 && player.position.y < 9.0;
   const inSafehouseOrPd = onSafehouseLot || world.isInsidePoliceStation(player.position);
@@ -1560,10 +1715,21 @@ function animate(now: number): void {
     foodRaycaster.set(camOriginScratch, camDirScratch);
     foodRaycaster.far = 3.6;
 
-    // Check adopted Safehouse pets first (Lounge + Rooftop Pool Alligator!)
+    // Check Garage West-Wall Skateboard & Rennrad mounts + Adopted Safehouse Pets
     if (onSafehouseLot) {
+      const wallRides = garageRides.getWallInteractables();
+      if (wallRides.length > 0) {
+        const wallHits = foodRaycaster.intersectObjects(
+          wallRides.map((w) => w.hitbox),
+          false,
+        );
+        if (wallHits.length > 0) {
+          lookedWallRide = wallRides.find((w) => w.hitbox === wallHits[0].object) ?? null;
+        }
+      }
+
       const petTargets = pets.getInteractables();
-      if (petTargets.length > 0) {
+      if (!lookedWallRide && petTargets.length > 0) {
         const petHits = foodRaycaster.intersectObjects(
           petTargets.map((p) => p.hitbox),
           false,
@@ -1575,7 +1741,7 @@ function animate(now: number): void {
     }
 
     const foods = world.getFoodItems();
-    if (!lookedPet && foods.length > 0) {
+    if (!lookedWallRide && !lookedPet && foods.length > 0) {
       const foodHits = foodRaycaster.intersectObjects(
         foods.map((f) => f.mesh),
         true,
@@ -1586,7 +1752,7 @@ function animate(now: number): void {
       }
     }
 
-    if (!lookedFood) {
+    if (!lookedWallRide && !lookedFood) {
       const cabWeapons = world.getCabinetWeapons();
       const cabHits = foodRaycaster.intersectObjects(
         cabWeapons.map((w) => w.mesh),
@@ -1605,7 +1771,7 @@ function animate(now: number): void {
       }
     }
 
-    if (!lookedPet && !lookedFood && !lookedCabinetWeapon) {
+    if (!lookedWallRide && !lookedPet && !lookedFood && !lookedCabinetWeapon) {
       const tvHits = foodRaycaster.intersectObject(world.getTvMesh(), true);
       if (tvHits.length > 0) {
         lookedAtTv = true;
@@ -1613,7 +1779,12 @@ function animate(now: number): void {
     }
   }
   weapons.setHandMode(
-    Boolean(lookedPet) || Boolean(lookedFood) || Boolean(lookedCabinetWeapon) || lookedAtTv || handHoldTimer > 0,
+    Boolean(lookedWallRide) ||
+      Boolean(lookedPet) ||
+      Boolean(lookedFood) ||
+      Boolean(lookedCabinetWeapon) ||
+      lookedAtTv ||
+      handHoldTimer > 0,
   );
 
   const wHud = weapons.update(dt, isPlaying && !inAnyCraft && !playerSwimming, playerSpeed, world.worldMeshes, shootables, pad, drunkLevel);
@@ -1635,6 +1806,11 @@ function animate(now: number): void {
     if (car) {
       weapons.updateDriveBy(dt, isPlaying, car.position, world.worldMeshes, shootables, pad);
     }
+  } else if (inGarageRide) {
+    const gr = garageRides.getActiveRide();
+    if (gr) {
+      weapons.updateDriveBy(dt, isPlaying, gr.position, world.worldMeshes, shootables, pad);
+    }
   }
 
   minimap.render(
@@ -1649,6 +1825,7 @@ function animate(now: number): void {
     heli.active ? heli.position : null,
     vigilanteHud.targetPos ?? heistHud.targetPos,
     maverick.position,
+    garageRides.getParkedMarkers(),
   );
 
   // --- HUD Updates (Dirty-checked DOM mutations) ---
@@ -1724,6 +1901,19 @@ function animate(now: number): void {
     setWidth(vehicleHpFillEl, '100%');
     vehicleHpFillEl.classList.remove('low');
     setText(vehicleCamHintEl, `[Q] ${audio.getRadioStation()} · [E] AN LAND`);
+  } else if (garageRideHud.inRide) {
+    setText(vehicleNameEl, garageRideHud.rideName);
+    setText(vehicleSpeedEl, `${garageRideHud.speedKmh}`);
+    setWidth(vehicleHpFillEl, '100%');
+    vehicleHpFillEl.classList.remove('low');
+    const rideHint =
+      garageRideHud.rideId === 'skateboard'
+        ? `[SPACE] OLLIE · [SHIFT] PUSH · [V] CAM · [E] ABSTEIGEN`
+        : `[SPACE] HOP · [SHIFT] SPRINT · [G] KLINGEL · [V] CAM · [E] AB`;
+    setText(vehicleCamHintEl, rideHint);
+    if (garageRideHud.canRehangInGarage) {
+      nextPrompt = `[F] ${garageRideHud.rideName} WIEDER AN GARAGENWAND BEFESTIGEN`;
+    }
   } else if (driveHud.inVehicle) {
     setText(vehicleNameEl, driveHud.vehicleName);
     setText(vehicleSpeedEl, `${driveHud.speedKmh}`);
@@ -1764,7 +1954,12 @@ function animate(now: number): void {
     hitmarkerEl.style.opacity = wHud.hitmarkerAlpha > 0.01 ? wHud.hitmarkerAlpha.toFixed(2) : '0';
     hitmarkerEl.classList.toggle('kill', wHud.hitmarkerKill && wHud.hitmarkerAlpha > 0.05);
 
-    if (lookedPet) {
+    if (lookedWallRide) {
+      nextPrompt =
+        lookedWallRide.action === 'detach'
+          ? `[E / F / LMB] ${lookedWallRide.promptLabel}`
+          : `[F / LMB] ${lookedWallRide.promptLabel}`;
+    } else if (lookedPet) {
       nextPrompt = `[LMB / F] ${lookedPet.promptLabel}`;
     } else if (lookedFood) {
       nextPrompt = `[LMB / F] ${lookedFood.name} NEHMEN & ESSEN (+${lookedFood.heal} HP)`;
@@ -1814,6 +2009,8 @@ function animate(now: number): void {
       nextPrompt = '[E] EINSTEIGEN · VICE MAVERICK HELIKOPTER';
     } else if (boatHud.nearbyBoat) {
       nextPrompt = '[E] EINSTEIGEN · STINGER SPEEDBOAT';
+    } else if (garageRideHud.nearbyMountPrompt) {
+      nextPrompt = garageRideHud.nearbyMountPrompt;
     } else if (driveHud.nearbyVehicleName) {
       nextPrompt = `[E] EINSTEIGEN · ${driveHud.nearbyVehicleName}`;
     }

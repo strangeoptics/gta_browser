@@ -32,6 +32,7 @@ export class AudioEngine {
   private clubBeatTimer = 0;
   private clubStep = 0;
   private stepTimer = 0;
+  private rollTickTimer = 0;
 
   private readonly viceBass = [55, 55, 65.41, 73.42, 55, 55, 82.41, 73.42];
   private readonly viceLead = [440, 523.25, 659.25, 587.33, 440, 659.25, 783.99, 659.25];
@@ -668,6 +669,137 @@ export class AudioEngine {
     });
   }
 
+  public playWallMountToggle(detaching: boolean): void {
+    if (!this.ctx || !this.masterGain || this.muted) return;
+    const now = this.ctx.currentTime;
+    const freqs = detaching ? [520, 780] : [740, 480];
+    freqs.forEach((f, idx) => {
+      const osc = this.ctx!.createOscillator();
+      const gain = this.ctx!.createGain();
+      osc.type = 'triangle';
+      const t = now + idx * 0.055;
+      osc.frequency.setValueAtTime(f, t);
+      gain.gain.setValueAtTime(0.18, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
+      osc.connect(gain);
+      gain.connect(this.masterGain!);
+      osc.start(t);
+      osc.stop(t + 0.1);
+    });
+  }
+
+  public playSkateOllie(): void {
+    if (!this.ctx || !this.masterGain || !this.noiseBuffer || this.muted) return;
+    const now = this.ctx.currentTime;
+    // Crisp wooden tail pop against asphalt
+    const osc = this.ctx.createOscillator();
+    const oGain = this.ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(340, now);
+    osc.frequency.exponentialRampToValueAtTime(115, now + 0.075);
+    oGain.gain.setValueAtTime(0.28, now);
+    oGain.gain.exponentialRampToValueAtTime(0.001, now + 0.085);
+    osc.connect(oGain);
+    oGain.connect(this.masterGain);
+    osc.start(now);
+    osc.stop(now + 0.09);
+
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.noiseBuffer;
+    const bp = this.ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = 2100;
+    bp.Q.value = 2.5;
+    const nGain = this.ctx.createGain();
+    nGain.gain.setValueAtTime(0.22, now);
+    nGain.gain.exponentialRampToValueAtTime(0.001, now + 0.065);
+    src.connect(bp);
+    bp.connect(nGain);
+    nGain.connect(this.masterGain);
+    src.start(now);
+    src.stop(now + 0.07);
+  }
+
+  public playSkateLand(): void {
+    if (!this.ctx || !this.masterGain || !this.noiseBuffer || this.muted) return;
+    const now = this.ctx.currentTime;
+    for (let k = 0; k < 2; k++) {
+      const t = now + k * 0.032;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(195 - k * 30, t);
+      osc.frequency.exponentialRampToValueAtTime(68, t + 0.07);
+      gain.gain.setValueAtTime(0.22, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+      osc.connect(gain);
+      gain.connect(this.masterGain);
+      osc.start(t);
+      osc.stop(t + 0.085);
+    }
+  }
+
+  public playBikeBell(): void {
+    if (!this.ctx || !this.masterGain || this.muted) return;
+    const now = this.ctx.currentTime;
+    // Classic bright brass bicycle "Ring-ring!" dual strike
+    for (const offset of [0, 0.11]) {
+      for (const [freq, amp] of [
+        [2349.3, 0.16],
+        [3680.0, 0.09],
+      ] as [number, number][]) {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        const t = now + offset;
+        osc.frequency.setValueAtTime(freq, t);
+        gain.gain.setValueAtTime(amp, t);
+        gain.gain.exponentialRampToValueAtTime(0.0008, t + 0.42);
+        osc.connect(gain);
+        gain.connect(this.masterGain);
+        osc.start(t);
+        osc.stop(t + 0.44);
+      }
+    }
+  }
+
+  private playSkateSeamClick(vol: number): void {
+    if (!this.ctx || !this.masterGain || !this.noiseBuffer || this.muted) return;
+    const now = this.ctx.currentTime;
+    for (const off of [0, 0.042]) {
+      const src = this.ctx.createBufferSource();
+      src.buffer = this.noiseBuffer;
+      const bp = this.ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = 1650;
+      bp.Q.value = 3.0;
+      const gain = this.ctx.createGain();
+      const t = now + off;
+      gain.gain.setValueAtTime(vol, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.032);
+      src.connect(bp);
+      bp.connect(gain);
+      gain.connect(this.masterGain);
+      src.start(t);
+      src.stop(t + 0.036);
+    }
+  }
+
+  private playFreehubTick(vol: number): void {
+    if (!this.ctx || !this.masterGain || this.muted) return;
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(3100, now);
+    gain.gain.setValueAtTime(vol, now);
+    gain.gain.exponentialRampToValueAtTime(0.0008, now + 0.016);
+    osc.connect(gain);
+    gain.connect(this.masterGain);
+    osc.start(now);
+    osc.stop(now + 0.02);
+  }
+
   private playWetFootstep(): void {
     if (!this.ctx || !this.masterGain || !this.noiseBuffer || this.muted) return;
     const now = this.ctx.currentTime;
@@ -759,6 +891,7 @@ export class AudioEngine {
     wantedStars: number,
     playerX = 0,
     clubProximity = 0,
+    rideAudioMode: 'motor' | 'skateboard' | 'roadbike' = 'motor',
   ): void {
     if (
       !this.ctx ||
@@ -782,14 +915,32 @@ export class AudioEngine {
       this.surfFilter.frequency.setTargetAtTime(240 + waveSwell * 320, now, 0.15);
     }
 
-    // 1) Engine hum while driving
-    const targetEngineGain = isActive && inVehicle ? 0.14 + Math.min(0.12, speedKmh * 0.0015) : 0;
+    // 1) Engine hum while driving motorized vehicles (silent on Skateboard & Rennrad!)
+    const isMotorized = inVehicle && rideAudioMode === 'motor';
+    const targetEngineGain = isActive && isMotorized ? 0.14 + Math.min(0.12, speedKmh * 0.0015) : 0;
     const targetEngineFreq = 52 + speedKmh * 1.45;
     this.engineGain.gain.setTargetAtTime(targetEngineGain, now, 0.08);
     this.engineOsc.frequency.setTargetAtTime(targetEngineFreq, now, 0.06);
 
+    // 1b) Skateboard pavement seam clicks & Rennrad freehub ratchet clicks
+    if (isActive && inVehicle && rideAudioMode === 'skateboard' && grounded && speedKmh > 3) {
+      this.rollTickTimer -= dt;
+      if (this.rollTickTimer <= 0) {
+        this.playSkateSeamClick(Math.min(0.09, 0.03 + speedKmh * 0.0012));
+        this.rollTickTimer = Math.max(0.24, 1.35 - speedKmh * 0.018);
+      }
+    } else if (isActive && inVehicle && rideAudioMode === 'roadbike' && grounded && speedKmh > 4) {
+      this.rollTickTimer -= dt;
+      if (this.rollTickTimer <= 0) {
+        this.playFreehubTick(Math.min(0.045, 0.015 + speedKmh * 0.0005));
+        this.rollTickTimer = Math.max(0.055, 0.24 - speedKmh * 0.0028);
+      }
+    } else {
+      this.rollTickTimer = 0.05;
+    }
+
     // 2) Tire drift screech when handbraking at speed
-    const targetScreech = isActive && inVehicle && drifting ? 0.085 : 0;
+    const targetScreech = isActive && isMotorized && drifting ? 0.085 : 0;
     this.screechGain.gain.setTargetAtTime(targetScreech, now, 0.05);
     this.screechOsc.frequency.setTargetAtTime(860 + Math.sin(elapsed * 22) * 90, now, 0.03);
 

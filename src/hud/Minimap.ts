@@ -28,6 +28,7 @@ export class Minimap {
     heliPos?: { x: number; z: number } | null,
     heistTarget?: { x: number; z: number } | null,
     maverickPos?: { x: number; z: number } | null,
+    parkedRides?: { x: number; z: number; label: string; color: string }[],
   ): void {
     // Throttle 2D radar redraws to ~30 Hz (saves ~50% 2D canvas CPU work on 60-144Hz monitors!)
     if (elapsed - this.lastRenderElapsed < 0.032) return;
@@ -240,6 +241,18 @@ export class Minimap {
       const mz = (maverickPos.z - playerZ) * scale;
       ctx.fillStyle = '#52f29c';
       ctx.fillText('M', mx, mz);
+    }
+
+    // Parked Personal Skateboard (SB) / Rennrad (RR) markers when left out in the city
+    if (parkedRides) {
+      ctx.font = '900 9px "Segoe UI", sans-serif';
+      for (const pr of parkedRides) {
+        const rx = (pr.x - playerX) * scale;
+        const rz = (pr.z - playerZ) * scale;
+        ctx.fillStyle = pr.color;
+        ctx.fillText(pr.label, rx, rz);
+      }
+      ctx.font = '900 11px "Segoe UI", sans-serif';
     }
 
     // Ocean Club Heist Start marker (★) at (60, -26) when idle

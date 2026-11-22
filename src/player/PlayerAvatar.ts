@@ -170,6 +170,23 @@ export class PlayerAvatar {
     return this.outfitIndex;
   }
 
+  public getCurrentOutfit(): {
+    primary: string;
+    accent: string;
+    pants: string;
+    variant: number;
+    role: 'civilian' | 'police';
+  } {
+    const o = PLAYER_OUTFITS[this.outfitIndex];
+    return {
+      primary: o.primary,
+      accent: o.accent,
+      pants: o.pants,
+      variant: o.variant,
+      role: o.role,
+    };
+  }
+
   public setVisible(visible: boolean): void {
     this.group.visible = visible;
   }

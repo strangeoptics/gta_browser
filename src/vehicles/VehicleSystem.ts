@@ -18,6 +18,7 @@ export interface Vehicle {
   specialRole?: SpecialVehicleRole;
   isBike: boolean;
   isRv: boolean;
+  isDelorean: boolean;
   mesh: THREE.Group;
   hitbox: THREE.Mesh;
   bodyMat: THREE.MeshStandardMaterial;
@@ -88,6 +89,20 @@ interface SmokeParticle {
   maxLife: number;
 }
 
+interface FireTrailSegment {
+  mesh: THREE.Mesh;
+  life: number;
+  maxLife: number;
+  phase: number;
+}
+
+interface ElectricBolt {
+  line: THREE.Line;
+  positions: Float32Array;
+  life: number;
+  maxLife: number;
+}
+
 const LANE_OFFSET = 2.75; // US right-hand lane center offset from road center (road width = 12m, curb at ±6.0m)
 
 const CAR_SPECS: {
@@ -141,6 +156,13 @@ export class VehicleSystem {
   private readonly smokeParticles: SmokeParticle[] = [];
   private readonly smokePool: THREE.Mesh[] = [];
   private readonly smokeGeo = new THREE.BoxGeometry(0.28, 0.28, 0.28);
+  private readonly fireTrails: FireTrailSegment[] = [];
+  private readonly fireTrailPool: THREE.Mesh[] = [];
+  private readonly fireTrailGeo = new THREE.BoxGeometry(0.32, 0.045, 1.15);
+  private readonly activeBolts: ElectricBolt[] = [];
+  private readonly boltPool: ElectricBolt[] = [];
+  private deloreanFireTimer = 0;
+  private deloreanSparkTimer = 0;
   private readonly hitboxMat = new THREE.MeshBasicMaterial({ visible: false });
   private readonly localColliders: AABB[] = [];
   private readonly vehicleColliderScratch: AABB[] = [];
@@ -238,6 +260,7 @@ export class VehicleSystem {
         specialRole: spec.specialRole,
         isBike: spec.bike,
         isRv,
+        isDelorean: spec.model === 'delorean',
         mesh: built.group,
         hitbox,
         bodyMat: built.bodyMat,
@@ -851,7 +874,7 @@ export class VehicleSystem {
     // Resolve solid car-to-car collisions & severity-based crash damage
     this.resolveCarToCarCollisions(solidColliders, bounds, vehicleGrid);
 
-    this.updateExplosionVfx(clampedDt);
+    this.updateExplosionVfx(clampedDt, elapsed);
 
     // Update camera & headlight SpotLight if player is driving
     if (this.activeVehicle) {
@@ -955,7 +978,86 @@ export class VehicleSystem {
     });
   }
 
-  private updateExplosionVfx(dt: number): void {
+  private spawnDeloreanFireTrail(x: number, y: number, z: number, yaw: number): void {
+    let mesh = this.fireTrailPool.pop();
+    if (mesh) {
+      const mat = mesh.material as THREE.MeshBasicMaterial;
+      mat.color.set('#ffae33');
+      mat.opacity = 0.92;
+      mesh.scale.set(1, 1, 1);
+      mesh.visible = true;
+    } else {
+      const mat = new THREE.MeshBasicMaterial({
+        color: '#ffae33',
+        transparent: true,
+        opacity: 0.92,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+      mesh = new THREE.Mesh(this.fireTrailGeo, mat);
+      this.scene.add(mesh);
+    }
+    mesh.position.set(x, y + 0.035, z);
+    mesh.rotation.set(0, yaw, 0);
+    this.fireTrails.push({
+      mesh,
+      life: 2.5,
+      maxLife: 2.5,
+      phase: Math.random() * Math.PI * 2,
+    });
+  }
+
+  private spawnDeloreanLightningBolt(v: Vehicle): void {
+    let bolt = this.boltPool.pop();
+    if (!bolt) {
+      const positions = new Float32Array(6 * 3);
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      const mat = new THREE.LineBasicMaterial({
+        color: '#8cf8ff',
+        transparent: true,
+        opacity: 0.95,
+      });
+      const line = new THREE.Line(geo, mat);
+      line.frustumCulled = false;
+      this.scene.add(line);
+      bolt = { line, positions, life: 0.09, maxLife: 0.09 };
+    } else {
+      bolt.line.visible = true;
+      (bolt.line.material as THREE.LineBasicMaterial).opacity = 0.95;
+      bolt.life = 0.08 + Math.random() * 0.04;
+      bolt.maxLife = bolt.life;
+    }
+
+    const fwdX = Math.sin(v.yaw);
+    const fwdZ = Math.cos(v.yaw);
+    const rightX = Math.cos(v.yaw);
+    const rightZ = -Math.sin(v.yaw);
+
+    // Random start & end points wrapping around the DeLorean's stainless chassis & flux bands
+    const sLat = (Math.random() - 0.5) * 2.4;
+    const sFwd = (Math.random() - 0.5) * 4.4;
+    const sY = 0.35 + Math.random() * 1.05;
+    const eLat = sLat + (Math.random() - 0.5) * 1.9;
+    const eFwd = sFwd + (Math.random() - 0.5) * 2.4;
+    const eY = 0.25 + Math.random() * 1.2;
+
+    const p = bolt.positions;
+    for (let k = 0; k < 6; k++) {
+      const t = k / 5;
+      const jitter = k === 0 || k === 5 ? 0 : 0.36;
+      const lLat = THREE.MathUtils.lerp(sLat, eLat, t) + (Math.random() - 0.5) * jitter;
+      const lFwd = THREE.MathUtils.lerp(sFwd, eFwd, t) + (Math.random() - 0.5) * jitter;
+      const lY = THREE.MathUtils.lerp(sY, eY, t) + (Math.random() - 0.5) * jitter;
+      p[k * 3] = v.position.x + rightX * lLat + fwdX * lFwd;
+      p[k * 3 + 1] = v.position.y + lY;
+      p[k * 3 + 2] = v.position.z + rightZ * lLat + fwdZ * lFwd;
+    }
+    (bolt.line.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
+    this.activeBolts.push(bolt);
+  }
+
+  private updateExplosionVfx(dt: number, elapsed = 0): void {
     let maxBlastGlow = 0;
     for (let i = this.explosions.length - 1; i >= 0; i--) {
       const ex = this.explosions[i];
@@ -989,6 +1091,42 @@ export class VehicleSystem {
         p.mesh.position.addScaledVector(p.vel, dt);
         p.vel.y -= 3.2 * dt;
         (p.mesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0, (p.life / p.maxLife) * 0.85);
+      }
+    }
+
+    // Update burning DeLorean tire fire trails on the asphalt
+    for (let i = this.fireTrails.length - 1; i >= 0; i--) {
+      const ft = this.fireTrails[i];
+      ft.life -= dt;
+      if (ft.life <= 0) {
+        ft.mesh.visible = false;
+        this.fireTrailPool.push(ft.mesh);
+        const last = this.fireTrails.length - 1;
+        if (i !== last) this.fireTrails[i] = this.fireTrails[last];
+        this.fireTrails.pop();
+      } else {
+        const frac = ft.life / ft.maxLife;
+        const flicker = 0.78 + Math.sin(elapsed * 26 + ft.phase) * 0.22;
+        const mat = ft.mesh.material as THREE.MeshBasicMaterial;
+        mat.opacity = frac * flicker * 0.92;
+        // Shift from bright yellow-orange flames to deep ember red as it burns out
+        mat.color.setRGB(1.0, 0.2 + frac * 0.58, frac * frac * 0.16);
+        ft.mesh.scale.set(0.65 + frac * 0.45, 0.8 + flicker * 0.9, 1.0);
+      }
+    }
+
+    // Update crackling DeLorean 100%-speed mini lightning arcs
+    for (let i = this.activeBolts.length - 1; i >= 0; i--) {
+      const b = this.activeBolts[i];
+      b.life -= dt;
+      if (b.life <= 0) {
+        b.line.visible = false;
+        this.boltPool.push(b);
+        const last = this.activeBolts.length - 1;
+        if (i !== last) this.activeBolts[i] = this.activeBolts[last];
+        this.activeBolts.pop();
+      } else {
+        (b.line.material as THREE.LineBasicMaterial).opacity = (b.life / b.maxLife) * 0.95;
       }
     }
   }
@@ -1303,6 +1441,72 @@ export class VehicleSystem {
       }
     }
     v.mesh.position.y = v.position.y;
+
+    // Back to the Future DeLorean DMC-12 VFX:
+    // - >= 80% top speed: twin burning tire fire trails on the asphalt!
+    // - ~100% top speed: crackling electric mini lightning bolts & sparks around the chassis!
+    if (v.isDelorean) {
+      const speedRatio = Math.max(0, v.speed) / maxForward;
+      const fwdX = Math.sin(v.yaw);
+      const fwdZ = Math.cos(v.yaw);
+      const rightX = Math.cos(v.yaw);
+      const rightZ = -Math.sin(v.yaw);
+
+      if (!v.airborne && speedRatio >= 0.8) {
+        this.deloreanFireTimer -= dt;
+        if (this.deloreanFireTimer <= 0) {
+          this.deloreanFireTimer = 0.032;
+          for (const side of [-0.92, 0.92]) {
+            const fx = v.position.x - fwdX * 1.45 + rightX * side;
+            const fz = v.position.z - fwdZ * 1.45 + rightZ * side;
+            this.spawnDeloreanFireTrail(fx, baseGroundY, fz, v.yaw);
+
+            // Occasional rising flame ember right off the burning tire track
+            if (Math.random() < 0.45) {
+              const ember = this.acquireSmokeMesh(Math.random() > 0.4 ? '#ff9922' : '#ff4411', 0.9, 0.48);
+              ember.position.set(fx + (Math.random() - 0.5) * 0.25, baseGroundY + 0.14, fz + (Math.random() - 0.5) * 0.25);
+              this.smokeParticles.push({
+                mesh: ember,
+                vel: new THREE.Vector3((Math.random() - 0.5) * 0.9, 1.8 + Math.random() * 1.4, (Math.random() - 0.5) * 0.9),
+                life: 0.35 + Math.random() * 0.2,
+                maxLife: 0.55,
+              });
+            }
+          }
+        }
+      }
+
+      if (speedRatio >= 0.985) {
+        this.deloreanSparkTimer -= dt;
+        if (this.deloreanSparkTimer <= 0) {
+          this.deloreanSparkTimer = 0.045;
+          // 1–2 crackling cyan-white electric lightning arcs jumping around the car
+          this.spawnDeloreanLightningBolt(v);
+          if (Math.random() < 0.55) {
+            this.spawnDeloreanLightningBolt(v);
+          }
+          // Flying electric blue/white & golden sparks bursting off the DeLorean
+          for (let s = 0; s < 3; s++) {
+            const col = s === 0 ? '#7ef9ff' : s === 1 ? '#ffffff' : '#ffe082';
+            const spark = this.acquireSmokeMesh(col, 0.95, 0.24);
+            const sx = v.position.x + rightX * ((Math.random() - 0.5) * 2.2) + fwdX * ((Math.random() - 0.5) * 4.0);
+            const sy = v.position.y + 0.3 + Math.random() * 1.05;
+            const sz = v.position.z + rightZ * ((Math.random() - 0.5) * 2.2) + fwdZ * ((Math.random() - 0.5) * 4.0);
+            spark.position.set(sx, sy, sz);
+            this.smokeParticles.push({
+              mesh: spark,
+              vel: new THREE.Vector3(
+                (Math.random() - 0.5) * 5.0 - fwdX * 3.5,
+                1.6 + Math.random() * 3.2,
+                (Math.random() - 0.5) * 5.0 - fwdZ * 3.5,
+              ),
+              life: 0.24 + Math.random() * 0.16,
+              maxLife: 0.4,
+            });
+          }
+        }
+      }
+    }
 
     if (Math.abs(v.speed) > 4.0) {
       this.onVehicleHitNpc?.(v.position, Math.abs(v.speed));

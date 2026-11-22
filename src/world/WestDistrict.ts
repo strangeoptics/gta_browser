@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import type { AABB } from '../types';
+import { createWorldHelpers } from './BuildHelpers';
+import { WORLD_LANDMARKS } from './CityLayout';
 import { createBuildingBoxGeometry, createNeonSignTexture } from './Textures';
 
 export interface WestDistrictHandle {
@@ -296,50 +298,7 @@ export function buildWestDistrict(
   const amberNeon = new THREE.MeshStandardMaterial({ color: '#ff9f43', emissive: '#ff9f43', emissiveIntensity: 2.2 });
   const warmGlowMat = new THREE.MeshStandardMaterial({ color: '#ffe8bd', emissive: '#ffbe66', emissiveIntensity: 1.8 });
 
-  const addBox = (
-    w: number,
-    h: number,
-    d: number,
-    x: number,
-    y: number,
-    z: number,
-    mat: THREE.Material | THREE.Material[],
-    castShadow = true,
-    tag = 'west',
-  ): THREE.Mesh => {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
-    m.position.set(x, y, z);
-    m.castShadow = castShadow;
-    m.receiveShadow = true;
-    scene.add(m);
-    worldMeshes.push(m);
-    colliders.push({
-      minX: x - w / 2,
-      maxX: x + w / 2,
-      minY: y - h / 2,
-      maxY: y + h / 2,
-      minZ: z - d / 2,
-      maxZ: z + d / 2,
-      tag,
-    });
-    return m;
-  };
-
-  const addVisual = (
-    geo: THREE.BufferGeometry,
-    mat: THREE.Material | THREE.Material[],
-    x: number,
-    y: number,
-    z: number,
-    castShadow = false,
-  ): THREE.Mesh => {
-    const m = new THREE.Mesh(geo, mat);
-    m.position.set(x, y, z);
-    m.castShadow = castShadow;
-    m.receiveShadow = true;
-    scene.add(m);
-    return m;
-  };
+  const { addBox, addVisual } = createWorldHelpers(scene, colliders, worldMeshes, 'west');
 
   // ===========================================================================
   // 1) WET ASPHALT EXTENSION, ROAD MARKINGS & SIDEWALK ISLANDS (x = -66..-124)
@@ -950,7 +909,7 @@ export function buildWestDistrict(
   // 6) HANDLE & ANIMATIONS
   // ===========================================================================
   const petShopPos = new THREE.Vector3(-76.5, 0.3, 6.8);
-  const lowriderArenaPos = new THREE.Vector3(-87, 0.2, 1.6);
+  const lowriderArenaPos = new THREE.Vector3(WORLD_LANDMARKS.LOWRIDER_ARENA.x, 0.2, WORLD_LANDMARKS.LOWRIDER_ARENA.z);
 
   return {
     isCarInTuningBay: (pos: THREE.Vector3) =>

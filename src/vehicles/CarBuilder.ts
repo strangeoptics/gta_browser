@@ -223,6 +223,26 @@ function buildProfileExtrusion(
   return mesh;
 }
 
+let sharedCarBaseMats: {
+  darkTrimMat: THREE.MeshStandardMaterial;
+  chromeMat: THREE.MeshStandardMaterial;
+  glassMat: THREE.MeshStandardMaterial;
+  headMat: THREE.MeshStandardMaterial;
+  cyberLedMat: THREE.MeshStandardMaterial;
+} | null = null;
+
+function getSharedCarBaseMats() {
+  if (sharedCarBaseMats) return sharedCarBaseMats;
+  sharedCarBaseMats = {
+    darkTrimMat: new THREE.MeshStandardMaterial({ color: '#181620', roughness: 0.52, metalness: 0.35 }),
+    chromeMat: new THREE.MeshStandardMaterial({ color: '#dce4ee', roughness: 0.12, metalness: 0.94 }),
+    glassMat: new THREE.MeshStandardMaterial({ color: '#111828', roughness: 0.08, metalness: 0.88 }),
+    headMat: new THREE.MeshStandardMaterial({ color: '#fff6dc', emissive: '#ffe4a8', emissiveIntensity: 3.1 }),
+    cyberLedMat: new THREE.MeshStandardMaterial({ color: '#eef8ff', emissive: '#d8f4ff', emissiveIntensity: 3.4 }),
+  };
+  return sharedCarBaseMats;
+}
+
 export function createCarModel(
   model: CarModelType,
   bodyColor: string,
@@ -236,23 +256,8 @@ export function createCarModel(
     roughness: isStainless ? 0.24 : model === 'bounder' ? 0.42 : 0.18,
     metalness: isStainless ? 0.88 : model === 'bounder' ? 0.15 : 0.65,
   });
-  const darkTrimMat = new THREE.MeshStandardMaterial({ color: '#181620', roughness: 0.52, metalness: 0.35 });
-  const chromeMat = new THREE.MeshStandardMaterial({ color: '#dce4ee', roughness: 0.12, metalness: 0.94 });
-  const glassMat = new THREE.MeshStandardMaterial({
-    color: '#111828',
-    roughness: 0.08,
-    metalness: 0.88,
-  });
-  const headMat = new THREE.MeshStandardMaterial({
-    color: '#fff6dc',
-    emissive: '#ffe4a8',
-    emissiveIntensity: 3.1,
-  });
-  const cyberLedMat = new THREE.MeshStandardMaterial({
-    color: '#eef8ff',
-    emissive: '#d8f4ff',
-    emissiveIntensity: 3.4,
-  });
+  // Shared immutable trim/chrome/glass/headlight materials across all 12 car models (fewer WebGL state switches!)
+  const { darkTrimMat, chromeMat, glassMat, headMat, cyberLedMat } = getSharedCarBaseMats();
   const tailMat = new THREE.MeshStandardMaterial({
     color: '#ff244e',
     emissive: '#ff1a44',

@@ -33,6 +33,30 @@ export const ROAD_WIDTH = 12;
 export const BLOCK_SIZE = 28;
 export const SIDEWALK_WIDTH = 2.8;
 
+export const DEFAULT_PLAYABLE_BOUNDS = {
+  minX: -122,
+  maxX: 204,
+  minZ: -136,
+  maxZ: 141,
+} as const;
+
+/**
+ * Centralized spatial coordinates for major Palm City '86 landmarks & zones
+ * (single source of truth shared by NpcSystem, VehicleSystem, InteractionRouter & main.ts).
+ */
+export const WORLD_LANDMARKS = {
+  VICE_PD_PRECINCT: { x: -40, z: 0 },
+  SAFEHOUSE: { x: 40, z: -40 },
+  SAFEHOUSE_LOT: { minX: 29.0, maxX: 51.0, minZ: -50.0, maxZ: -30.0 },
+  NEON_CLUB: { x: 40, z: 0 },
+  AMMU_NEON: { x: -4.5, z: 4.5 },
+  PAY_N_SPRAY: { x: -56, z: -38 },
+  VICE_CUSTOMS: { x: -85, z: -37.5 },
+  LOWRIDER_ARENA: { x: -87, z: 1.6 },
+  VICE_PORT_GOAL_Z: 68,
+  OCEAN_DEEP_X: 107,
+} as const;
+
 const PASTEL_PALETTE = [
   '#f2c6b4', // sun-bleached coral
   '#bce0d8', // faded mint

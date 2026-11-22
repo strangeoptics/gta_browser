@@ -7,6 +7,7 @@ import './style.css';
 import { PlayerController } from './player/PlayerController';
 import { PlayerAvatar } from './player/PlayerAvatar';
 import { buildMiamiCity } from './world/CityBuilder';
+import { WORLD_LANDMARKS } from './world/CityLayout';
 import type { CabinetWeapon, FoodItem } from './world/Safehouse';
 import { WeaponSystem } from './combat/WeaponSystem';
 import { VehicleSystem } from './vehicles/VehicleSystem';
@@ -1710,7 +1711,11 @@ function animate(now: number): void {
     ? {
         pos: activeCarNow.position,
         active: true,
-        nearPrecinct: Math.hypot(activeCarNow.position.x - -40, activeCarNow.position.z) < 38,
+        nearPrecinct:
+          Math.hypot(
+            activeCarNow.position.x - WORLD_LANDMARKS.VICE_PD_PRECINCT.x,
+            activeCarNow.position.z - WORLD_LANDMARKS.VICE_PD_PRECINCT.z,
+          ) < 38,
       }
     : undefined;
   const npcTick = npcs.update(
@@ -1901,8 +1906,13 @@ function animate(now: number): void {
   lookedAtTv = false;
   lookedPet = null;
   lookedWallRide = null;
+  const sf = WORLD_LANDMARKS.SAFEHOUSE_LOT;
   const onSafehouseLot =
-    player.position.x > 29 && player.position.x < 51 && player.position.z > -50 && player.position.z < -30 && player.position.y < 9.0;
+    player.position.x > sf.minX &&
+    player.position.x < sf.maxX &&
+    player.position.z > sf.minZ &&
+    player.position.z < sf.maxZ &&
+    player.position.y < 9.0;
   const inSafehouseOrPd = onSafehouseLot || world.isInsidePoliceStation(player.position);
   if (isPlaying && !inAnyCraft && inSafehouseOrPd) {
     camera.getWorldPosition(camOriginScratch);

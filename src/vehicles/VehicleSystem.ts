@@ -4,7 +4,7 @@ import type { ShootableTarget } from '../combat/WeaponSystem';
 import type { GamepadSnapshot } from '../engine/GamepadInput';
 import type { SpatialGrid } from '../engine/SpatialGrid';
 import type { StuntRamp } from '../world/StuntRamps';
-import { ROAD_COORDS } from '../world/CityLayout';
+import { DEFAULT_PLAYABLE_BOUNDS, ROAD_COORDS } from '../world/CityLayout';
 import { createCarModel, type CarModelType } from './CarBuilder';
 import { createMotorcycleMesh } from './MotorcycleBuilder';
 
@@ -707,12 +707,7 @@ export class VehicleSystem {
   }
 
   public exitVehicle(
-    bounds: { minX: number; maxX: number; minZ: number; maxZ: number } = {
-      minX: -122,
-      maxX: 204,
-      minZ: -136,
-      maxZ: 141,
-    },
+    bounds: { minX: number; maxX: number; minZ: number; maxZ: number } = DEFAULT_PLAYABLE_BOUNDS,
   ): { x: number; y: number; z: number; yaw: number } | null {
     if (!this.activeVehicle) return null;
     const v = this.activeVehicle;

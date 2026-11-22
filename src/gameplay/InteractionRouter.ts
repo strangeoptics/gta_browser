@@ -15,6 +15,7 @@ import type { PlayerController } from '../player/PlayerController';
 import type { GarageRidesSystem } from '../vehicles/GarageRidesSystem';
 import type { VehicleSystem } from '../vehicles/VehicleSystem';
 import type { MiamiWorld } from '../world/CityBuilder';
+import { WORLD_LANDMARKS } from '../world/CityLayout';
 
 export interface InteractionContext {
   camera: THREE.PerspectiveCamera;
@@ -129,7 +130,11 @@ export function handleSpecialActionKeyG(ctx: InteractionContext): void {
   if (car && car.specialRole === 'icecream') {
     car.jingleActive = !car.jingleActive;
     if (car.jingleActive) {
-      const nearPd = Math.hypot(car.position.x - -40, car.position.z) < 38;
+      const nearPd =
+        Math.hypot(
+          car.position.x - WORLD_LANDMARKS.VICE_PD_PRECINCT.x,
+          car.position.z - WORLD_LANDMARKS.VICE_PD_PRECINCT.z,
+        ) < 38;
       showQuickToast(
         nearPd
           ? "CHERRY POPPER '86 · JINGLE AN! VICE PD COPS RENNEN FÜR DONUTS RAUS!"

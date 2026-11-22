@@ -3,7 +3,7 @@ import type { AABB } from '../types';
 import type { ShootableTarget } from '../combat/WeaponSystem';
 import { TracerPool } from '../combat/TracerPool';
 import type { SpatialGrid } from '../engine/SpatialGrid';
-import { BLOCK_CENTERS } from '../world/CityLayout';
+import { BLOCK_CENTERS, WORLD_LANDMARKS } from '../world/CityLayout';
 import {
   buildLowPolyCharacter,
   disposeCharacter,
@@ -56,14 +56,14 @@ const CIV_ACCENTS = ['#36f1e6', '#ff4fa3', '#fff4e6', '#ff9f43', '#2d6a4f'];
 const SKIN_TONES = ['#e8ba9b', '#d69c77', '#b87a56', '#8c563c', '#f2cbb0'];
 const HAIR_COLORS = ['#22181c', '#4a2e1f', '#8c5a32', '#d9b06a', '#1b1620'];
 
-// Private Safehouse footprint (40, -40) — NPCs may never enter the player's safe space
+// Private Safehouse footprint — NPCs may never enter the player's safe space
 const SAFEHOUSE_NO_ENTRY: AABB = {
-  minX: 29.0,
-  maxX: 51.0,
+  minX: WORLD_LANDMARKS.SAFEHOUSE_LOT.minX,
+  maxX: WORLD_LANDMARKS.SAFEHOUSE_LOT.maxX,
   minY: 0,
   maxY: 5.0,
-  minZ: -50.0,
-  maxZ: -30.0,
+  minZ: WORLD_LANDMARKS.SAFEHOUSE_LOT.minZ,
+  maxZ: WORLD_LANDMARKS.SAFEHOUSE_LOT.maxZ,
   tag: 'safehouse-no-entry',
 };
 

@@ -914,6 +914,36 @@ body,
   padding: 7px 14px;
 }
 
+.phone-party-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 12px;
+  margin-bottom: 12px;
+  border-radius: 8px;
+  background: linear-gradient(90deg, rgba(54, 241, 230, 0.14), rgba(255, 79, 163, 0.14));
+  border: 1px solid rgba(54, 241, 230, 0.45);
+}
+
+.phone-party-banner .dev-btn-clean {
+  width: auto;
+  margin-top: 0;
+}
+
+.phone-party-tag {
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  color: #36f1e6;
+}
+
+.phone-party-title {
+  font-size: 13px;
+  font-weight: 900;
+  color: #fff6f0;
+}
+
 .phone-tabs {
   display: flex;
   flex-wrap: wrap;

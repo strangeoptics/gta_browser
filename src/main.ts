@@ -25,6 +25,7 @@ import { WantedSystem } from './gameplay/WantedSystem';
 import { MISSION_CONTRACTS, ObjectiveSystem, type MissionDistrict } from './gameplay/ObjectiveSystem';
 import { STORY_CHAPTERS, StoryCampaign } from './gameplay/StoryCampaign';
 import { HeistSystem } from './gameplay/HeistSystem';
+import { RooftopPartySystem } from './gameplay/RooftopPartySystem';
 import { VigilanteSystem } from './gameplay/VigilanteSystem';
 import { SpecialVehicleMissionSystem, PARAMEDIC_MAX_HP_RESCUES_REQUIRED } from './gameplay/SpecialVehicleMissions';
 import { ShopSystem } from './gameplay/ShopSystem';
@@ -144,6 +145,7 @@ const phoneDoneEl = document.getElementById('phone-done') as HTMLDivElement;
 const phoneActiveLabelEl = document.getElementById('phone-active-label') as HTMLSpanElement;
 const phoneCancelBtn = document.getElementById('phone-cancel-btn') as HTMLButtonElement;
 const phoneHeistBtn = document.getElementById('phone-heist-btn') as HTMLButtonElement;
+const phonePartyBtn = document.getElementById('phone-party-btn') as HTMLButtonElement;
 const phoneTabBtns = Array.from(document.querySelectorAll<HTMLButtonElement>('.phone-tab'));
 const phoneMissionListEl = document.getElementById('phone-mission-list') as HTMLDivElement;
 const phoneCloseBtn = document.getElementById('phone-close') as HTMLButtonElement;
@@ -223,6 +225,7 @@ const wanted = new WantedSystem();
 const objectives = new ObjectiveSystem(scene);
 const story = new StoryCampaign(scene);
 const heist = new HeistSystem(scene);
+const rooftopParty = new RooftopPartySystem(scene);
 const vigilante = new VigilanteSystem();
 const specialMissions = new SpecialVehicleMissionSystem(scene);
 const shop = new ShopSystem(scene);
@@ -437,6 +440,7 @@ function applyActiveProfileToWorld(respawnPlayer: boolean): void {
     heli.clear();
     world.clearPdAlarm();
     if (heist.isActive()) heist.failHeist(npcs);
+    if (rooftopParty.isActive()) rooftopParty.stop();
     if (vigilante.isActive()) vigilante.stop(npcs);
     if (specialMissions.isActive()) specialMissions.stop();
     story.cancelChapter(npcs);
@@ -1097,6 +1101,14 @@ function renderPhoneMissions(): void {
   phoneHeistBtn.disabled = heist.isActive();
   phoneHeistBtn.textContent = heist.isActive() ? 'LÄUFT…' : 'STARTEN [H]';
 
+  const hasBar = world.isSafehouseRooftopBarOwned();
+  phonePartyBtn.disabled = !hasBar;
+  phonePartyBtn.textContent = !hasBar
+    ? 'BAR NÖTIG ($1.800)'
+    : rooftopParty.isActive()
+      ? 'PARTY BEENDEN'
+      : 'PARTY STARTEN';
+
   phoneTabBtns.forEach((btn) => {
     btn.classList.toggle('active', (btn.dataset.district ?? 'story') === phoneDistrictFilter);
   });
@@ -1291,6 +1303,16 @@ phoneHeistBtn.addEventListener('click', () => {
     audio.playCheckpoint();
     closePhone();
   }
+});
+
+phonePartyBtn.addEventListener('click', () => {
+  if (!world.isSafehouseRooftopBarOwned()) return;
+  const started = rooftopParty.toggle();
+  audio.playCheckpoint();
+  if (!started) {
+    showQuickToast('ROOFTOP-PARTY BEENDET · BIS ZUM NÄCHSTEN MAL!');
+  }
+  closePhone();
 });
 
 phoneCloseBtn.addEventListener('click', () => closePhone());
@@ -1638,6 +1660,14 @@ window.addEventListener('keydown', (e) => {
       return;
     }
     const car = vehicles.getActiveVehicle();
+    if (!car && world.isSafehouseRooftopBarOwned() && rooftopParty.isPlayerOnSafehouseRoof(player.position)) {
+      const started = rooftopParty.toggle();
+      audio.playCheckpoint();
+      if (!started) {
+        showQuickToast('ROOFTOP-PARTY BEENDET · BIS ZUM NÄCHSTEN MAL!');
+      }
+      return;
+    }
     if (vigilante.isActive()) {
       vigilante.stop(npcs);
       showQuickToast('VIGILANTE-MODUS BEENDET');
@@ -1770,6 +1800,14 @@ window.addEventListener('keydown', (e) => {
       audio.playPurchase();
       persistProgress();
       showQuickToast(`OUTFIT · ${outfitName}`);
+    } else if (rooftopParty.isNearTributeCash(player.position)) {
+      const bonus = rooftopParty.claimTributeCash();
+      if (bonus > 0) {
+        objectives.cash += bonus;
+        audio.playMissionPassed();
+        persistProgress();
+        showQuickToast(`CREW-UMSCHLAG EINGESAMMELT · +$${bonus}`);
+      }
     } else if (world.isNearSafehouseRooftopBar(player.position)) {
       if (!world.isSafehouseRooftopBarOwned()) {
         const barCost = 1800;
@@ -1778,7 +1816,7 @@ window.addEventListener('keydown', (e) => {
           world.setSafehouseRooftopBarOwned(true);
           audio.playMissionPassed();
           persistProgress();
-          showQuickToast('PENTHOUSE DACH-COCKTAILBAR GEKAUFT! (-$1.800) · PROST!');
+          showQuickToast('PENTHOUSE DACH-COCKTAILBAR GEKAUFT! (-$1.800) · [G] FÜR POOLPARTY!');
         } else {
           showQuickToast(`DACH-COCKTAILBAR · ZU WENIG CASH (BENÖTIGT $${barCost})`);
         }
@@ -1792,7 +1830,20 @@ window.addEventListener('keydown', (e) => {
         const hpNote = gained > 0 ? ` · +${gained} HP` : '';
         const buzz =
           rawLevel < 0.32 ? 'LEICHT ANGESCHWIPST 🍹' : rawLevel < 0.7 ? 'BETRUNKEN! 🍹' : 'VOLLRAUSCH! 🍹';
-        showQuickToast(`DACH-BAR · MIAMI VICE COCKTAIL${hpNote} · ${buzz}`);
+        if (rooftopParty.isActive()) {
+          playerArmor = Math.min(100, playerArmor + 35);
+          weapons.refillAllAmmo();
+          persistProgress();
+          showQuickToast(`PARTY-COCKTAIL${hpNote} · +35% ARMOR & MUNI VOLL · ${buzz}`);
+        } else {
+          showQuickToast(`DACH-BAR · MIAMI VICE COCKTAIL${hpNote} · ${buzz}`);
+        }
+      }
+    } else if (rooftopParty.getNearbyGuest(player.position)) {
+      const quip = rooftopParty.talkToNearbyGuest(player.position, pets.ownsPet('elvis'));
+      if (quip) {
+        audio.playCheckpoint();
+        showQuickToast(quip);
       }
     } else if (world.isNearSafehouseFridge(player.position)) {
       const prevHp = playerHp;
@@ -2437,6 +2488,16 @@ function animate(now: number): void {
   }
   heli.update(dt, elapsed, player.position, indoors ? 0 : wanted.stars);
   const heistHud = heist.update(elapsed, player.position, vehicles, boat, npcs, wanted);
+  const partyHud = rooftopParty.update(dt, elapsed, player.position, wanted.stars, npcs);
+  if (partyHud.fireworkPopped) {
+    audio.playExplosion();
+  }
+  if (partyHud.crewShotFired) {
+    audio.playShot('pistol');
+  }
+  if (partyHud.toastText) {
+    showQuickToast(partyHud.toastText);
+  }
   const storyHud = story.update(dt, elapsed, player.position, inBoat || inYacht || inHeli, npcs, wanted);
   if (storyHud.completedChapterReward > 0) {
     objectives.cash += storyHud.completedChapterReward;
@@ -2556,7 +2617,7 @@ function animate(now: number): void {
     inGarageRide ? garageRideHud.grounded : playerGrounded,
     wanted.stars,
     player.position.x,
-    world.getClubProximity(player.position),
+    Math.max(world.getClubProximity(player.position), rooftopParty.getMusicProximity(player.position)),
     inGarageRide && garageRideHud.rideId ? garageRideHud.rideId : 'motor',
     specialHud.kind === 'firefighter' || specialHud.kind === 'paramedic',
   );
@@ -2888,10 +2949,16 @@ function animate(now: number): void {
       nextPrompt = '[F / B] HAVANA PETS · SAFEHOUSE-HAUSTIER ADOPTIEREN (🐾)';
     } else if (world.isNearSafehouseWardrobe(player.position)) {
       nextPrompt = '[F] KLEIDERSCHRANK · OUTFIT WECHSELN';
+    } else if (partyHud.nearTributeCash) {
+      nextPrompt = '[F] CREW-UMSCHLAG NEHMEN (+$400)';
     } else if (world.isNearSafehouseRooftopBar(player.position)) {
-      nextPrompt = world.isSafehouseRooftopBarOwned()
-        ? '[F] DACH-COCKTAILBAR · MIAMI VICE COCKTAIL MIXEN (+30 HP · GRATIS)'
-        : '[F] PENTHOUSE DACH-COCKTAILBAR KAUFEN · $1.800';
+      nextPrompt = !world.isSafehouseRooftopBarOwned()
+        ? '[F] PENTHOUSE DACH-COCKTAILBAR KAUFEN · $1.800'
+        : partyHud.active
+          ? '[F] PARTY-COCKTAIL (+HP/+ARMOR/MUNI) · [G] PARTY BEENDEN'
+          : '[F] COCKTAIL MIXEN · [G] ROOFTOP-PARTY SCHMEISSEN';
+    } else if (partyHud.nearbyGuestName) {
+      nextPrompt = `[F] MIT ${partyHud.nearbyGuestName} ANSTOSSEN · [G] PARTY BEENDEN`;
     } else if (world.isNearSafehouseFridge(player.position)) {
       nextPrompt = '[F] KÜHLSCHRANK · SNACK ESSEN (+25 HP)';
     } else if (world.isNearSafehouseLounge(player.position)) {

@@ -340,15 +340,23 @@ export class NpcSystem {
       if (dSq < rSq) {
         const dist = Math.sqrt(dSq);
         const dmg = maxDamage * (1 - dist / radius);
-        npc.hp -= dmg;
-        npc.flinchTimer = 0.22;
-        if (npc.hp <= 0) {
-          this.killNpc(npc);
-        } else if (npc.role === 'civilian') {
-          npc.state = 'flee';
-        }
+        this.damageNpc(npc, dmg);
       }
     }
+  }
+
+  public damageNpc(npc: NpcEntity, damage: number): boolean {
+    if (!npc.alive) return false;
+    npc.hp -= damage;
+    npc.flinchTimer = 0.22;
+    if (npc.hp <= 0) {
+      this.killNpc(npc);
+      return true;
+    }
+    if (npc.role === 'civilian') {
+      npc.state = 'flee';
+    }
+    return false;
   }
 
   /**

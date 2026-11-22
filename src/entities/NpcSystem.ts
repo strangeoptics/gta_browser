@@ -45,6 +45,8 @@ export interface NpcEntity {
   rightElbowPivot: THREE.Group;
   muzzleFlash?: THREE.Mesh;
   deathTimer: number;
+  iceCreamCooldown?: number;
+  distractedByDonuts?: boolean;
   collider: AABB;
 }
 
@@ -94,6 +96,7 @@ export class NpcSystem {
 
   public onPlayerDamaged?: (amount: number) => void;
   public onNpcKilled?: (npc: NpcEntity) => void;
+  public onIceCreamSale?: (isPolice: boolean) => void;
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
@@ -297,7 +300,7 @@ export class NpcSystem {
   public isPoliceBustingPlayer(playerPos: THREE.Vector3, maxDist: number): boolean {
     const maxSq = maxDist * maxDist;
     for (const n of this.npcs) {
-      if (!n.alive || n.role !== 'police') continue;
+      if (!n.alive || n.role !== 'police' || n.distractedByDonuts) continue;
       if (Math.abs(n.position.y - playerPos.y) > 2.4) continue;
       if (n.position.distanceToSquared(playerPos) < maxSq) {
         return true;
@@ -503,7 +506,8 @@ export class NpcSystem {
     worldColliders: AABB[] = [],
     playerCover?: { inCover: boolean; peeking: boolean; normalX: number; normalZ: number },
     npcGrid?: SpatialGrid,
-  ): void {
+    iceCreamLure?: { pos: THREE.Vector3; active: boolean; nearPrecinct: boolean },
+  ): { distractedCops: number } {
     const clampedDt = Math.min(dt, 0.05);
 
     // Build extra dynamic blocker list in-place (zero allocations!)
@@ -529,6 +533,18 @@ export class NpcSystem {
     if (alivePolice < desiredPolice && Math.random() < clampedDt * 0.9) {
       this.spawnPoliceNear(playerPos, blockers, npcGrid);
     }
+
+    // If CHERRY POPPER '86 is ringing its 8-bit jingle outside Vice PD Precinct 06 (-40, 0),
+    // donut-hungry officers rush straight out of the precinct lobby!
+    if (iceCreamLure?.active && iceCreamLure.nearPrecinct && alivePolice < 3 && Math.random() < clampedDt * 1.4) {
+      const px = -27.0 + (Math.random() - 0.5) * 1.5;
+      const pz = (Math.random() - 0.5) * 5.0;
+      const officer = this.createNpc('police', px, pz, '#1e325c', 75);
+      officer.distractedByDonuts = true;
+      alivePolice++;
+    }
+
+    let distractedCops = 0;
 
     if (aliveCivs < 10 && Math.random() < clampedDt * 0.6) {
       this.spawnCivilian();
@@ -594,6 +610,24 @@ export class NpcSystem {
       let moveZ = 0;
       let moveSpeed = 0;
       let aiming = false;
+      npc.distractedByDonuts = false;
+      if (npc.iceCreamCooldown && npc.iceCreamCooldown > 0) {
+        npc.iceCreamCooldown = Math.max(0, npc.iceCreamCooldown - clampedDt);
+      }
+
+      // CHERRY POPPER '86 Ice Cream & Donut Jingle Lure!
+      const luredByIceCream =
+        Boolean(iceCreamLure?.active) &&
+        (npc.role === 'civilian' || npc.role === 'police') &&
+        npc.state !== 'flee';
+      let distToTruck = 999;
+      let toTruckX = 0;
+      let toTruckZ = 0;
+      if (luredByIceCream && iceCreamLure) {
+        toTruckX = iceCreamLure.pos.x - npc.position.x;
+        toTruckZ = iceCreamLure.pos.z - npc.position.z;
+        distToTruck = Math.hypot(toTruckX, toTruckZ);
+      }
 
       if (npc.role === 'civilian') {
         if (npc.state === 'flee') {
@@ -603,6 +637,18 @@ export class NpcSystem {
             moveX = -toPlayerX / Math.max(distToPlayer, 0.1);
             moveZ = -toPlayerZ / Math.max(distToPlayer, 0.1);
             moveSpeed = 5.2;
+          }
+        } else if (luredByIceCream && distToTruck < 26) {
+          if (distToTruck > 3.6) {
+            moveX = toTruckX / Math.max(distToTruck, 0.1);
+            moveZ = toTruckZ / Math.max(distToTruck, 0.1);
+            moveSpeed = 3.8;
+          } else {
+            npc.yaw = Math.atan2(toTruckX, toTruckZ);
+            if (!npc.iceCreamCooldown || npc.iceCreamCooldown <= 0) {
+              npc.iceCreamCooldown = 14.0;
+              this.onIceCreamSale?.(false);
+            }
           }
         } else {
           const dx = npc.targetPos.x - npc.position.x;
@@ -614,6 +660,21 @@ export class NpcSystem {
             moveX = dx / d;
             moveZ = dz / d;
             moveSpeed = 1.9;
+          }
+        }
+      } else if (npc.role === 'police' && luredByIceCream && distToTruck < 34) {
+        // Donut-distracted Vice PD officers drop pursuit and rush over to the CHERRY POPPER '86!
+        npc.distractedByDonuts = true;
+        distractedCops++;
+        if (distToTruck > 3.9) {
+          moveX = toTruckX / Math.max(distToTruck, 0.1);
+          moveZ = toTruckZ / Math.max(distToTruck, 0.1);
+          moveSpeed = 4.6;
+        } else {
+          npc.yaw = Math.atan2(toTruckX, toTruckZ);
+          if (!npc.iceCreamCooldown || npc.iceCreamCooldown <= 0) {
+            npc.iceCreamCooldown = 16.0;
+            this.onIceCreamSale?.(true);
           }
         }
       } else {
@@ -789,6 +850,7 @@ export class NpcSystem {
 
     // Update pooled enemy tracers
     this.tracerPool.update(clampedDt);
+    return { distractedCops };
   }
 
   private fireNpcShot(

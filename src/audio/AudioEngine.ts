@@ -29,10 +29,19 @@ export class AudioEngine {
   private musicScale = 0.7;
   private beatTimer = 0;
   private beatStep = 0;
+  private radioBeatPulse = 0;
+  private iceCreamTimer = 0;
+  private iceCreamStep = 0;
   private clubBeatTimer = 0;
   private clubStep = 0;
   private stepTimer = 0;
   private rollTickTimer = 0;
+
+  // Classic cheerful/annoying 8-bit Ice Cream Truck jingle notes (Hz, 0 = rest)
+  private readonly iceCreamMelody = [
+    523.25, 659.25, 783.99, 659.25, 880.0, 783.99, 659.25, 587.33,
+    523.25, 659.25, 783.99, 1046.5, 987.77, 880.0, 783.99, 0,
+  ];
 
   private readonly viceBass = [55, 55, 65.41, 73.42, 55, 55, 82.41, 73.42];
   private readonly viceLead = [440, 523.25, 659.25, 587.33, 440, 659.25, 783.99, 659.25];
@@ -921,6 +930,95 @@ export class AudioEngine {
     src.stop(now + 0.15);
   }
 
+  /**
+   * Iconic 80s K.I.T.T. Turbo-Boost turbine whine + pneumatic rocket launch!
+   */
+  public playKittTurboBoost(): void {
+    if (!this.ctx || !this.masterGain || !this.noiseBuffer || this.muted) return;
+    const now = this.ctx.currentTime;
+
+    // Rising sci-fi turbine sweep
+    const turbine = this.ctx.createOscillator();
+    const tGain = this.ctx.createGain();
+    turbine.type = 'sawtooth';
+    const bp = this.ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.setValueAtTime(420, now);
+    bp.frequency.exponentialRampToValueAtTime(2400, now + 0.42);
+    bp.Q.value = 3.0;
+    turbine.frequency.setValueAtTime(190, now);
+    turbine.frequency.exponentialRampToValueAtTime(1120, now + 0.36);
+    turbine.frequency.exponentialRampToValueAtTime(340, now + 0.65);
+    tGain.gain.setValueAtTime(0.28, now);
+    tGain.gain.exponentialRampToValueAtTime(0.001, now + 0.68);
+    turbine.connect(bp);
+    bp.connect(tGain);
+    tGain.connect(this.masterGain);
+    this.autoDisconnect(turbine, bp, tGain);
+    turbine.start(now);
+    turbine.stop(now + 0.7);
+
+    // Jet whoosh noise burst
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.noiseBuffer;
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(650, now);
+    filter.frequency.exponentialRampToValueAtTime(2800, now + 0.25);
+    filter.Q.value = 1.2;
+    const nGain = this.ctx.createGain();
+    nGain.gain.setValueAtTime(0.36, now);
+    nGain.gain.exponentialRampToValueAtTime(0.001, now + 0.52);
+    src.connect(filter);
+    filter.connect(nGain);
+    nGain.connect(this.masterGain);
+    this.autoDisconnect(src, filter, nGain);
+    src.start(now);
+    src.stop(now + 0.55);
+  }
+
+  /**
+   * Lowrider pneumatic hydraulic bounce (air hiss + sub-bass thump).
+   */
+  public playHydraulicBounce(accent = false): void {
+    if (!this.ctx || !this.masterGain || !this.noiseBuffer || this.muted) return;
+    const now = this.ctx.currentTime;
+
+    // Pneumatic air-valve hiss
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.noiseBuffer;
+    const hp = this.ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 2600;
+    const nGain = this.ctx.createGain();
+    nGain.gain.setValueAtTime(accent ? 0.2 : 0.12, now);
+    nGain.gain.exponentialRampToValueAtTime(0.001, now + 0.11);
+    src.connect(hp);
+    hp.connect(nGain);
+    nGain.connect(this.masterGain);
+    this.autoDisconnect(src, hp, nGain);
+    src.start(now);
+    src.stop(now + 0.12);
+
+    // Punchy lowrider bass bounce
+    const osc = this.ctx.createOscillator();
+    const oGain = this.ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(accent ? 155 : 120, now);
+    osc.frequency.exponentialRampToValueAtTime(44, now + 0.16);
+    oGain.gain.setValueAtTime(accent ? 0.38 : 0.24, now);
+    oGain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+    osc.connect(oGain);
+    oGain.connect(this.masterGain);
+    this.autoDisconnect(osc, oGain);
+    osc.start(now);
+    osc.stop(now + 0.2);
+  }
+
+  public getRadioBeatPulse(): number {
+    return this.radioBeatPulse;
+  }
+
   public update(
     dt: number,
     elapsed: number,
@@ -935,6 +1033,7 @@ export class AudioEngine {
     clubProximity = 0,
     rideAudioMode: 'motor' | 'skateboard' | 'roadbike' = 'motor',
     emergencySirenActive = false,
+    iceCreamJingleActive = false,
   ): void {
     if (
       !this.ctx ||
@@ -1034,13 +1133,38 @@ export class AudioEngine {
       }
     }
 
-    // 6) Car Radio / Street Ambient Synthwave (ducks automatically when inside NEON CLUB)
+    // 6) Car Radio / Street Ambient Synthwave (ducks automatically when inside NEON CLUB or when Ice Cream Jingle rings!)
+    this.radioBeatPulse = Math.max(0, this.radioBeatPulse - dt * 4.8);
+
+    if (isActive && !this.muted && iceCreamJingleActive) {
+      this.iceCreamTimer -= dt;
+      if (this.iceCreamTimer <= 0) {
+        this.iceCreamTimer = 0.175; // Cheerful / delightfully annoying 8-bit ice cream jingle tempo!
+        const note = this.iceCreamMelody[this.iceCreamStep % this.iceCreamMelody.length];
+        if (note > 0) {
+          this.playSynthNote(note, 'square', 0.065, 0.15, 2400);
+          this.playSynthNote(note * 2, 'triangle', 0.032, 0.12, 3400);
+        }
+        this.iceCreamStep++;
+      }
+    } else {
+      this.iceCreamTimer = 0.04;
+    }
+
     const station = this.stations[this.stationIndex];
-    if (isActive && !this.muted && station !== 'RADIO AUS' && this.musicScale > 0.01 && clubProximity < 0.7) {
+    if (
+      isActive &&
+      !this.muted &&
+      !iceCreamJingleActive &&
+      station !== 'RADIO AUS' &&
+      this.musicScale > 0.01 &&
+      clubProximity < 0.7
+    ) {
       const duck = 1 - clubProximity * 0.85;
       const volScale = (inVehicle ? 1.15 : 0.6) * duck * (this.musicScale / Math.max(0.15, this.sfxScale));
       this.beatTimer -= dt;
       if (this.beatTimer <= 0) {
+        this.radioBeatPulse = 1.0;
         if (station === 'VICE FM') {
           this.beatTimer = 0.275; // ~109 BPM
           const bass = this.viceBass[this.beatStep % this.viceBass.length];

@@ -4,6 +4,7 @@ import { createBuildingBoxGeometry, createNeonSignTexture } from './Textures';
 
 export interface WestDistrictHandle {
   isCarInTuningBay: (pos: THREE.Vector3) => boolean;
+  isCarInLowriderArena: (pos: THREE.Vector3) => boolean;
   isNearDinerCounter: (pos: THREE.Vector3) => boolean;
   isNearPetShop: (pos: THREE.Vector3) => boolean;
   isNearBankVault: (pos: THREE.Vector3) => boolean;
@@ -694,14 +695,33 @@ export function buildWestDistrict(
   bulbInst.matrixAutoUpdate = false;
   scene.add(bulbInst);
 
-  // Classic Little Havana Domino Tables & Chairs on the Plaza
-  for (const dx of [-96, -88, -80]) {
-    addBox(1.25, 0.76, 1.25, dx, 0.58, 3.8, woodMat, true, 'domino-table');
-    addVisual(new THREE.BoxGeometry(0.95, 0.04, 0.95), dinerCreamMat, dx, 0.98, 3.8);
+  // Classic Little Havana Domino Tables & Chairs on South Side of Plaza (leaves center open for Lowrider Battle!)
+  for (const dx of [-98, -90]) {
+    addBox(1.25, 0.76, 1.25, dx, 0.58, 5.8, woodMat, true, 'domino-table');
+    addVisual(new THREE.BoxGeometry(0.95, 0.04, 0.95), dinerCreamMat, dx, 0.98, 5.8);
     // Warm market umbrella
-    addVisual(new THREE.CylinderGeometry(0.05, 0.05, 2.4, 6), darkSteelMat, dx, 1.4, 3.8);
-    addVisual(new THREE.ConeGeometry(1.45, 0.55, 8), dinerTealMat, dx, 2.65, 3.8, true);
+    addVisual(new THREE.CylinderGeometry(0.05, 0.05, 2.4, 6), darkSteelMat, dx, 1.4, 5.8);
+    addVisual(new THREE.ConeGeometry(1.45, 0.55, 8), dinerTealMat, dx, 2.65, 5.8, true);
   }
+
+  // Glowing Little Havana Plaza LOWRIDER RHYTHM BATTLE Arena Ring (-87, 1.6)
+  const lowriderOuterRing = new THREE.Mesh(
+    new THREE.RingGeometry(2.85, 3.22, 32),
+    new THREE.MeshBasicMaterial({ color: '#ff4fa3', side: THREE.DoubleSide }),
+  );
+  lowriderOuterRing.rotation.x = -Math.PI / 2;
+  lowriderOuterRing.position.set(-87, 0.23, 1.6);
+  lowriderOuterRing.userData.dynamic = true;
+  scene.add(lowriderOuterRing);
+
+  const lowriderInnerRing = new THREE.Mesh(
+    new THREE.RingGeometry(2.35, 2.52, 32),
+    new THREE.MeshBasicMaterial({ color: '#ffd15c', side: THREE.DoubleSide }),
+  );
+  lowriderInnerRing.rotation.x = -Math.PI / 2;
+  lowriderInnerRing.position.set(-87, 0.235, 1.6);
+  lowriderInnerRing.userData.dynamic = true;
+  scene.add(lowriderInnerRing);
 
   // "HAVANA PETS & EXOTICS" Storefront Perch, Golden Cage Display & Mint Beacon Ring (-76.5, 6.8)
   addVisual(new THREE.CylinderGeometry(0.32, 0.32, 0.85, 12), woodMat, -74.6, 0.62, 7.6);
@@ -930,10 +950,14 @@ export function buildWestDistrict(
   // 6) HANDLE & ANIMATIONS
   // ===========================================================================
   const petShopPos = new THREE.Vector3(-76.5, 0.3, 6.8);
+  const lowriderArenaPos = new THREE.Vector3(-87, 0.2, 1.6);
 
   return {
     isCarInTuningBay: (pos: THREE.Vector3) =>
       pos.x > -96 && pos.x < -76 && pos.z > -44 && pos.z < -31,
+
+    isCarInLowriderArena: (pos: THREE.Vector3) =>
+      Math.hypot(pos.x - lowriderArenaPos.x, pos.z - lowriderArenaPos.z) < 4.4,
 
     isNearDinerCounter: (pos: THREE.Vector3) =>
       pos.x > -95.5 && pos.x < -81.5 && pos.z > -10.5 && pos.z < -6.5,
@@ -972,9 +996,11 @@ export function buildWestDistrict(
       // Spin 3D rooftop neon wheel on Vice Customs
       roofWheelGroup.rotation.y = elapsed * 0.9;
 
-      // Pulse Tuning Bay, Pet Shop & Bank Vault rings
+      // Pulse Tuning Bay, Lowrider Arena, Pet Shop & Bank Vault rings
       const s = 1 + Math.sin(elapsed * 4.2) * 0.05;
       tuningBayRing.scale.set(s, s, 1);
+      lowriderOuterRing.scale.set(s, s, 1);
+      lowriderInnerRing.scale.set(2 - s, 2 - s, 1);
       petShopRing.scale.set(s, s, 1);
       if (!bankVaultTaken) {
         bankLootRing.scale.set(s, s, 1);

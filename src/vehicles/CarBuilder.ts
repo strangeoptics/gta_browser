@@ -12,6 +12,7 @@ export type CarModelType =
   | 'taxi'
   | 'ambulance'
   | 'firetruck'
+  | 'icecream'
   | 'supercar';
 
 export interface BuiltCar {
@@ -66,6 +67,31 @@ function getTaxiSignTexture(): THREE.CanvasTexture {
   cachedTaxiSignTex = new THREE.CanvasTexture(c);
   cachedTaxiSignTex.colorSpace = THREE.SRGBColorSpace;
   return cachedTaxiSignTex;
+}
+
+let cachedIceCreamSignTex: THREE.CanvasTexture | null = null;
+function getIceCreamSignTexture(): THREE.CanvasTexture {
+  if (cachedIceCreamSignTex) return cachedIceCreamSignTex;
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = 64;
+  const ctx = c.getContext('2d')!;
+  ctx.fillStyle = '#ff6db5';
+  ctx.fillRect(0, 0, 256, 64);
+  ctx.strokeStyle = '#fff5f9';
+  ctx.lineWidth = 5;
+  ctx.strokeRect(4, 4, 248, 56);
+  ctx.fillStyle = '#fff9f2';
+  ctx.font = '900 24px "Segoe UI", Arial, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText("CHERRY POPPER '86", 128, 25);
+  ctx.fillStyle = '#7bf7e0';
+  ctx.font = '800 13px "Segoe UI", Arial, sans-serif';
+  ctx.fillText('DONUTS · EISCREME · SHAKES', 128, 48);
+  cachedIceCreamSignTex = new THREE.CanvasTexture(c);
+  cachedIceCreamSignTex.colorSpace = THREE.SRGBColorSpace;
+  return cachedIceCreamSignTex;
 }
 
 type WheelStyle = 'alloy' | 'aero' | 'turbine' | 'steel';
@@ -1469,6 +1495,154 @@ export function createCarModel(
       ],
       0.48,
       0.38,
+      'steel',
+    );
+  }
+
+  // ===========================================================================
+  // 5b) CHERRY POPPER '86 — Pastel 80s Donut & Ice Cream Step-Van!
+  // ===========================================================================
+  else if (model === 'icecream') {
+    const creamMat = new THREE.MeshStandardMaterial({ color: '#fff4ea', roughness: 0.34, metalness: 0.1 });
+    const mintMat = new THREE.MeshStandardMaterial({ color: '#63e8d4', roughness: 0.3, metalness: 0.14 });
+    const pinkGlazeMat = new THREE.MeshStandardMaterial({ color: '#ff5ea8', roughness: 0.24, metalness: 0.16 });
+    const waffleMat = new THREE.MeshStandardMaterial({ color: '#d89b52', roughness: 0.65, metalness: 0.05 });
+    const donutDoughMat = new THREE.MeshStandardMaterial({ color: '#e2a35a', roughness: 0.58, metalness: 0.04 });
+
+    // Boxy 80s step-van body (extruded side profile)
+    const hull = buildProfileExtrusion(
+      [
+        [-2.58, 0.44],
+        [2.54, 0.44],
+        [2.6, 1.15],
+        [2.32, 1.3],  // short stubby front hood
+        [2.05, 2.38], // tall flat windshield
+        [-2.52, 2.38], // long flat van roof
+        [-2.62, 1.3],
+      ],
+      2.18,
+      creamMat,
+      0.03,
+    );
+    group.add(hull);
+
+    // Pastel pink lower skirt & mint waist stripe all around the van
+    const lowerPink = new THREE.Mesh(new THREE.BoxGeometry(2.24, 0.66, 5.12), bodyMat);
+    lowerPink.position.set(0, 0.78, -0.02);
+    group.add(lowerPink);
+
+    const mintStripe = new THREE.Mesh(new THREE.BoxGeometry(2.26, 0.18, 5.14), mintMat);
+    mintStripe.position.set(0, 1.16, -0.02);
+    group.add(mintStripe);
+
+    // Tall front windshield & cab side windows
+    const windshield = new THREE.Mesh(new THREE.BoxGeometry(1.94, 0.88, 0.07), glassMat);
+    windshield.position.set(0, 1.84, 2.22);
+    windshield.rotation.x = -0.22;
+    group.add(windshield);
+
+    for (const sx of [-1.11, 1.11]) {
+      const cabWin = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.68, 0.92), glassMat);
+      cabWin.position.set(sx, 1.82, 1.48);
+      group.add(cabWin);
+    }
+
+    // Wide serving counter window on the right side (+X) with striped pink/white awning!
+    const serveWindow = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.76, 1.95), darkTrimMat);
+    serveWindow.position.set(1.1, 1.72, -0.45);
+    group.add(serveWindow);
+
+    const counterShelf = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.08, 2.04), chromeMat);
+    counterShelf.position.set(1.22, 1.32, -0.45);
+    group.add(counterShelf);
+
+    const awning = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.08, 2.12), pinkGlazeMat);
+    awning.position.set(1.32, 2.16, -0.45);
+    awning.rotation.z = -0.35;
+    group.add(awning);
+
+    // Glowing "CHERRY POPPER '86" side sign boards
+    const signMat = new THREE.MeshStandardMaterial({
+      map: getIceCreamSignTexture(),
+      emissive: '#ffffff',
+      emissiveMap: getIceCreamSignTexture(),
+      emissiveIntensity: 0.85,
+      roughness: 0.35,
+    });
+    const leftSign = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.68, 2.5), signMat);
+    leftSign.position.set(-1.12, 1.78, -0.45);
+    group.add(leftSign);
+
+    const roofSign = new THREE.Mesh(new THREE.BoxGeometry(1.88, 0.44, 0.12), signMat);
+    roofSign.position.set(0, 2.62, 1.75);
+    group.add(roofSign);
+
+    // GIANT ROOFTOP SCULPTURES: Oversized Pink Frosted Donut + Strawberry Ice Cream Cone!
+    const donutBase = new THREE.Mesh(new THREE.TorusGeometry(0.62, 0.24, 12, 24), donutDoughMat);
+    donutBase.position.set(0, 3.06, -0.2);
+    donutBase.rotation.y = Math.PI / 2;
+    group.add(donutBase);
+
+    const donutGlaze = new THREE.Mesh(new THREE.TorusGeometry(0.63, 0.21, 10, 22), pinkGlazeMat);
+    donutGlaze.position.set(0.04, 3.09, -0.2);
+    donutGlaze.rotation.y = Math.PI / 2;
+    group.add(donutGlaze);
+
+    // Tilted Giant Ice Cream Cone at rear roof
+    const coneGroup = new THREE.Group();
+    coneGroup.position.set(0, 2.9, -1.55);
+    coneGroup.rotation.x = -0.28;
+    const waffleCone = new THREE.Mesh(new THREE.ConeGeometry(0.34, 0.92, 12), waffleMat);
+    waffleCone.rotation.x = Math.PI;
+    const scoopPink = new THREE.Mesh(new THREE.SphereGeometry(0.38, 12, 10), pinkGlazeMat);
+    scoopPink.position.y = 0.52;
+    const scoopMint = new THREE.Mesh(new THREE.SphereGeometry(0.31, 12, 10), mintMat);
+    scoopMint.position.set(0.12, 0.84, 0.05);
+    const cherry = new THREE.Mesh(
+      new THREE.SphereGeometry(0.11, 8, 8),
+      new THREE.MeshStandardMaterial({ color: '#ff1848', emissive: '#ff1848', emissiveIntensity: 1.8 }),
+    );
+    cherry.position.set(0.12, 1.15, 0.05);
+    coneGroup.add(waffleCone, scoopPink, scoopMint, cherry);
+    group.add(coneGroup);
+
+    // Chrome bumpers, headlights, taillights & neon underglow
+    const fBump = new THREE.Mesh(new THREE.BoxGeometry(2.28, 0.22, 0.24), chromeMat);
+    fBump.position.set(0, 0.46, 2.66);
+    group.add(fBump);
+    const rBump = new THREE.Mesh(new THREE.BoxGeometry(2.26, 0.22, 0.24), chromeMat);
+    rBump.position.set(0, 0.46, -2.68);
+    group.add(rBump);
+
+    for (const hx of [-0.78, 0.78]) {
+      const hl = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.18, 0.06), headMat);
+      hl.position.set(hx, 0.94, 2.61);
+      group.add(hl);
+    }
+    for (const tx of [-0.82, 0.82]) {
+      const tl = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.36, 0.06), tailMat);
+      tl.position.set(tx, 0.92, -2.63);
+      group.add(tl);
+    }
+    for (const sx of [-0.46, 0.46]) {
+      const rev = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.12, 0.07), reverseMat);
+      rev.position.set(sx, 0.72, -2.63);
+      group.add(rev);
+    }
+
+    const underglow = new THREE.Mesh(new THREE.BoxGeometry(1.88, 0.035, 4.1), glowMat);
+    underglow.position.set(0, 0.26, 0);
+    group.add(underglow);
+
+    addWheels(
+      [
+        [-1.08, 1.62],
+        [1.08, 1.62],
+        [-1.08, -1.52],
+        [1.08, -1.52],
+      ],
+      0.42,
+      0.32,
       'steel',
     );
   }

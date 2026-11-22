@@ -51,6 +51,7 @@ export interface MiamiWorld {
   canDeliverExportVehicle: (vehicleName: string) => ImportExportSpec | null;
   deliverExportVehicle: (vehicleName: string) => { reward: number; allDoneBonus: number };
   isCarInTuningBay: (pos: THREE.Vector3) => boolean;
+  isCarInLowriderArena: (pos: THREE.Vector3) => boolean;
   isNearDinerCounter: (pos: THREE.Vector3) => boolean;
   isNearPetShop: (pos: THREE.Vector3) => boolean;
   isNearBankVault: (pos: THREE.Vector3) => boolean;
@@ -953,6 +954,7 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
     canDeliverExportVehicle: (name: string) => vicePort.canDeliverVehicle(name),
     deliverExportVehicle: (name: string) => vicePort.markDelivered(name),
     isCarInTuningBay: (pos: THREE.Vector3) => westDistrict.isCarInTuningBay(pos),
+    isCarInLowriderArena: (pos: THREE.Vector3) => westDistrict.isCarInLowriderArena(pos),
     isNearDinerCounter: (pos: THREE.Vector3) => westDistrict.isNearDinerCounter(pos),
     isNearPetShop: (pos: THREE.Vector3) => westDistrict.isNearPetShop(pos),
     isNearBankVault: (pos: THREE.Vector3) => westDistrict.isNearBankVault(pos),

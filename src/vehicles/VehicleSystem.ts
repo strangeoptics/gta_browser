@@ -8,7 +8,7 @@ import { ROAD_COORDS } from '../world/CityLayout';
 import { createCarModel, type CarModelType } from './CarBuilder';
 import { createMotorcycleMesh } from './MotorcycleBuilder';
 
-export type SpecialVehicleRole = 'taxi' | 'ambulance' | 'firetruck';
+export type SpecialVehicleRole = 'taxi' | 'ambulance' | 'firetruck' | 'icecream';
 
 export interface Vehicle {
   id: string;
@@ -19,6 +19,10 @@ export interface Vehicle {
   isBike: boolean;
   isRv: boolean;
   isDelorean: boolean;
+  isKitt: boolean;
+  turboBoostCooldown: number;
+  turboBoostFlashTimer: number;
+  jingleActive?: boolean;
   mesh: THREE.Group;
   hitbox: THREE.Mesh;
   bodyMat: THREE.MeshStandardMaterial;
@@ -47,8 +51,14 @@ export interface Vehicle {
   lightbarRed?: THREE.Mesh;
   lightbarBlue?: THREE.Mesh;
   scannerLeds?: THREE.Mesh[];
-  // Vice Customs Tuning state
+  // Vice Customs Tuning & Lowrider Hydraulics state
   tuned?: boolean;
+  hydraulics?: boolean;
+  hydraulicsAutoBounce?: boolean;
+  hydroOffsetY?: number;
+  hydroVelY?: number;
+  hydroPitch?: number;
+  hydroRoll?: number;
   underglowMesh?: THREE.Mesh;
   underglowColorIdx?: number;
   // AI traffic state
@@ -134,6 +144,7 @@ const CAR_SPECS: {
   { name: 'VICE CAB · CHECKER TAXI', model: 'taxi', color: '#f2c22e', neon: '#ffd15c', x: -22.75, z: -40, yaw: 0, ai: true, police: false, pursuit: false, bike: false, specialRole: 'taxi' },
   { name: 'VICE EMS AMBULANCE', model: 'ambulance', color: '#f2f5fa', neon: '#ff3355', x: -14.0, z: -28, yaw: Math.PI, ai: false, police: false, pursuit: false, bike: false, specialRole: 'ambulance' },
   { name: 'VICE FIRE ENGINE 06', model: 'firetruck', color: '#d9232e', neon: '#ff9f43', x: 26.0, z: 42, yaw: Math.PI, ai: false, police: false, pursuit: false, bike: false, specialRole: 'firetruck' },
+  { name: "CHERRY POPPER '86", model: 'icecream', color: '#ff7eb8', neon: '#63e8d4', x: 54.0, z: 28, yaw: Math.PI, ai: false, police: false, pursuit: false, bike: false, specialRole: 'icecream' },
   // Cruising traffic cars in right-hand lanes on the road grid
   { name: 'CHEETAH GT', model: 'supercar', color: '#ff4fa3', neon: '#ff4fa3', x: 17.25, z: -44, yaw: 0, ai: true, police: false, pursuit: false, bike: false },
   { name: 'DODGE CHALLENGER RT', model: 'challenger', color: '#36c9c6', neon: '#36f1e6', x: -44, z: 22.75, yaw: Math.PI / 2, ai: true, police: false, pursuit: false, bike: false },
@@ -201,6 +212,7 @@ export class VehicleSystem {
   public onActiveVehicleDestroyed?: () => void;
   public onDriftMark?: (x: number, z: number, yaw: number) => void;
   public onStuntLanded?: (distanceM: number, reward: number) => void;
+  public onKittTurboBoost?: (v: Vehicle) => void;
   private ramCooldown = 0;
   private crashSoundCooldown = 0;
 
@@ -227,7 +239,11 @@ export class VehicleSystem {
       }
       scene.add(built.group);
 
-      const isRv = spec.model === 'bounder' || spec.model === 'ambulance' || spec.model === 'firetruck';
+      const isRv =
+        spec.model === 'bounder' ||
+        spec.model === 'ambulance' ||
+        spec.model === 'firetruck' ||
+        spec.model === 'icecream';
       const maxHp =
         spec.model === 'firetruck'
           ? 320
@@ -235,11 +251,13 @@ export class VehicleSystem {
             ? 240
             : spec.model === 'ambulance'
               ? 220
-              : spec.model === 'cybertruck'
-                ? 210
-                : spec.model === 'taxi'
-                  ? 165
-                  : 140;
+              : spec.model === 'icecream'
+                ? 200
+                : spec.model === 'cybertruck'
+                  ? 210
+                  : spec.model === 'taxi'
+                    ? 165
+                    : 140;
       const hbW = spec.bike ? 0.7 : isRv ? 2.3 : 2.1;
       const hbH = spec.bike ? 1.35 : isRv ? 2.7 : 1.45;
       const hbD = spec.bike ? 2.1 : isRv ? 6.1 : 4.6;
@@ -261,6 +279,9 @@ export class VehicleSystem {
         isBike: spec.bike,
         isRv,
         isDelorean: spec.model === 'delorean',
+        isKitt: spec.model === 'transam',
+        turboBoostCooldown: 0,
+        turboBoostFlashTimer: 0,
         mesh: built.group,
         hitbox,
         bodyMat: built.bodyMat,
@@ -394,6 +415,84 @@ export class VehicleSystem {
     }
 
     return { firstUpgrade, neonLabel: preset.label };
+  }
+
+  /**
+   * Installs Vice Customs Lowrider Hydraulics on any 4-wheel car (not motorcycles).
+   */
+  public installHydraulics(v: Vehicle): boolean {
+    if (v.isBike) return false;
+    v.hydraulics = true;
+    v.hydraulicsAutoBounce = true;
+    this.triggerHydraulicHop(v, 'up');
+    return true;
+  }
+
+  /**
+   * Triggers a crisp, realistic hydraulic suspension hop or directional lowrider tilt!
+   */
+  public triggerHydraulicHop(v: Vehicle, dir: 'up' | 'front' | 'back' | 'left' | 'right'): void {
+    if (!v.hydraulics) return;
+    if (dir === 'up') {
+      v.hydroVelY = 1.65;
+      v.hydroPitch = -0.055;
+    } else if (dir === 'front') {
+      v.hydroVelY = 0.95;
+      v.hydroPitch = -0.085;
+    } else if (dir === 'back') {
+      v.hydroVelY = 0.95;
+      v.hydroPitch = 0.085;
+    } else if (dir === 'left') {
+      v.hydroVelY = 0.85;
+      v.hydroRoll = 0.09;
+    } else if (dir === 'right') {
+      v.hydroVelY = 0.85;
+      v.hydroRoll = -0.09;
+    }
+  }
+
+  /**
+   * Fires K.I.T.T.'s iconic vertical Turbo-Boost jump over roadblocks & traffic!
+   */
+  public triggerKittTurboBoost(v: Vehicle): boolean {
+    if (!v.isKitt || v.destroyed || v.airborne || v.turboBoostCooldown > 0) return false;
+    v.vy = 11.4;
+    v.airborne = true;
+    v.jumpStartX = v.position.x;
+    v.jumpStartZ = v.position.z;
+    const maxCap = (v.tuned ? 32 : 25) * 1.18;
+    v.speed = Math.min(maxCap, Math.max(v.speed + 7.5, 18.5));
+    v.turboBoostCooldown = 3.2;
+    v.turboBoostFlashTimer = 0.65;
+
+    // Fiery red/cyan turbine exhaust burst behind K.I.T.T.
+    const fwdX = Math.sin(v.yaw);
+    const fwdZ = Math.cos(v.yaw);
+    const rightX = Math.cos(v.yaw);
+    const rightZ = -Math.sin(v.yaw);
+    for (let i = 0; i < 14; i++) {
+      const col = i % 3 === 0 ? '#ff2a4a' : i % 3 === 1 ? '#ff9f43' : '#36f1e6';
+      const puff = this.acquireSmokeMesh(col, 0.92, 0.55 + Math.random() * 0.45);
+      const side = (Math.random() - 0.5) * 1.3;
+      puff.position.set(
+        v.position.x - fwdX * 2.1 + rightX * side,
+        v.position.y + 0.35 + Math.random() * 0.3,
+        v.position.z - fwdZ * 2.1 + rightZ * side,
+      );
+      this.smokeParticles.push({
+        mesh: puff,
+        vel: new THREE.Vector3(
+          -fwdX * (6 + Math.random() * 4) + (Math.random() - 0.5) * 2.5,
+          1.2 + Math.random() * 2.2,
+          -fwdZ * (6 + Math.random() * 4) + (Math.random() - 0.5) * 2.5,
+        ),
+        life: 0.4 + Math.random() * 0.25,
+        maxLife: 0.65,
+      });
+    }
+
+    this.onKittTurboBoost?.(v);
+    return true;
   }
 
   public findNearestVehicle(pos: THREE.Vector3, maxDist = 4.4): Vehicle | null {
@@ -764,6 +863,8 @@ export class VehicleSystem {
     drunkLevel = 0,
     getGroundHeight?: (x: number, z: number) => number,
     vehicleGrid?: SpatialGrid,
+    radioBeatPulse = 0,
+    lockDriving = false,
   ): DrivingHudState {
     const clampedDt = Math.min(dt, 0.05);
     this.ramCooldown = Math.max(0, this.ramCooldown - clampedDt);
@@ -830,11 +931,19 @@ export class VehicleSystem {
       }
 
       // Iconic K.I.T.T. sweeping red scanner LED animation on the 1982 Pontiac Firebird Trans Am!
+      if (v.turboBoostCooldown > 0) {
+        v.turboBoostCooldown = Math.max(0, v.turboBoostCooldown - clampedDt);
+      }
+      if (v.turboBoostFlashTimer > 0) {
+        v.turboBoostFlashTimer = Math.max(0, v.turboBoostFlashTimer - clampedDt);
+      }
       if (v.scannerLeds && v.scannerLeds.length > 0) {
-        const sweepPos = ((Math.sin(elapsed * 3.8) + 1) * 0.5) * (v.scannerLeds.length - 1);
+        const sweepRate = v.turboBoostFlashTimer > 0 ? 15.0 : 3.8;
+        const boostGlow = v.turboBoostFlashTimer > 0 ? 7.5 : 4.4;
+        const sweepPos = ((Math.sin(elapsed * sweepRate) + 1) * 0.5) * (v.scannerLeds.length - 1);
         for (let s = 0; s < v.scannerLeds.length; s++) {
           const dist = Math.abs(s - sweepPos);
-          const glow = Math.max(0.15, 4.4 - dist * 2.2);
+          const glow = Math.max(0.15, boostGlow - dist * 2.2);
           (v.scannerLeds[s].material as THREE.MeshStandardMaterial).emissiveIntensity = glow;
         }
       }
@@ -844,7 +953,7 @@ export class VehicleSystem {
           v,
           clampedDt,
           elapsed,
-          isActive,
+          isActive && !lockDriving,
           solidColliders,
           bounds,
           pad,
@@ -852,6 +961,8 @@ export class VehicleSystem {
           drunkLevel,
           getGroundHeight,
           vehicleGrid,
+          radioBeatPulse,
+          lockDriving,
         );
       } else if (v.isPursuitUnit && wantedStars >= 2) {
         // Active Vice PD Cruiser chase!
@@ -1289,7 +1400,14 @@ export class VehicleSystem {
     drunkLevel = 0,
     getGroundHeight?: (x: number, z: number) => number,
     vehicleGrid?: SpatialGrid,
+    radioBeatPulse = 0,
+    lockDriving = false,
   ): void {
+    // K.I.T.T. Turbo-Boost on [SHIFT] while driving!
+    if (isActive && v.isKitt && (this.keys.has('ShiftLeft') || this.keys.has('ShiftRight'))) {
+      this.triggerKittTurboBoost(v);
+    }
+
     const kbAccel = (this.keys.has('KeyW') ? 1 : 0) - (this.keys.has('KeyS') ? 1 : 0);
     const kbSteer = (this.keys.has('KeyA') ? 1 : 0) - (this.keys.has('KeyD') ? 1 : 0);
     const padAccel = pad?.connected ? pad.rt - pad.lt : 0;
@@ -1396,6 +1514,7 @@ export class VehicleSystem {
 
     const baseGroundY = getGroundHeight ? Math.max(0, getGroundHeight(v.position.x, v.position.z)) : 0;
 
+    let slopePitch = 0;
     if (onRampHeight > 0.05 && !v.airborne) {
       v.position.y = baseGroundY + onRampHeight;
       v.mesh.rotation.x = -0.24;
@@ -1434,13 +1553,59 @@ export class VehicleSystem {
           0,
           getGroundHeight(v.position.x + Math.sin(v.yaw) * 1.6, v.position.z + Math.cos(v.yaw) * 1.6),
         );
-        const slopePitch = -Math.atan2(aheadY - baseGroundY, 1.6);
-        v.mesh.rotation.x += (slopePitch - v.mesh.rotation.x) * (1 - Math.exp(-12 * dt));
-      } else {
+        slopePitch = -Math.atan2(aheadY - baseGroundY, 1.6);
+        if (!v.hydraulics) {
+          v.mesh.rotation.x += (slopePitch - v.mesh.rotation.x) * (1 - Math.exp(-12 * dt));
+        }
+      } else if (!v.hydraulics) {
         v.mesh.rotation.x *= 0.82;
       }
     }
-    v.mesh.position.y = v.position.y;
+
+    // Vice Customs Lowrider Hydraulics: crisp spring-bounce, subtle radio-beat groove & asphalt-safe lift!
+    if (v.hydraulics && !v.airborne && onRampHeight <= 0.05) {
+      let hy = v.hydroOffsetY ?? 0;
+      let hvy = v.hydroVelY ?? 0;
+      let hp = v.hydroPitch ?? 0;
+      let hr = v.hydroRoll ?? 0;
+
+      // Crisp hydraulic cylinder spring-damper back to neutral
+      hvy += (-hy * 78.0 - hvy * 12.5) * dt;
+      hy = Math.max(0, Math.min(0.24, hy + hvy * dt));
+      if (hy <= 0.001 && hvy < 0) {
+        hy = 0;
+        hvy = 0;
+      }
+      hp *= Math.exp(-10.5 * dt);
+      hr *= Math.exp(-10.5 * dt);
+
+      v.hydroOffsetY = hy;
+      v.hydroVelY = hvy;
+      v.hydroPitch = hp;
+      v.hydroRoll = hr;
+
+      // Subtle, groovy auto-bounce on the live radio beat (never over-the-top!)
+      const beatLift = !lockDriving && v.hydraulicsAutoBounce ? radioBeatPulse * 0.065 : 0;
+      const beatPitch = !lockDriving && v.hydraulicsAutoBounce ? -radioBeatPulse * 0.025 : 0;
+      const beatRoll = !lockDriving && v.hydraulicsAutoBounce ? Math.sin(elapsed * 3.2) * radioBeatPulse * 0.02 : 0;
+
+      const totalPitch = slopePitch + hp + beatPitch;
+      const totalRoll = hr + beatRoll;
+
+      // Compensate Y-height for pitch/roll so wheels & bumpers NEVER sink into the asphalt!
+      const halfLen = v.isRv ? 2.5 : 1.95;
+      const halfWid = v.isRv ? 1.15 : 1.0;
+      const clearanceLift = Math.abs(Math.sin(totalPitch)) * halfLen + Math.abs(Math.sin(totalRoll)) * halfWid;
+
+      v.mesh.position.y = v.position.y + Math.max(hy + beatLift, clearanceLift);
+      v.mesh.rotation.x = totalPitch;
+      v.mesh.rotation.z = totalRoll;
+    } else {
+      v.mesh.position.y = v.position.y;
+      if (!v.isBike) {
+        v.mesh.rotation.z *= Math.exp(-10 * dt);
+      }
+    }
 
     // Back to the Future DeLorean DMC-12 VFX:
     // - >= 80% top speed: twin burning tire fire trails on the asphalt!

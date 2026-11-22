@@ -28,6 +28,8 @@ import { HeistSystem } from './gameplay/HeistSystem';
 import { RooftopPartySystem } from './gameplay/RooftopPartySystem';
 import { VigilanteSystem } from './gameplay/VigilanteSystem';
 import { SpecialVehicleMissionSystem, PARAMEDIC_MAX_HP_RESCUES_REQUIRED } from './gameplay/SpecialVehicleMissions';
+import { KittAiSystem } from './gameplay/KittAiSystem';
+import { LowriderBattleSystem, LOWRIDER_DIR_SYMBOL } from './gameplay/LowriderBattleSystem';
 import { ShopSystem } from './gameplay/ShopSystem';
 import { PayNSpray } from './gameplay/PayNSpray';
 import { Minimap } from './hud/Minimap';
@@ -89,6 +91,11 @@ const interactPromptEl = document.getElementById('interact-prompt') as HTMLDivEl
 const storyDialogueBannerEl = document.getElementById('story-dialogue-banner') as HTMLDivElement;
 const storySpeakerEl = document.getElementById('story-speaker') as HTMLSpanElement;
 const storyLineEl = document.getElementById('story-line') as HTMLSpanElement;
+const lowriderHudEl = document.getElementById('lowrider-hud') as HTMLDivElement;
+const lowriderScoreEl = document.getElementById('lowrider-score') as HTMLSpanElement;
+const lowriderNotesEl = document.getElementById('lowrider-notes') as HTMLDivElement;
+const lowriderFeedbackEl = document.getElementById('lowrider-feedback') as HTMLSpanElement;
+const lowriderProgressEl = document.getElementById('lowrider-progress') as HTMLSpanElement;
 const vehiclePanelEl = document.getElementById('vehicle-panel') as HTMLDivElement;
 const vehicleNameEl = document.getElementById('vehicle-name') as HTMLDivElement;
 const vehicleSpeedEl = document.getElementById('vehicle-speed') as HTMLSpanElement;
@@ -228,6 +235,8 @@ const heist = new HeistSystem(scene);
 const rooftopParty = new RooftopPartySystem(scene);
 const vigilante = new VigilanteSystem();
 const specialMissions = new SpecialVehicleMissionSystem(scene);
+const kittAi = new KittAiSystem();
+const lowriderBattle = new LowriderBattleSystem();
 const shop = new ShopSystem(scene);
 const payNSpray = new PayNSpray(scene);
 const minimap = new Minimap(minimapCanvas);
@@ -756,7 +765,16 @@ vehicles.onStuntLanded = (distM, reward) => {
   addCameraShake(0.32);
   persistProgress();
   specialMissions.notifyTaxiStuntJump(distM);
+  if (vehicles.getActiveVehicle()?.isKitt) {
+    kittAi.speak('stunt', audio.isMuted());
+  }
   showQuickToast(`INSANE STUNT BONUS · ${distM}m · +$${reward}`);
+};
+
+vehicles.onKittTurboBoost = () => {
+  audio.playKittTurboBoost();
+  addCameraShake(0.32);
+  kittAi.speak('boost', audio.isMuted(), true);
 };
 
 vehicles.onPoliceRamPlayer = (dmg) => {
@@ -767,6 +785,9 @@ vehicles.onCarCrash = (intensity, playerInvolved) => {
   audio.playCrash(intensity);
   if (playerInvolved) {
     addCameraShake(intensity * 0.55);
+    if (intensity > 0.35 && vehicles.getActiveVehicle()?.isKitt) {
+      kittAi.speak('crash', audio.isMuted());
+    }
     if (intensity > 0.45) {
       wanted.addHeat(12);
     }
@@ -816,6 +837,18 @@ npcs.onNpcKilled = (npc) => {
   } else if (npc.role === 'bounty') {
     wanted.addHeat(45);
   }
+};
+
+npcs.onIceCreamSale = (isPolice) => {
+  const earned = isPolice ? 45 : 35;
+  objectives.cash += earned;
+  audio.playPurchase();
+  persistProgress();
+  showQuickToast(
+    isPolice
+      ? `VICE PD DONUT-PAUSE! · +$${earned} (COPS ABGELENKT!)`
+      : `CHERRY POPPER '86 · EIS VERKAUFT · +$${earned}`,
+  );
 };
 
 vehicles.onVehicleHitNpc = (vPos, speed) => {
@@ -1399,6 +1432,10 @@ function tryToggleVehicleOrBoat(): void {
       weapons.setEnabled(true);
     }
   } else if (vehicles.isInVehicle()) {
+    const prevCar = vehicles.getActiveVehicle();
+    if (lowriderBattle.isActive()) lowriderBattle.cancel();
+    if (prevCar?.isKitt) kittAi.stop();
+    if (prevCar?.specialRole === 'icecream') prevCar.jingleActive = false;
     const exitPos = vehicles.exitVehicle(world.layout.playableBounds);
     if (exitPos) {
       player.setSpawn(exitPos.x, exitPos.y, exitPos.z, exitPos.yaw);
@@ -1440,6 +1477,11 @@ function tryToggleVehicleOrBoat(): void {
       }
       vehicles.enterVehicle(nearest);
       weapons.setEnabled(false);
+      if (nearest.isKitt) {
+        kittAi.speak('enter', audio.isMuted(), true);
+      } else if (nearest.specialRole === 'icecream') {
+        showQuickToast("CHERRY POPPER '86 · [G] 8-BIT JINGLE AN/AUS (LOCKT COPS & PASSANTEN AN!)");
+      }
     }
   }
 }
@@ -1577,6 +1619,25 @@ window.addEventListener('keydown', (e) => {
   }
 
   if (photoMode) return;
+  if (lowriderBattle.isActive() && player.getIsActive() && !shopOpen && !petShopOpen) {
+    if (e.code === 'Escape') {
+      lowriderBattle.cancel();
+      showQuickToast('LOWRIDER-BATTLE ABGEBROCHEN');
+      return;
+    }
+    const car = vehicles.getActiveVehicle();
+    const res = lowriderBattle.handleKey(e.code);
+    if (res.dir && car) {
+      e.preventDefault();
+      const hopMap = { up: 'front', down: 'back', left: 'left', right: 'right', hop: 'up' } as const;
+      vehicles.triggerHydraulicHop(car, hopMap[res.dir]);
+      audio.playHydraulicBounce(res.quality === 'perfect');
+      if (res.matched) {
+        addCameraShake(res.quality === 'perfect' ? 0.14 : 0.08);
+      }
+      return;
+    }
+  }
   if (petShopOpen && (e.code === 'KeyF' || e.code === 'KeyB' || e.code === 'Escape')) {
     closePetShop();
     return;
@@ -1660,6 +1721,57 @@ window.addEventListener('keydown', (e) => {
       return;
     }
     const car = vehicles.getActiveVehicle();
+    if (car && world.isCarInTuningBay(car.position)) {
+      if (car.isBike) {
+        showQuickToast('VICE CUSTOMS · LOWRIDER-HYDRAULIK NUR FÜR AUTOS!');
+      } else if (car.hydraulics) {
+        vehicles.triggerHydraulicHop(car, 'up');
+        audio.playHydraulicBounce(true);
+        showQuickToast('VICE CUSTOMS · LOWRIDER-HYDRAULIK BEREITS INSTALLIERT!');
+      } else {
+        const hydroCost = 500;
+        if (objectives.cash >= hydroCost) {
+          objectives.cash -= hydroCost;
+          vehicles.installHydraulics(car);
+          audio.playPurchase();
+          audio.playHydraulicBounce(true);
+          persistProgress();
+          showQuickToast(
+            'VICE CUSTOMS · LOWRIDER-HYDRAULIK EINGEBAUT (-$500) · HÜPFT IM RADIO-TAKT & LITTLE HAVANA BATTLE!',
+          );
+        } else {
+          showQuickToast(`VICE CUSTOMS · HYDRAULIK KOSTET $${hydroCost}`);
+        }
+      }
+      return;
+    }
+    if (car && car.isKitt) {
+      if (!vehicles.triggerKittTurboBoost(car)) {
+        showQuickToast(
+          car.turboBoostCooldown > 0
+            ? `K.I.T.T. TURBO-BOOST LÄDT… (${car.turboBoostCooldown.toFixed(1)}s)`
+            : 'K.I.T.T. TURBO-BOOST · NUR AUF FESTEM BODEN!',
+        );
+      }
+      return;
+    }
+    if (car && car.specialRole === 'icecream') {
+      car.jingleActive = !car.jingleActive;
+      if (car.jingleActive) {
+        const nearPd = Math.hypot(car.position.x - -40, car.position.z) < 38;
+        showQuickToast(
+          nearPd
+            ? "CHERRY POPPER '86 · JINGLE AN! VICE PD COPS RENNEN FÜR DONUTS RAUS!"
+            : "CHERRY POPPER '86 · 8-BIT JINGLE AN! PASSANTEN & COPS KOMMEN ANGELAUFEN!",
+        );
+        if (nearPd) {
+          sendPoliceDispatch('Alle Einheiten am Precinct 06: Gratis-Donuts vor der Tür! Verfolgung kurzzeitig unterbrochen!', true);
+        }
+      } else {
+        showQuickToast("CHERRY POPPER '86 · JINGLE AUS");
+      }
+      return;
+    }
     if (!car && world.isSafehouseRooftopBarOwned() && rooftopParty.isPlayerOnSafehouseRoof(player.position)) {
       const started = rooftopParty.toggle();
       audio.playCheckpoint();
@@ -1705,8 +1817,17 @@ window.addEventListener('keydown', (e) => {
           ? 'RETTUNGSDIENST AKTIV · 150 MAX-HP BEREITS FREIGESCHALTET!'
           : `RETTUNGSDIENST AKTIV · ${prog.rescues}/${PARAMEDIC_MAX_HP_RESCUES_REQUIRED} RETTUNGEN FÜR 150 MAX-HP!`,
       );
+    } else if (car && car.hydraulics) {
+      car.hydraulicsAutoBounce = !car.hydraulicsAutoBounce;
+      vehicles.triggerHydraulicHop(car, 'up');
+      audio.playHydraulicBounce(true);
+      showQuickToast(
+        car.hydraulicsAutoBounce
+          ? 'LOWRIDER-HYDRAULIK · RADIO-BEAT-BOUNCE AN!'
+          : 'LOWRIDER-HYDRAULIK · RADIO-BEAT-BOUNCE AUS',
+      );
     } else {
-      showQuickToast('EINSATZ [G] · NUR IN VICE PD, TAXI, AMBULANZ ODER FEUERWEHR');
+      showQuickToast('EINSATZ [G] · NUR IN K.I.T.T., EISWAGEN, HYDRAULIK, VICE PD, TAXI, EMS ODER FEUERWEHR');
     }
     return;
   }
@@ -1750,6 +1871,18 @@ window.addEventListener('keydown', (e) => {
           );
         } else {
           showQuickToast(`VICE CUSTOMS · ZU WENIG CASH (BENÖTIGT $${tuneCost})`);
+        }
+      } else if (world.isCarInLowriderArena(car.position)) {
+        if (lowriderBattle.isActive()) {
+          lowriderBattle.cancel();
+          showQuickToast('LOWRIDER-BATTLE ABGEBROCHEN');
+        } else if (car.hydraulics) {
+          lowriderBattle.start();
+          vehicles.triggerHydraulicHop(car, 'up');
+          audio.playHydraulicBounce(true);
+          showQuickToast('LITTLE HAVANA LOWRIDER BATTLE · [W A S D / SPACE] IM TAKT HÜPFEN!');
+        } else {
+          showQuickToast('LOWRIDER-HYDRAULIK NÖTIG · ERST BEI VICE CUSTOMS EINBAUEN ([G] · $500)');
         }
       } else if (world.isCarInExportBay(car.position)) {
         const exportSpec = world.canDeliverExportVehicle(car.name);
@@ -2359,6 +2492,8 @@ function animate(now: number): void {
     drunkLevel,
     world.getGroundHeight,
     world.vehicleGrid,
+    audio.getRadioBeatPulse(),
+    lowriderBattle.isActive(),
   );
   garageRideDynColliders.length = 0;
   if (inGarageRide) {
@@ -2441,6 +2576,9 @@ function animate(now: number): void {
     } else if (wanted.stars === 2) {
       const carNote = activeCar ? ` im ${activeCar.name}` : '';
       sendPoliceDispatch(`Alle Streifenwagen: Verfolgung${carNote} am ${area}!`, true);
+      if (activeCar?.isKitt) {
+        kittAi.speak('wanted', audio.isMuted());
+      }
     } else if (wanted.stars >= 3) {
       sendPoliceDispatch(`Code 3! Air-One Helikopter startet über ${area}!`, true);
     }
@@ -2461,14 +2599,27 @@ function animate(now: number): void {
   npcDynColliders.length = 0;
   vehicles.appendVehicleColliders(npcDynColliders);
   for (let i = 0; i < rbColliders.length; i++) npcDynColliders.push(rbColliders[i]);
-  npcs.update(
+  const activeCarNow = vehicles.getActiveVehicle();
+  const iceCreamJingleOn = Boolean(activeCarNow?.specialRole === 'icecream' && activeCarNow.jingleActive);
+  const iceCreamLure = iceCreamJingleOn && activeCarNow
+    ? {
+        pos: activeCarNow.position,
+        active: true,
+        nearPrecinct: Math.hypot(activeCarNow.position.x - -40, activeCarNow.position.z) < 38,
+      }
+    : undefined;
+  const npcTick = npcs.update(
     dt,
     player.position,
     wanted.stars,
     npcDynColliders,
     playerCoverState,
     world.npcGrid,
+    iceCreamLure,
   );
+  if (npcTick.distractedCops > 0 && wanted.stars > 0) {
+    wanted.update(dt * 2.5);
+  }
 
   // GTA-style close-range arrest ("BUSTED") when cornered by Vice PD at 2+ stars (never while flying in the Maverick!)
   if (isPlaying && wanted.stars >= 2 && !inBoat && !inHeli) {
@@ -2512,12 +2663,52 @@ function animate(now: number): void {
   if (storyHud.toastText) {
     showQuickToast(storyHud.toastText);
   }
+  const kittHud = kittAi.update(dt);
   if (storyHud.dialogueSpeaker && storyHud.dialogueText) {
     setText(storySpeakerEl, storyHud.dialogueSpeaker);
     setText(storyLineEl, storyHud.dialogueText);
     setClass(storyDialogueBannerEl, 'visible', true);
+  } else if (kittHud.speaker && kittHud.text) {
+    setText(storySpeakerEl, kittHud.speaker);
+    setText(storyLineEl, kittHud.text);
+    setClass(storyDialogueBannerEl, 'visible', true);
   } else {
     setClass(storyDialogueBannerEl, 'visible', false);
+  }
+
+  const lowriderHud = lowriderBattle.update(dt);
+  if (lowriderHud.finishedToast) {
+    if (lowriderHud.finishedReward > 0) {
+      objectives.cash += lowriderHud.finishedReward;
+      objectives.completedCount++;
+      lastCompletedCount = objectives.completedCount;
+      audio.playMissionPassed();
+      persistProgress();
+    }
+    showQuickToast(lowriderHud.finishedToast);
+  }
+  setClass(lowriderHudEl, 'visible', lowriderHud.active);
+  if (lowriderHud.active) {
+    setText(lowriderScoreEl, `${lowriderHud.score} PKT`);
+    setText(lowriderProgressEl, `${lowriderHud.progressPct}%`);
+    setText(
+      lowriderFeedbackEl,
+      lowriderHud.feedback || 'IM TAKT HÜPFEN · [W A S D] / [SPACE] · [ESC] ABBRUCH',
+    );
+    setClass(lowriderFeedbackEl, 'perfect', lowriderHud.feedbackKind === 'perfect');
+    setClass(lowriderFeedbackEl, 'good', lowriderHud.feedbackKind === 'good');
+    setClass(lowriderFeedbackEl, 'miss', lowriderHud.feedbackKind === 'miss');
+
+    lowriderNotesEl.innerHTML = '';
+    for (let i = 0; i < lowriderHud.notes.length; i++) {
+      const n = lowriderHud.notes[i];
+      const leftPct = 16 + (n.offsetSec / 1.8) * 82;
+      const el = document.createElement('div');
+      el.className = n.dir === 'hop' ? 'lowrider-note hop' : 'lowrider-note';
+      el.style.left = `${leftPct.toFixed(1)}%`;
+      el.textContent = LOWRIDER_DIR_SYMBOL[n.dir];
+      lowriderNotesEl.appendChild(el);
+    }
   }
   const activePoliceCar = Boolean(vehicles.getActiveVehicle()?.isPolice);
   const vigilanteHud = vigilante.update(dt, player.position, activePoliceCar, npcs);
@@ -2620,6 +2811,7 @@ function animate(now: number): void {
     Math.max(world.getClubProximity(player.position), rooftopParty.getMusicProximity(player.position)),
     inGarageRide && garageRideHud.rideId ? garageRideHud.rideId : 'motor',
     specialHud.kind === 'firefighter' || specialHud.kind === 'paramedic',
+    iceCreamJingleOn,
   );
 
   shootableHitboxes.length = 0;
@@ -2888,16 +3080,44 @@ function animate(now: number): void {
         vehicleCamHintEl,
         `[LMB] DRIVE-BY · [G] ${emsToggle} · [Q] ${audio.getRadioStation()} · [V] CAM · [E] AUS`,
       );
+    } else if (car?.specialRole === 'icecream') {
+      const jingleLbl = car.jingleActive ? 'JINGLE AUS' : '8-BIT JINGLE AN';
+      setText(
+        vehicleCamHintEl,
+        `[G] ${jingleLbl} (COPS ABLENKEN) · [V] CAM · [E] AUS`,
+      );
+    } else if (car?.isKitt) {
+      const boostLbl =
+        car.turboBoostCooldown > 0
+          ? `TURBO-BOOST (${car.turboBoostCooldown.toFixed(1)}s)`
+          : 'TURBO-BOOST BEREIT!';
+      setText(
+        vehicleCamHintEl,
+        `[SHIFT/G] ${boostLbl} · [Q] ${audio.getRadioStation()} · [V] CAM · [E] AUS`,
+      );
     } else {
-      const vigHint = car?.isPolice ? ` · [G] ${vigilante.isActive() ? 'VIGILANTE AUS' : 'VIGILANTE'}` : '';
+      const vigHint = car?.isPolice
+        ? ` · [G] ${vigilante.isActive() ? 'VIGILANTE AUS' : 'VIGILANTE'}`
+        : car?.hydraulics
+          ? ` · [G] HYDRAULIK ${car.hydraulicsAutoBounce ? 'AN' : 'AUS'}`
+          : '';
       setText(vehicleCamHintEl, `[LMB] DRIVE-BY · [Q] ${audio.getRadioStation()}${vigHint} · [V] CAM · [E] AUS`);
     }
     if (car && world.isInSafehouseGarage(car.position)) {
       nextPrompt = '[F] PRIVATE GARAGE · GRATIS REPARATUR (100%)';
     } else if (car && world.isCarInTuningBay(car.position)) {
+      const hydroPart = car.isBike
+        ? ''
+        : car.hydraulics
+          ? ' · ✓ HYDRAULIK'
+          : ' · [G] LOWRIDER-HYDRAULIK ($500)';
       nextPrompt = car.tuned
-        ? '[F] VICE CUSTOMS · NEON-UNDERGLOW WECHSELN & REPARATUR ($400)'
-        : '[F] VICE CUSTOMS · TURBO (+30%), PANZERUNG & NEON-UNDERGLOW ($600)';
+        ? `[F] VICE CUSTOMS · NEON-FINISH ($400)${hydroPart}`
+        : `[F] VICE CUSTOMS · TURBO & NEON ($600)${hydroPart}`;
+    } else if (car && world.isCarInLowriderArena(car.position) && !lowriderBattle.isActive()) {
+      nextPrompt = car.hydraulics
+        ? '[F] LITTLE HAVANA LOWRIDER BATTLE STARTEN (+$1.200)'
+        : '[LITTLE HAVANA ARENA] ERST LOWRIDER-HYDRAULIK BEI VICE CUSTOMS EINBAUEN ([G] · $500)';
     } else if (car && world.isCarInExportBay(car.position)) {
       const exportSpec = world.canDeliverExportVehicle(car.name);
       nextPrompt = exportSpec

@@ -209,3 +209,72 @@ export function getOutfitTexture(
   textureCache.set(key, tex);
   return tex;
 }
+
+/**
+ * Generates a matching 128x128 back-of-torso outfit texture so backs never show
+ * front buttons, ties, lapels, or chest badges!
+ */
+export function getOutfitBackTexture(
+  role: NpcRole,
+  primaryColor: string,
+  accentColor: string,
+  variant: number,
+): THREE.CanvasTexture {
+  const key = `outfit-back:${role}:${primaryColor}:${accentColor}:${variant}`;
+  const cached = textureCache.get(key);
+  if (cached) return cached;
+
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+
+  ctx.fillStyle = role === 'bounty' ? '#f5f0eb' : primaryColor;
+  ctx.fillRect(0, 0, size, size);
+
+  if (role === 'police') {
+    // Subtle yoke seam + bold gold "VICE PD" across the upper back
+    ctx.fillStyle = 'rgba(0,0,0,0.18)';
+    ctx.fillRect(0, 20, size, 3);
+    ctx.fillRect(62, 22, 4, size - 22);
+    ctx.fillStyle = '#ffd15c';
+    ctx.font = '900 22px "Segoe UI", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('VICE PD', 64, 52);
+  } else if (role === 'bounty' || variant % 2 === 0) {
+    // Tailored 80s blazer back: subtle shoulder yoke, center back seam & lower vent
+    ctx.fillStyle = 'rgba(0,0,0,0.08)';
+    ctx.fillRect(0, 0, size, 16);
+    ctx.strokeStyle = 'rgba(0,0,0,0.16)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(64, 14);
+    ctx.lineTo(64, size);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(0,0,0,0.22)';
+    ctx.fillRect(62, size - 26, 4, 26);
+  } else {
+    // Tropical Hawaiian palm-leaf print continuing across the back (no front buttons!)
+    ctx.fillStyle = accentColor;
+    for (let y = 14; y < size; y += 28) {
+      for (let x = 14; x < size; x += 30) {
+        const ox = y % 56 === 14 ? 0 : 14;
+        ctx.beginPath();
+        ctx.ellipse(x + ox, y, 10, 4, 0.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(x + ox, y, 10, 4, -0.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.fillStyle = 'rgba(0,0,0,0.1)';
+    ctx.fillRect(0, 16, size, 2);
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  textureCache.set(key, tex);
+  return tex;
+}

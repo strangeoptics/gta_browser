@@ -15,6 +15,14 @@ export class WantedSystem {
     this.cooldownTimer = 0;
   }
 
+  public setStars(targetStars: number): void {
+    const clamped = Math.max(0, Math.min(5, Math.round(targetStars)));
+    const heatByStar = [0, 35, 95, 185, 290, 420];
+    this.stars = clamped;
+    this.heat = heatByStar[clamped];
+    this.cooldownTimer = clamped > 0 ? 18.0 : 0;
+  }
+
   public update(dt: number): void {
     if (this.stars <= 0) return;
 

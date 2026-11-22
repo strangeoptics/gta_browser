@@ -20,7 +20,7 @@ import { buildBeachHighlights } from './BeachProps';
 import { buildNeonClub } from './NeonClub';
 import { buildPoliceStation } from './PoliceStation';
 import { buildSafehouse, type CabinetWeapon, type FoodItem } from './Safehouse';
-import { buildStarfishIsland } from './StarfishIsland';
+import { buildStarfishIsland, type SuperyachtHandle } from './StarfishIsland';
 import { buildStuntRamps, type StuntRamp } from './StuntRamps';
 import { buildTrafficLights } from './TrafficLights';
 import { buildVicePort, type ImportExportSpec } from './VicePort';
@@ -36,6 +36,7 @@ export interface MiamiWorld {
   stuntRamps: StuntRamp[];
   layout: CityLayout;
   maverickSpawn: THREE.Vector3;
+  yacht: SuperyachtHandle;
   isNearIslandVault: (pos: THREE.Vector3) => boolean;
   isNearYachtLoot: (pos: THREE.Vector3) => boolean;
   takeIslandVault: () => void;
@@ -71,6 +72,9 @@ export interface MiamiWorld {
   isNearSafehouseLounge: (pos: THREE.Vector3) => boolean;
   isNearSafehouseWardrobe: (pos: THREE.Vector3) => boolean;
   isNearSafehouseFridge: (pos: THREE.Vector3) => boolean;
+  isNearSafehouseRooftopBar: (pos: THREE.Vector3) => boolean;
+  isSafehouseRooftopBarOwned: () => boolean;
+  setSafehouseRooftopBarOwned: (owned: boolean) => void;
   getFoodItems: () => FoodItem[];
   consumeFood: (item: FoodItem) => void;
   getCabinetWeapons: () => CabinetWeapon[];
@@ -838,6 +842,7 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
     stuntRamps,
     layout,
     maverickSpawn: starfish.helipadSpawn,
+    yacht: starfish.yacht,
     isNearIslandVault: (pos: THREE.Vector3) => starfish.isNearIslandVault(pos),
     isNearYachtLoot: (pos: THREE.Vector3) => starfish.isNearYachtLoot(pos),
     takeIslandVault: () => starfish.takeIslandVault(),
@@ -881,6 +886,9 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
     isNearSafehouseLounge: (pos: THREE.Vector3) => safehouse.isNearLounge(pos),
     isNearSafehouseWardrobe: (pos: THREE.Vector3) => safehouse.isNearWardrobe(pos),
     isNearSafehouseFridge: (pos: THREE.Vector3) => safehouse.isNearFridge(pos),
+    isNearSafehouseRooftopBar: (pos: THREE.Vector3) => safehouse.isNearRooftopBar(pos),
+    isSafehouseRooftopBarOwned: () => safehouse.isRooftopBarOwned(),
+    setSafehouseRooftopBarOwned: (owned: boolean) => safehouse.setRooftopBarOwned(owned),
     getFoodItems: () => [...safehouse.getFoodItems(), ...policeStation.getDonuts()],
     consumeFood: (item: FoodItem) => {
       safehouse.consumeFood(item);

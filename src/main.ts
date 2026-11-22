@@ -13,6 +13,7 @@ import { VehicleSystem } from './vehicles/VehicleSystem';
 import { BoatSystem } from './vehicles/BoatSystem';
 import { PlayerHelicopterSystem } from './vehicles/PlayerHelicopterSystem';
 import { GarageRidesSystem, type GarageWallInteractable } from './vehicles/GarageRidesSystem';
+import { SuperyachtSystem } from './vehicles/SuperyachtSystem';
 import { DestructibleProps } from './world/DestructibleProps';
 import { DecalSystem } from './world/DecalSystem';
 import { RoadblockSystem } from './world/RoadblockSystem';
@@ -106,6 +107,20 @@ const buyPetBtns: Record<PetId, HTMLButtonElement> = {
 };
 const petShopCloseBtn = document.getElementById('pet-shop-close') as HTMLButtonElement;
 
+// Developer Panel Modal
+const devOverlayEl = document.getElementById('dev-overlay') as HTMLDivElement;
+const devCashEl = document.getElementById('dev-cash') as HTMLSpanElement;
+const devStarsEl = document.getElementById('dev-stars') as HTMLSpanElement;
+const devStarBtns = Array.from(document.querySelectorAll<HTMLButtonElement>('.dev-star-btn'));
+const devCashMinusBtn = document.getElementById('dev-cash-minus') as HTMLButtonElement;
+const devCash500Btn = document.getElementById('dev-cash-500') as HTMLButtonElement;
+const devCash2500Btn = document.getElementById('dev-cash-2500') as HTMLButtonElement;
+const devCash10kBtn = document.getElementById('dev-cash-10k') as HTMLButtonElement;
+const devCashZeroBtn = document.getElementById('dev-cash-zero') as HTMLButtonElement;
+const devCashInput = document.getElementById('dev-cash-input') as HTMLInputElement;
+const devCashSetBtn = document.getElementById('dev-cash-set') as HTMLButtonElement;
+const devCloseBtn = document.getElementById('dev-close') as HTMLButtonElement;
+
 // Pause Settings & Saved Stats UI
 const statCashEl = document.getElementById('stat-cash') as HTMLElement;
 const statMissionsEl = document.getElementById('stat-missions') as HTMLElement;
@@ -154,6 +169,7 @@ const vehicles = new VehicleSystem(scene);
 const boat = new BoatSystem(scene);
 const maverick = new PlayerHelicopterSystem(scene, world.maverickSpawn);
 const garageRides = new GarageRidesSystem(scene);
+const superyacht = new SuperyachtSystem(scene, world.yacht);
 const npcs = new NpcSystem(scene);
 const heli = new HelicopterSystem(scene);
 const pets = new SafehousePets(scene);
@@ -215,6 +231,7 @@ function sendPoliceDispatch(message: string, force = false): void {
 let lastCompletedCount = savedProgress.completedMissions;
 let shopOpen = false;
 let petShopOpen = false;
+let devOpen = false;
 let photoMode = false;
 let photoYaw = 0;
 let photoPitch = 0;
@@ -279,9 +296,18 @@ function eatLookedFood(): boolean {
   audio.playEatCrunch();
   weapons.triggerEatAnimation();
   handHoldTimer = 0.45; // keep hand visible briefly during bite animation!
-  showQuickToast(
-    gained > 0 ? `${item.name} GEGESSEN · +${gained} HP` : `${item.name} GEGESSEN · LECKER!`,
-  );
+  if (item.alcohol && item.alcohol > 0) {
+    cocktailScore = Math.min(6.0, cocktailScore + item.alcohol);
+    const rawLevel = THREE.MathUtils.clamp((cocktailScore - 1.0) / 3.8, 0, 1);
+    const hpNote = gained > 0 ? ` · +${gained} HP` : '';
+    const buzzNote =
+      rawLevel < 0.32 ? 'LEICHT ANGESCHWIPST 🍺' : rawLevel < 0.7 ? 'BETRUNKEN! 🍺' : 'VOLLRAUSCH! 🍺';
+    showQuickToast(`${item.name} GETRUNKEN${hpNote} · ${buzzNote}`);
+  } else {
+    showQuickToast(
+      gained > 0 ? `${item.name} GEGESSEN · +${gained} HP` : `${item.name} GEGESSEN · LECKER!`,
+    );
+  }
   lookedFood = null;
   return true;
 }
@@ -290,6 +316,7 @@ objectives.cash = savedProgress.cash;
 objectives.completedCount = savedProgress.completedMissions;
 playerAvatar.setOutfit(savedProgress.outfitIndex);
 pets.setOwnedPets((savedProgress.ownedPets ?? []) as PetId[]);
+world.setSafehouseRooftopBarOwned(Boolean(savedProgress.rooftopBarOwned));
 if (savedProgress.launcherUnlocked) {
   weapons.unlockLauncher();
   weapons.switchWeapon(1);
@@ -304,6 +331,7 @@ function persistProgress(): void {
     armor: Math.round(playerArmor),
     outfitIndex: playerAvatar.getOutfitIndex(),
     ownedPets: pets.getOwnedPets(),
+    rooftopBarOwned: world.isSafehouseRooftopBarOwned(),
     starterBonusApplied: true,
   });
   statCashEl.textContent = `$${objectives.cash.toLocaleString('en-US')}`;
@@ -356,6 +384,7 @@ resetSaveBtn.addEventListener('click', () => {
   lastCompletedCount = 0;
   playerArmor = 0;
   pets.setOwnedPets([]);
+  world.setSafehouseRooftopBarOwned(false);
   persistProgress();
 });
 
@@ -389,6 +418,10 @@ function triggerBusted(): void {
   }
   if (garageRides.isRiding()) {
     garageRides.dismountRide(world.layout.playableBounds);
+    weapons.setEnabled(true);
+  }
+  if (superyacht.isInYacht()) {
+    superyacht.disembark();
     weapons.setEnabled(true);
   }
 }
@@ -427,6 +460,10 @@ function applyPlayerDamage(amount: number): void {
     }
     if (garageRides.isRiding()) {
       garageRides.dismountRide(world.layout.playableBounds);
+      weapons.setEnabled(true);
+    }
+    if (superyacht.isInYacht()) {
+      superyacht.disembark();
       weapons.setEnabled(true);
     }
   }
@@ -735,6 +772,70 @@ petShopCloseBtn.addEventListener('click', () => {
   closePetShop();
 });
 
+// Developer Panel Flow ([Alt+D] / [F2] / [D] im Pause-Menü)
+function refreshDevUi(): void {
+  devCashEl.textContent = `$${objectives.cash.toLocaleString('en-US')}`;
+  devStarsEl.textContent = `${wanted.stars}★`;
+  devStarBtns.forEach((btn) => {
+    const s = parseInt(btn.dataset.stars ?? '0', 10);
+    btn.classList.toggle('active', s === wanted.stars);
+  });
+}
+
+function openDevPanel(): void {
+  devOpen = true;
+  player.setActive(false);
+  if (document.pointerLockElement === canvas) {
+    document.exitPointerLock?.();
+  }
+  refreshDevUi();
+  devOverlayEl.classList.add('visible');
+}
+
+function closeDevPanel(): void {
+  devOpen = false;
+  devOverlayEl.classList.remove('visible');
+  overlay.classList.add('hidden');
+  player.setActive(true);
+  requestLockSafely();
+}
+
+function setDevCash(nextCash: number): void {
+  objectives.cash = Math.max(0, Math.floor(nextCash));
+  persistProgress();
+  refreshDevUi();
+  audio.playPurchase();
+}
+
+devStarBtns.forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const targetStars = parseInt(btn.dataset.stars ?? '0', 10);
+    wanted.setStars(targetStars);
+    lastWantedStars = targetStars;
+    if (targetStars === 0) {
+      npcs.clearPolice();
+      heli.clear();
+    }
+    refreshDevUi();
+    audio.playPurchase();
+    showQuickToast(`DEV · FAHNDUNGSLEVEL AUF ${targetStars}★ GESETZT`);
+  });
+});
+
+devCashMinusBtn.addEventListener('click', () => setDevCash(objectives.cash - 1000));
+devCash500Btn.addEventListener('click', () => setDevCash(objectives.cash + 500));
+devCash2500Btn.addEventListener('click', () => setDevCash(objectives.cash + 2500));
+devCash10kBtn.addEventListener('click', () => setDevCash(objectives.cash + 10000));
+devCashZeroBtn.addEventListener('click', () => setDevCash(0));
+devCashSetBtn.addEventListener('click', () => {
+  const val = parseInt(devCashInput.value, 10);
+  if (!Number.isNaN(val)) {
+    setDevCash(val);
+    showQuickToast(`DEV · GELD AUF $${Math.max(0, Math.floor(val)).toLocaleString('en-US')} GESETZT`);
+  }
+});
+devCloseBtn.addEventListener('click', () => closeDevPanel());
+
 function interactWithLookedPet(): boolean {
   if (!lookedPet) return false;
   const p = lookedPet;
@@ -801,6 +902,13 @@ function tryToggleVehicleOrBoat(): void {
     camera.fov = 75;
     camera.updateProjectionMatrix();
     weapons.setEnabled(true);
+  } else if (superyacht.isInYacht()) {
+    const deck = superyacht.disembark();
+    player.setSpawn(deck.x, deck.y, deck.z, deck.yaw);
+    camera.fov = 75;
+    camera.updateProjectionMatrix();
+    weapons.setEnabled(true);
+    showQuickToast('SUPERYACHT „LADY VICE“ · ANKER GEWORFEN');
   } else if (garageRides.isRiding()) {
     const exitPos = garageRides.dismountRide(world.layout.playableBounds);
     if (exitPos) {
@@ -826,6 +934,10 @@ function tryToggleVehicleOrBoat(): void {
   } else if (boat.isPlayerNear(player.position)) {
     boat.board();
     weapons.setEnabled(false);
+  } else if (superyacht.isPlayerNear(player.position)) {
+    superyacht.board();
+    weapons.setEnabled(false);
+    showQuickToast('SUPERYACHT „LADY VICE“ · [WASD] STEUERN · [V] BRÜCKE/CHASE · [E] ANKERN');
   } else {
     const nearGarageRide = garageRides.findNearestMountable(player.position);
     if (nearGarageRide) {
@@ -880,9 +992,11 @@ window.addEventListener('mousedown', (e) => {
     player.getIsActive() &&
     !shopOpen &&
     !petShopOpen &&
+    !devOpen &&
     !photoMode &&
     !vehicles.isInVehicle() &&
     !boat.isInBoat() &&
+    !superyacht.isInYacht() &&
     !maverick.isInHeli() &&
     !garageRides.isRiding()
   ) {
@@ -911,6 +1025,23 @@ window.addEventListener('mousemove', (e) => {
 window.addEventListener('keydown', (e) => {
   photoKeys.add(e.code);
 
+  // Developer Panel shortcut: [Alt+D] or [F2] anytime, or [D] while Pause overlay is open!
+  const pauseOverlayVisible = !overlay.classList.contains('hidden');
+  if (
+    e.code === 'F2' ||
+    (e.code === 'KeyD' && e.altKey) ||
+    (e.code === 'KeyD' && pauseOverlayVisible && !shopOpen && !petShopOpen)
+  ) {
+    e.preventDefault();
+    if (devOpen) closeDevPanel();
+    else if (!shopOpen && !petShopOpen) openDevPanel();
+    return;
+  }
+  if (devOpen) {
+    if (e.code === 'Escape') closeDevPanel();
+    return;
+  }
+
   if (e.code === 'KeyP' && (player.getIsActive() || photoMode) && !shopOpen) {
     photoMode = !photoMode;
     hudEl.classList.toggle('photo-hidden', photoMode);
@@ -924,6 +1055,7 @@ window.addEventListener('keydown', (e) => {
       weapons.setViewmodelVisible(
         !vehicles.isInVehicle() &&
           !boat.isInBoat() &&
+          !superyacht.isInYacht() &&
           !maverick.isInHeli() &&
           !garageRides.isRiding() &&
           !player.isThirdPerson(),
@@ -1090,6 +1222,30 @@ window.addEventListener('keydown', (e) => {
       audio.playPurchase();
       persistProgress();
       showQuickToast(`OUTFIT · ${outfitName}`);
+    } else if (world.isNearSafehouseRooftopBar(player.position)) {
+      if (!world.isSafehouseRooftopBarOwned()) {
+        const barCost = 1800;
+        if (objectives.cash >= barCost) {
+          objectives.cash -= barCost;
+          world.setSafehouseRooftopBarOwned(true);
+          audio.playMissionPassed();
+          persistProgress();
+          showQuickToast('PENTHOUSE DACH-COCKTAILBAR GEKAUFT! (-$1.800) · PROST!');
+        } else {
+          showQuickToast(`DACH-COCKTAILBAR · ZU WENIG CASH (BENÖTIGT $${barCost})`);
+        }
+      } else {
+        const prevHp = playerHp;
+        playerHp = Math.min(100, playerHp + 30);
+        const gained = Math.round(playerHp - prevHp);
+        cocktailScore = Math.min(6.0, cocktailScore + 1.25);
+        const rawLevel = THREE.MathUtils.clamp((cocktailScore - 1.0) / 3.8, 0, 1);
+        audio.playPurchase();
+        const hpNote = gained > 0 ? ` · +${gained} HP` : '';
+        const buzz =
+          rawLevel < 0.32 ? 'LEICHT ANGESCHWIPST 🍹' : rawLevel < 0.7 ? 'BETRUNKEN! 🍹' : 'VOLLRAUSCH! 🍹';
+        showQuickToast(`DACH-BAR · MIAMI VICE COCKTAIL${hpNote} · ${buzz}`);
+      }
     } else if (world.isNearSafehouseFridge(player.position)) {
       const prevHp = playerHp;
       playerHp = Math.min(100, playerHp + 25);
@@ -1265,6 +1421,7 @@ window.addEventListener('keydown', (e) => {
     !shopOpen &&
     !vehicles.isInVehicle() &&
     !boat.isInBoat() &&
+    !superyacht.isInYacht() &&
     !maverick.isInHeli() &&
     !garageRides.isRiding()
   ) {
@@ -1306,7 +1463,7 @@ function startGame(): void {
 }
 
 function pauseGame(): void {
-  if (shopOpen || petShopOpen) return;
+  if (shopOpen || petShopOpen || devOpen) return;
   player.setActive(false);
   persistProgress();
   overlay.classList.remove('hidden');
@@ -1319,7 +1476,7 @@ playBtn.addEventListener('click', (e) => {
 
 canvas.addEventListener('click', () => {
   audio.unlock();
-  if (player.getIsActive() && !player.getIsLocked() && !shopOpen && !petShopOpen) {
+  if (player.getIsActive() && !player.getIsLocked() && !shopOpen && !petShopOpen && !devOpen) {
     requestLockSafely();
   }
 });
@@ -1330,7 +1487,7 @@ document.addEventListener('pointerlockchange', () => {
     pointerLockFallback = false;
     overlay.classList.add('hidden');
     player.setActive(true);
-  } else if (!pointerLockFallback && !shopOpen && !petShopOpen) {
+  } else if (!pointerLockFallback && !shopOpen && !petShopOpen && !devOpen) {
     pauseGame();
   }
 });
@@ -1427,7 +1584,7 @@ function animate(now: number): void {
     else startGame();
   }
 
-  const isPlaying = player.getIsActive() && !shopOpen && wastedTimer <= 0;
+  const isPlaying = player.getIsActive() && !shopOpen && !petShopOpen && !devOpen && wastedTimer <= 0;
 
   // Gradually sober up over time; 1st cocktail keeps drunkLevel at 0
   if (cocktailScore > 0) {
@@ -1462,9 +1619,10 @@ function animate(now: number): void {
 
   const inVehicle = vehicles.isInVehicle();
   const inBoat = boat.isInBoat();
+  const inYacht = superyacht.isInYacht();
   const inHeli = maverick.isInHeli();
   const inGarageRide = garageRides.isRiding();
-  const inAnyCraft = inVehicle || inBoat || inHeli || inGarageRide;
+  const inAnyCraft = inVehicle || inBoat || inYacht || inHeli || inGarageRide;
 
   let playerSpeed = 0;
   let playerGrounded = true;
@@ -1506,6 +1664,9 @@ function animate(now: number): void {
   } else if (inBoat) {
     player.position.copy(boat.position);
     headingYaw = boat.yaw + Math.PI;
+  } else if (inYacht) {
+    player.position.copy(superyacht.position);
+    headingYaw = superyacht.yaw + Math.PI;
   } else if (inHeli) {
     player.position.copy(maverick.position);
     headingYaw = maverick.yaw + Math.PI;
@@ -1554,6 +1715,7 @@ function animate(now: number): void {
     }
   }
   const boatHud = boat.update(dt, elapsed, isPlaying, player.position, camera, pad);
+  const yachtHud = superyacht.update(dt, elapsed, isPlaying, player.position, camera, pad);
   const heliPlayerHud = maverick.update(
     dt,
     isPlaying,
@@ -1679,11 +1841,13 @@ function animate(now: number): void {
     inAnyCraft,
     inBoat
       ? boatHud.speedKmh
-      : inHeli
-        ? heliPlayerHud.speedKmh
-        : inGarageRide
-          ? garageRideHud.speedKmh
-          : driveHud.speedKmh,
+      : inYacht
+        ? yachtHud.speedKmh
+        : inHeli
+          ? heliPlayerHud.speedKmh
+          : inGarageRide
+            ? garageRideHud.speedKmh
+            : driveHud.speedKmh,
     driveHud.drifting,
     playerSpeed,
     inGarageRide ? garageRideHud.grounded : playerGrounded,
@@ -1789,7 +1953,9 @@ function animate(now: number): void {
 
   const wHud = weapons.update(dt, isPlaying && !inAnyCraft && !playerSwimming, playerSpeed, world.worldMeshes, shootables, pad, drunkLevel);
   weapons.setViewmodelVisible(!inAnyCraft && !player.isThirdPerson() && !playerSwimming);
-  playerAvatar.setVisible(!inAnyCraft && player.isThirdPerson());
+  const showMirrorAvatar = inSafehouse && !inAnyCraft && !player.isThirdPerson();
+  playerAvatar.setMirrorOnlyMode(showMirrorAvatar);
+  playerAvatar.setVisible(!inAnyCraft && (player.isThirdPerson() || showMirrorAvatar));
   playerAvatar.update(
     dt,
     player.position,
@@ -1826,6 +1992,7 @@ function animate(now: number): void {
     vigilanteHud.targetPos ?? heistHud.targetPos,
     maverick.position,
     garageRides.getParkedMarkers(),
+    { x: superyacht.position.x, z: superyacht.position.z, yaw: superyacht.yaw },
   );
 
   // --- HUD Updates (Dirty-checked DOM mutations) ---
@@ -1901,6 +2068,12 @@ function animate(now: number): void {
     setWidth(vehicleHpFillEl, '100%');
     vehicleHpFillEl.classList.remove('low');
     setText(vehicleCamHintEl, `[Q] ${audio.getRadioStation()} · [E] AN LAND`);
+  } else if (yachtHud.inYacht) {
+    setText(vehicleNameEl, yachtHud.yachtName);
+    setText(vehicleSpeedEl, `${yachtHud.speedKmh}`);
+    setWidth(vehicleHpFillEl, '100%');
+    vehicleHpFillEl.classList.remove('low');
+    setText(vehicleCamHintEl, `[Q] ${audio.getRadioStation()} · [V] BRÜCKE/CHASE · [E] ANKERN`);
   } else if (garageRideHud.inRide) {
     setText(vehicleNameEl, garageRideHud.rideName);
     setText(vehicleSpeedEl, `${garageRideHud.speedKmh}`);
@@ -1962,7 +2135,10 @@ function animate(now: number): void {
     } else if (lookedPet) {
       nextPrompt = `[LMB / F] ${lookedPet.promptLabel}`;
     } else if (lookedFood) {
-      nextPrompt = `[LMB / F] ${lookedFood.name} NEHMEN & ESSEN (+${lookedFood.heal} HP)`;
+      nextPrompt =
+        lookedFood.alcohol && lookedFood.alcohol > 0
+          ? `[LMB / F] ${lookedFood.name} TRINKEN (+${lookedFood.heal} HP · 🍺)`
+          : `[LMB / F] ${lookedFood.name} NEHMEN & ESSEN (+${lookedFood.heal} HP)`;
     } else if (lookedCabinetWeapon) {
       nextPrompt = `[LMB / F] ${lookedCabinetWeapon.name} AUS WAFFENSCHRANK NEHMEN`;
     } else if (lookedAtTv) {
@@ -1975,6 +2151,10 @@ function animate(now: number): void {
       nextPrompt = '[F / B] HAVANA PETS · SAFEHOUSE-HAUSTIER ADOPTIEREN (🐾)';
     } else if (world.isNearSafehouseWardrobe(player.position)) {
       nextPrompt = '[F] KLEIDERSCHRANK · OUTFIT WECHSELN';
+    } else if (world.isNearSafehouseRooftopBar(player.position)) {
+      nextPrompt = world.isSafehouseRooftopBarOwned()
+        ? '[F] DACH-COCKTAILBAR · MIAMI VICE COCKTAIL MIXEN (+30 HP · GRATIS)'
+        : '[F] PENTHOUSE DACH-COCKTAILBAR KAUFEN · $1.800';
     } else if (world.isNearSafehouseFridge(player.position)) {
       nextPrompt = '[F] KÜHLSCHRANK · SNACK ESSEN (+25 HP)';
     } else if (world.isNearSafehouseLounge(player.position)) {
@@ -2009,6 +2189,8 @@ function animate(now: number): void {
       nextPrompt = '[E] EINSTEIGEN · VICE MAVERICK HELIKOPTER';
     } else if (boatHud.nearbyBoat) {
       nextPrompt = '[E] EINSTEIGEN · STINGER SPEEDBOAT';
+    } else if (yachtHud.nearbyYacht) {
+      nextPrompt = '[E] STEUERN · SUPERYACHT „LADY VICE“';
     } else if (garageRideHud.nearbyMountPrompt) {
       nextPrompt = garageRideHud.nearbyMountPrompt;
     } else if (driveHud.nearbyVehicleName) {

@@ -29,6 +29,7 @@ export class Minimap {
     heistTarget?: { x: number; z: number } | null,
     maverickPos?: { x: number; z: number } | null,
     parkedRides?: { x: number; z: number; label: string; color: string }[],
+    yachtState?: { x: number; z: number; yaw: number } | null,
   ): void {
     // Throttle 2D radar redraws to ~30 Hz (saves ~50% 2D canvas CPU work on 60-144Hz monitors!)
     if (elapsed - this.lastRenderElapsed < 0.032) return;
@@ -119,9 +120,19 @@ export class Minimap {
     ctx.fillRect((148 - playerX) * scale, (-84 - playerZ) * scale, 50 * scale, 64 * scale);
     ctx.strokeRect((148 - playerX) * scale, (-84 - playerZ) * scale, 50 * scale, 64 * scale);
 
-    // 42m Superyacht "LADY VICE" (x = 166..178, z = -6..36)
-    ctx.fillStyle = 'rgba(245, 248, 255, 0.65)';
-    ctx.fillRect((166 - playerX) * scale, (-6 - playerZ) * scale, 12 * scale, 42 * scale);
+    // 44m Drivable Superyacht "LADY VICE" (live position & heading!)
+    const yx = yachtState ? yachtState.x : 172;
+    const yz = yachtState ? yachtState.z : 15;
+    const yYaw = yachtState ? yachtState.yaw : 0;
+    ctx.save();
+    ctx.translate((yx - playerX) * scale, (yz - playerZ) * scale);
+    ctx.rotate(-yYaw);
+    ctx.fillStyle = 'rgba(245, 248, 255, 0.78)';
+    ctx.fillRect(-6 * scale, -21 * scale, 12 * scale, 42 * scale);
+    ctx.strokeStyle = '#36f1e6';
+    ctx.lineWidth = 1.2;
+    ctx.strokeRect(-6 * scale, -21 * scale, 12 * scale, 42 * scale);
+    ctx.restore();
 
     // Vice Port Industrial Docks (x = -68..78, z = 66..126) & Cargo Freighter (x = -21..37, z = 128..142)
     ctx.fillStyle = 'rgba(92, 96, 110, 0.45)';

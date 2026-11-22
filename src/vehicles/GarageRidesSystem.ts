@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { resolvePlayerCollisions } from '../engine/Physics';
-import { getFaceTexture, getOutfitTexture } from '../entities/CharacterTextures';
+import { getFaceTexture, getOutfitBackTexture, getOutfitTexture } from '../entities/CharacterTextures';
 import type { GamepadSnapshot } from '../engine/GamepadInput';
 import type { AABB } from '../types';
 import type { StuntRamp } from '../world/StuntRamps';
@@ -74,6 +74,7 @@ interface ArticulatedRider {
   group: THREE.Group;
   bodyRoot: THREE.Group;
   torsoMat: THREE.MeshStandardMaterial;
+  torsoBackMat: THREE.MeshStandardMaterial;
   sleeveMat: THREE.MeshStandardMaterial;
   pantsMat: THREE.MeshStandardMaterial;
   leftLegPivot: THREE.Group;
@@ -1487,7 +1488,12 @@ export class GarageRidesSystem {
       map: getOutfitTexture('civilian', '#f2e8e1', '#36f1e6', 2),
       roughness: 0.6,
     });
+    const torsoBackMat = new THREE.MeshStandardMaterial({
+      map: getOutfitBackTexture('civilian', '#f2e8e1', '#36f1e6', 2),
+      roughness: 0.6,
+    });
     const sleeveMat = new THREE.MeshStandardMaterial({ color: '#f2e8e1', roughness: 0.6 });
+    const torsoMats = [sleeveMat, sleeveMat, sleeveMat, sleeveMat, torsoMat, torsoBackMat];
     const pantsMat = new THREE.MeshStandardMaterial({ color: '#272c42', roughness: 0.78 });
     const shoeMat = new THREE.MeshStandardMaterial({ color: '#f7f4f0', roughness: 0.5 });
     const faceMat = new THREE.MeshStandardMaterial({
@@ -1507,7 +1513,7 @@ export class GarageRidesSystem {
       pelvis.position.y = 0.74;
       skateStance.add(pelvis);
 
-      const torso = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.54, 0.25), torsoMat);
+      const torso = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.54, 0.25), torsoMats);
       torso.position.y = 1.08;
       torso.rotation.x = 0.14;
       torso.castShadow = true;
@@ -1574,6 +1580,7 @@ export class GarageRidesSystem {
         group,
         bodyRoot,
         torsoMat,
+        torsoBackMat,
         sleeveMat,
         pantsMat,
         leftLegPivot: legL.hip,
@@ -1591,7 +1598,7 @@ export class GarageRidesSystem {
     pelvis.rotation.x = 0.42;
     bodyRoot.add(pelvis);
 
-    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.54, 0.24), torsoMat);
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.54, 0.24), torsoMats);
     torso.position.set(0, 1.24, -0.08);
     torso.rotation.x = 0.88; // Sleek road-racing aero back angle!
     torso.castShadow = true;
@@ -1657,6 +1664,7 @@ export class GarageRidesSystem {
       group,
       bodyRoot,
       torsoMat,
+      torsoBackMat,
       sleeveMat,
       pantsMat,
       leftLegPivot: legL.hip,
@@ -1671,6 +1679,8 @@ export class GarageRidesSystem {
   private applyOutfitToRider(rider: ArticulatedRider, outfit: PlayerOutfitSpec): void {
     rider.torsoMat.map = getOutfitTexture(outfit.role, outfit.primary, outfit.accent, outfit.variant);
     rider.torsoMat.needsUpdate = true;
+    rider.torsoBackMat.map = getOutfitBackTexture(outfit.role, outfit.primary, outfit.accent, outfit.variant);
+    rider.torsoBackMat.needsUpdate = true;
     rider.sleeveMat.color.set(outfit.primary);
     rider.pantsMat.color.set(outfit.pants);
   }

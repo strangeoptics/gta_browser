@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { getFaceTexture, getOutfitTexture } from '../entities/CharacterTextures';
+import { getFaceTexture, getOutfitBackTexture, getOutfitTexture } from '../entities/CharacterTextures';
 
 const PLAYER_OUTFITS = [
   { name: 'MIAMI WHITE SUIT', primary: '#f2e8e1', accent: '#36f1e6', pants: '#272c42', variant: 2, role: 'civilian' as const },
@@ -17,6 +17,7 @@ export class PlayerAvatar {
   public readonly group = new THREE.Group();
   private readonly bodyRoot = new THREE.Group();
   private readonly torsoMat: THREE.MeshStandardMaterial;
+  private readonly torsoBackMat: THREE.MeshStandardMaterial;
   private readonly sleeveMat: THREE.MeshStandardMaterial;
   private readonly pantsMat: THREE.MeshStandardMaterial;
   private readonly leftLegPivot: THREE.Group;
@@ -40,6 +41,10 @@ export class PlayerAvatar {
       map: getOutfitTexture('civilian', def.primary, def.accent, def.variant),
       roughness: 0.6,
     });
+    this.torsoBackMat = new THREE.MeshStandardMaterial({
+      map: getOutfitBackTexture('civilian', def.primary, def.accent, def.variant),
+      roughness: 0.6,
+    });
     this.sleeveMat = new THREE.MeshStandardMaterial({ color: def.primary, roughness: 0.6 });
     this.pantsMat = new THREE.MeshStandardMaterial({ color: def.pants, roughness: 0.78 });
     const shoeMat = new THREE.MeshStandardMaterial({ color: '#f7f4f0', roughness: 0.5 });
@@ -56,8 +61,15 @@ export class PlayerAvatar {
     belt.position.y = 0.86;
     this.bodyRoot.add(belt);
 
-    // Torso
-    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.58, 0.27), this.torsoMat);
+    // Torso (+Z = front outfit, -Z = tailored back outfit, sides/top/bottom = solid jacket/shirt color)
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.58, 0.27), [
+      this.sleeveMat,
+      this.sleeveMat,
+      this.sleeveMat,
+      this.sleeveMat,
+      this.torsoMat,
+      this.torsoBackMat,
+    ]);
     torso.position.y = 1.16;
     torso.castShadow = true;
     this.bodyRoot.add(torso);
@@ -157,6 +169,8 @@ export class PlayerAvatar {
     const o = PLAYER_OUTFITS[this.outfitIndex];
     this.torsoMat.map = getOutfitTexture(o.role, o.primary, o.accent, o.variant);
     this.torsoMat.needsUpdate = true;
+    this.torsoBackMat.map = getOutfitBackTexture(o.role, o.primary, o.accent, o.variant);
+    this.torsoBackMat.needsUpdate = true;
     this.sleeveMat.color.set(o.primary);
     this.pantsMat.color.set(o.pants);
     return o.name;
@@ -187,8 +201,23 @@ export class PlayerAvatar {
     };
   }
 
+  private mirrorOnlyMode = false;
+
   public setVisible(visible: boolean): void {
     this.group.visible = visible;
+  }
+
+  /**
+   * Moves avatar meshes to Layer 1 so the 1st-person main camera hides them while
+   * the Safehouse dressing mirror Reflector (which enables Layer 1) still renders you live!
+   */
+  public setMirrorOnlyMode(mirrorOnly: boolean): void {
+    if (this.mirrorOnlyMode === mirrorOnly) return;
+    this.mirrorOnlyMode = mirrorOnly;
+    const targetLayer = mirrorOnly ? 1 : 0;
+    this.group.traverse((obj) => {
+      obj.layers.set(targetLayer);
+    });
   }
 
   public update(

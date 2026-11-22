@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { Reflector } from 'three/examples/jsm/objects/Reflector.js';
 import type { AABB } from '../types';
 import { createNeonSignTexture } from './Textures';
 import { ViceNewsTv } from './ViceNewsTv';
@@ -7,6 +8,7 @@ export interface FoodItem {
   id: string;
   name: string;
   heal: number;
+  alcohol?: number;
   mesh: THREE.Object3D;
   available: boolean;
   respawnTimer: number;
@@ -25,6 +27,9 @@ export interface SafehouseHandle {
   isNearLounge: (pos: THREE.Vector3) => boolean;
   isNearWardrobe: (pos: THREE.Vector3) => boolean;
   isNearFridge: (pos: THREE.Vector3) => boolean;
+  isNearRooftopBar: (pos: THREE.Vector3) => boolean;
+  isRooftopBarOwned: () => boolean;
+  setRooftopBarOwned: (owned: boolean) => void;
   getFoodItems: () => FoodItem[];
   consumeFood: (item: FoodItem) => void;
   getCabinetWeapons: () => CabinetWeapon[];
@@ -439,6 +444,49 @@ export function buildSafehouse(
   const woodMat = new THREE.MeshStandardMaterial({ color: '#8a5a44', roughness: 0.65 });
   addBox(2.2, 2.5, 0.9, cx - 5.5, 0.2 + 1.25, cz - 8.1, woodMat);
 
+  // Full-Length Art-Deco Dressing Mirror right next to the Wardrobe (x = 32.35, z = -48.55)
+  const mirrorX = cx - 7.65; // 32.35
+  const mirrorZ = cz - 8.55; // -48.55
+  const mirrorGoldMat = new THREE.MeshStandardMaterial({ color: '#e8c166', roughness: 0.22, metalness: 0.9 });
+  const mirrorFrame = new THREE.Group();
+  mirrorFrame.position.set(mirrorX, 1.48, mirrorZ);
+  // Backing & decorative brass frame
+  const mirrorBack = new THREE.Mesh(new THREE.BoxGeometry(1.42, 2.38, 0.08), woodMat);
+  mirrorFrame.add(mirrorBack);
+  const frameTop = new THREE.Mesh(new THREE.BoxGeometry(1.46, 0.09, 0.12), mirrorGoldMat);
+  frameTop.position.y = 1.19;
+  const frameBot = frameTop.clone();
+  frameBot.position.y = -1.19;
+  const frameL = new THREE.Mesh(new THREE.BoxGeometry(0.09, 2.38, 0.12), mirrorGoldMat);
+  frameL.position.x = -0.69;
+  const frameR = frameL.clone();
+  frameR.position.x = 0.69;
+  // Subtle vanity accent strips along sides
+  const vanityMat = new THREE.MeshStandardMaterial({
+    color: '#fff4e0',
+    emissive: '#ffe0b2',
+    emissiveIntensity: 1.45,
+  });
+  const stripL = new THREE.Mesh(new THREE.BoxGeometry(0.025, 2.1, 0.025), vanityMat);
+  stripL.position.set(-0.62, 0, 0.06);
+  const stripR = stripL.clone();
+  stripR.position.x = 0.62;
+  mirrorFrame.add(frameTop, frameBot, frameL, frameR, stripL, stripR);
+  scene.add(mirrorFrame);
+
+  // Real live Reflector mirror surface (enables Layer 1 so you see yourself even in 1st-person!)
+  const mirrorReflector = new Reflector(new THREE.PlaneGeometry(1.22, 2.18), {
+    clipBias: 0.004,
+    textureWidth: 512,
+    textureHeight: 1024,
+    color: 0xdcebf2,
+    multisample: 2,
+  });
+  mirrorReflector.position.set(mirrorX, 1.48, mirrorZ + 0.055);
+  mirrorReflector.camera.layers.enable(1);
+  mirrorReflector.visible = false; // toggled automatically only while inside Safehouse -> 0 FPS cost outside!
+  scene.add(mirrorReflector);
+
   // Cash Vault / Safe with glowing gold bars & cash stacks (x = 45.5, z = -48.0)
   const vaultMat = new THREE.MeshStandardMaterial({ color: '#2b2d3c', metalness: 0.85, roughness: 0.25 });
   addBox(1.8, 1.8, 1.3, cx + 5.5, 0.2 + 0.9, cz - 7.9, vaultMat);
@@ -469,8 +517,8 @@ export function buildSafehouse(
   scene.add(faucet);
 
   const foodItems: FoodItem[] = [];
-  const registerFood = (id: string, name: string, heal: number, mesh: THREE.Object3D): void => {
-    foodItems.push({ id, name, heal, mesh, available: true, respawnTimer: 0 });
+  const registerFood = (id: string, name: string, heal: number, mesh: THREE.Object3D, alcohol = 0): void => {
+    foodItems.push({ id, name, heal, alcohol, mesh, available: true, respawnTimer: 0 });
   };
 
   // Retro 2-burner stovetop & Miami Pizza Box on the counter
@@ -563,24 +611,57 @@ export function buildSafehouse(
   scene.add(milk);
   registerFood('food-milk', 'FRISCHE MILCH', 15, milk);
 
-  // Bottom Shelf (y = 0.87): Tropical Watermelon & Oranges
+  // Bottom Shelf (y = 0.87): 4 Chilled 80s Vice Lager Beer Bottles (with Alcohol Effect!) + Tropical Watermelon
+  const beerGlassMat = new THREE.MeshStandardMaterial({
+    color: '#1b6b3a',
+    roughness: 0.14,
+    metalness: 0.18,
+    transparent: true,
+    opacity: 0.88,
+  });
+  const beerAmberMat = new THREE.MeshStandardMaterial({
+    color: '#8f4a14',
+    roughness: 0.16,
+    metalness: 0.18,
+    transparent: true,
+    opacity: 0.88,
+  });
+  const beerLabelMat = new THREE.MeshStandardMaterial({
+    color: '#ffd15c',
+    emissive: '#ff9f43',
+    emissiveIntensity: 0.22,
+    roughness: 0.5,
+  });
+  const beerCapMat = new THREE.MeshStandardMaterial({ color: '#e0c052', metalness: 0.85, roughness: 0.2 });
+
+  for (let b = 0; b < 4; b++) {
+    const beerGroup = new THREE.Group();
+    const glassMat = b % 2 === 0 ? beerGlassMat : beerAmberMat;
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.044, 0.19, 10), glassMat);
+    body.position.y = 0.095;
+    const shoulder = new THREE.Mesh(new THREE.CylinderGeometry(0.017, 0.042, 0.055, 10), glassMat);
+    shoulder.position.y = 0.215;
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.017, 0.075, 10), glassMat);
+    neck.position.y = 0.28;
+    const label = new THREE.Mesh(new THREE.CylinderGeometry(0.044, 0.044, 0.075, 10), beerLabelMat);
+    label.position.y = 0.1;
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.017, 0.017, 0.014, 10), beerCapMat);
+    cap.position.y = 0.322;
+    beerGroup.add(body, shoulder, neck, label, cap);
+    const bx = fridgeX + 0.04 + (b % 2) * 0.14 + (b >= 2 ? 0.05 : 0);
+    const bz = fridgeZ - 0.14 + Math.floor(b / 2) * 0.16;
+    beerGroup.position.set(bx, 0.87, bz);
+    scene.add(beerGroup);
+    registerFood(`food-beer-${b}`, b % 2 === 0 ? 'VICE LAGER BIER' : 'MIAMI GOLD BIER', 15, beerGroup, 1.35);
+  }
+
   const melon = new THREE.Mesh(
-    new THREE.SphereGeometry(0.19, 10, 8),
+    new THREE.SphereGeometry(0.18, 10, 8),
     new THREE.MeshStandardMaterial({ color: '#2d8a56', roughness: 0.55 }),
   );
-  melon.position.set(fridgeX - 0.22, 1.07, fridgeZ + 0.04);
+  melon.position.set(fridgeX - 0.26, 1.05, fridgeZ + 0.06);
   scene.add(melon);
   registerFood('food-melon', 'WASSERMELONE', 30, melon);
-
-  for (const [idx, ox] of [0.1, 0.28].entries()) {
-    const orange = new THREE.Mesh(
-      new THREE.SphereGeometry(0.09, 8, 8),
-      new THREE.MeshStandardMaterial({ color: '#ff8c2b', roughness: 0.6 }),
-    );
-    orange.position.set(fridgeX + ox, 0.98, fridgeZ - 0.05);
-    scene.add(orange);
-    registerFood(`food-orange-${idx}`, 'MIAMI ORANGE', 15, orange);
-  }
 
   // Hinged Fridge Door (swings open smoothly toward east when player approaches!)
   const fridgeDoorPivot = new THREE.Group();
@@ -807,6 +888,162 @@ export function buildSafehouse(
     scene.add(pad);
   }
 
+  // ---------------------------------------------------------------------------
+  // Purchasable Rooftop Penthouse Cocktailbar ($1,800) on the West Terrace (33.8, -35.2)
+  // ---------------------------------------------------------------------------
+  const barX = 33.8;
+  const barZ = -35.2;
+  let rooftopBarOwned = false;
+
+  // 1) Pre-purchase Holographic Neon Marker ("DACH-BAR KAUFEN · $1.800")
+  const barBuyMarkerGroup = new THREE.Group();
+  barBuyMarkerGroup.position.set(barX, roofY, barZ);
+  const buyRing = new THREE.Mesh(
+    new THREE.RingGeometry(1.35, 1.55, 28),
+    new THREE.MeshStandardMaterial({
+      color: '#ff4fa3',
+      emissive: '#ff4fa3',
+      emissiveIntensity: 2.0,
+      side: THREE.DoubleSide,
+    }),
+  );
+  buyRing.rotation.x = -Math.PI / 2;
+  buyRing.position.y = 0.04;
+  barBuyMarkerGroup.add(buyRing);
+
+  const buySignTex = createNeonSignTexture('COCKTAILBAR $1800', '#ff4fa3');
+  const buySign = new THREE.Mesh(
+    new THREE.BoxGeometry(2.6, 0.65, 0.1),
+    new THREE.MeshStandardMaterial({
+      map: buySignTex,
+      emissive: '#ffffff',
+      emissiveMap: buySignTex,
+      emissiveIntensity: 1.7,
+    }),
+  );
+  buySign.position.set(0, 1.35, 0);
+  barBuyMarkerGroup.add(buySign);
+  scene.add(barBuyMarkerGroup);
+
+  // 2) Full 3D 80s Rooftop Penthouse Cocktailbar (hidden until purchased!)
+  const rooftopBarGroup = new THREE.Group();
+  rooftopBarGroup.position.set(barX, roofY, barZ);
+
+  const barBaseMat = new THREE.MeshStandardMaterial({ color: '#f4e6d8', roughness: 0.45 });
+  const barTopMat = new THREE.MeshStandardMaterial({ color: '#1d1828', roughness: 0.16, metalness: 0.35 });
+  const barWoodMat = new THREE.MeshStandardMaterial({ color: '#7a4b32', roughness: 0.62 });
+
+  // Main L-shaped bar counter facing East (+X toward the pool & Ocean Drive)
+  const mainCounter = new THREE.Mesh(new THREE.BoxGeometry(0.95, 1.05, 4.2), barBaseMat);
+  mainCounter.position.set(0.7, 0.525, 0);
+  mainCounter.castShadow = true;
+  mainCounter.receiveShadow = true;
+  rooftopBarGroup.add(mainCounter);
+
+  const counterTopSlab = new THREE.Mesh(new THREE.BoxGeometry(1.22, 0.1, 4.45), barTopMat);
+  counterTopSlab.position.set(0.75, 1.08, 0);
+  rooftopBarGroup.add(counterTopSlab);
+
+  const counterNeon = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.07, 4.25), pinkNeon);
+  counterNeon.position.set(1.2, 0.99, 0);
+  rooftopBarGroup.add(counterNeon);
+
+  const kickNeon = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 4.15), cyanNeon);
+  kickNeon.position.set(1.18, 0.06, 0);
+  rooftopBarGroup.add(kickNeon);
+
+  // Back bar credenza & backlit liquor bottle rack
+  const backCredenza = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.95, 3.8), barWoodMat);
+  backCredenza.position.set(-1.35, 0.475, 0);
+  backCredenza.castShadow = true;
+  rooftopBarGroup.add(backCredenza);
+
+  const bottleRack = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.95, 3.4), barTopMat);
+  bottleRack.position.set(-1.52, 1.42, 0);
+  rooftopBarGroup.add(bottleRack);
+
+  const bottleColors = ['#36f1e6', '#ff4fa3', '#ffd15c', '#52f29c', '#ff7b54', '#b388ff'];
+  for (let i = 0; i < 12; i++) {
+    const col = bottleColors[i % bottleColors.length];
+    const btl = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.042, 0.048, 0.28, 8),
+      new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 0.75, roughness: 0.2 }),
+    );
+    const row = i < 6 ? 0 : 1;
+    btl.position.set(-1.38, 1.18 + row * 0.44, -1.25 + (i % 6) * 0.5);
+    rooftopBarGroup.add(btl);
+  }
+
+  // Chrome Cocktail Shaker & 2 Neon Miami Vice Cocktails on the Bar Top!
+  const shaker = new THREE.Mesh(new THREE.CylinderGeometry(0.048, 0.036, 0.24, 10), chromeMat);
+  shaker.position.set(0.62, 1.25, -0.55);
+  rooftopBarGroup.add(shaker);
+
+  for (const czOff of [0.35, 0.85]) {
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.038, 0.14, 8), chromeMat);
+    stem.position.set(0.95, 1.2, czOff);
+    const glass = new THREE.Mesh(
+      new THREE.ConeGeometry(0.075, 0.12, 10),
+      new THREE.MeshStandardMaterial({
+        color: czOff > 0.5 ? '#ff4fa3' : '#36f1e6',
+        emissive: czOff > 0.5 ? '#ff4fa3' : '#36f1e6',
+        emissiveIntensity: 0.95,
+      }),
+    );
+    glass.rotation.x = Math.PI;
+    glass.position.set(0.95, 1.31, czOff);
+    rooftopBarGroup.add(stem, glass);
+  }
+
+  // 3 Chrome & Pastel-Pink Bar Stools along the East side
+  for (const sz of [-1.25, 0, 1.25]) {
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.04, 0.76, 8), chromeMat);
+    leg.position.set(1.68, 0.38, sz);
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.24, 0.04, 12), chromeMat);
+    base.position.set(1.68, 0.02, sz);
+    const seat = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.2, 0.1, 14), padCoralMat);
+    seat.position.set(1.68, 0.78, sz);
+    rooftopBarGroup.add(leg, base, seat);
+  }
+
+  // 4 Teak Pergola Posts + Overhead Slatted Canopy + Glowing "SUNSET BAR" Neon Sign!
+  for (const [px, pz] of [
+    [-1.6, -2.0],
+    [-1.6, 2.0],
+    [1.2, -2.0],
+    [1.2, 2.0],
+  ]) {
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.16, 2.95, 0.16), barWoodMat);
+    post.position.set(px, 1.475, pz);
+    post.castShadow = true;
+    rooftopBarGroup.add(post);
+  }
+  const canopyRoof = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.14, 4.4), barWoodMat);
+  canopyRoof.position.set(-0.2, 2.98, 0);
+  canopyRoof.castShadow = true;
+  rooftopBarGroup.add(canopyRoof);
+
+  const roofBarSignTex = createNeonSignTexture('SUNSET BAR', '#36f1e6');
+  const roofBarSign = new THREE.Mesh(
+    new THREE.BoxGeometry(0.14, 0.72, 3.1),
+    new THREE.MeshStandardMaterial({
+      map: roofBarSignTex,
+      emissive: '#ffffff',
+      emissiveMap: roofBarSignTex,
+      emissiveIntensity: 1.85,
+    }),
+  );
+  roofBarSign.position.set(1.42, 2.92, 0);
+  rooftopBarGroup.add(roofBarSign);
+
+  rooftopBarGroup.visible = false;
+  scene.add(rooftopBarGroup);
+
+  const syncRooftopBarVisuals = (): void => {
+    barBuyMarkerGroup.visible = !rooftopBarOwned;
+    rooftopBarGroup.visible = rooftopBarOwned;
+  };
+
   return {
     position: new THREE.Vector3(cx, 0.2, cz),
     isInside: (pos: THREE.Vector3) =>
@@ -828,9 +1065,16 @@ export function buildSafehouse(
       pos.z < cz - 1.5 &&
       pos.y < 2.2,
     isNearWardrobe: (pos: THREE.Vector3) =>
-      Math.hypot(pos.x - (cx - 5.5), pos.z - (cz - 7.0)) < 2.4 && pos.y < 2.2,
+      Math.hypot(pos.x - (cx - 5.5), pos.z - (cz - 7.0)) < 2.6 && pos.y < 2.2,
     isNearFridge: (pos: THREE.Vector3) =>
       Math.hypot(pos.x - fridgeX, pos.z - (fridgeZ - 1.3)) < 2.2 && pos.y < 2.2,
+    isNearRooftopBar: (pos: THREE.Vector3) =>
+      Math.hypot(pos.x - (barX + 1.0), pos.z - barZ) < 3.4 && pos.y > roofY - 0.8,
+    isRooftopBarOwned: () => rooftopBarOwned,
+    setRooftopBarOwned: (owned: boolean) => {
+      rooftopBarOwned = owned;
+      syncRooftopBarVisuals();
+    },
     getFoodItems: () => foodItems.filter((f) => f.available),
     consumeFood: (item: FoodItem) => {
       if (!item.available) return;
@@ -859,6 +1103,12 @@ export function buildSafehouse(
           playerPos.z < cz + 9 &&
           playerPos.y < floorH + 0.3
         : false;
+      // Enable live Reflector mirror ONLY while inside the Safehouse (zero GPU cost outdoors!)
+      mirrorReflector.visible = inside;
+      if (!rooftopBarOwned) {
+        buySign.rotation.y = elapsed * 0.9;
+        buySign.position.y = 1.35 + Math.sin(elapsed * 2.4) * 0.08;
+      }
       viceTv.update(clampedDt, elapsed, inside, cash, wantedStars);
 
       // Restock consumed food items after 20s

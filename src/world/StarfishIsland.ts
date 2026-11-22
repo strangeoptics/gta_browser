@@ -2,6 +2,15 @@ import * as THREE from 'three';
 import type { AABB } from '../types';
 import { createNeonSignTexture } from './Textures';
 
+export interface SuperyachtHandle {
+  group: THREE.Group;
+  initialPos: THREE.Vector3;
+  upperDeckY: number;
+  syncColliders: (x: number, y: number, z: number, yaw: number) => void;
+  getWorldPos: (localOffset: THREE.Vector3, out?: THREE.Vector3) => THREE.Vector3;
+  isPlayerOnOrNearYacht: (pos: THREE.Vector3) => boolean;
+}
+
 export interface StarfishIslandHandle {
   getGroundHeight: (x: number, z: number) => number | null;
   isNearIslandVault: (pos: THREE.Vector3) => boolean;
@@ -9,6 +18,7 @@ export interface StarfishIslandHandle {
   takeIslandVault: () => void;
   takeYachtLoot: () => void;
   helipadSpawn: THREE.Vector3;
+  yacht: SuperyachtHandle;
   update: (elapsed: number, dt: number) => void;
 }
 
@@ -359,6 +369,44 @@ export function buildStarfishIsland(
     scene.add(gRail);
   }
 
+  // --- Movable 44-Meter Superyacht Root Group ("LADY VICE") ---
+  const yachtRoot = new THREE.Group();
+  yachtRoot.position.set(yachtX, 0, yachtZ);
+  scene.add(yachtRoot);
+
+  const yachtColliderEntries: { box: AABB; lx: number; ly: number; lz: number; w: number; h: number; d: number }[] = [];
+  const addYachtBox = (
+    w: number,
+    h: number,
+    d: number,
+    lx: number,
+    ly: number,
+    lz: number,
+    mat: THREE.Material,
+    castShadow = true,
+    tag = 'yacht',
+    visible = true,
+  ): THREE.Mesh => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+    m.position.set(lx, ly, lz);
+    m.castShadow = castShadow;
+    m.receiveShadow = true;
+    m.visible = visible;
+    yachtRoot.add(m);
+    const box: AABB = {
+      minX: yachtX + lx - w / 2,
+      maxX: yachtX + lx + w / 2,
+      minY: ly - h / 2,
+      maxY: ly + h / 2,
+      minZ: yachtZ + lz - d / 2,
+      maxZ: yachtZ + lz + d / 2,
+      tag,
+    };
+    colliders.push(box);
+    yachtColliderEntries.push({ box, lx, ly, lz, w, h, d });
+    return m;
+  };
+
   // --- Sculpted Multi-Part Marine Hull (Extruded Clipper Bow Profile!) ---
   const hullShape = new THREE.Shape();
   hullShape.moveTo(-21.5, -0.45); // underwater stern keel
@@ -380,79 +428,77 @@ export function buildStarfishIsland(
   hullGeo.rotateY(-Math.PI / 2);
   hullGeo.computeVertexNormals();
   const sculptedHull = new THREE.Mesh(hullGeo, yachtHullMat);
-  sculptedHull.position.set(yachtX, 0, yachtZ);
   sculptedHull.castShadow = true;
   sculptedHull.receiveShadow = true;
-  scene.add(sculptedHull);
+  yachtRoot.add(sculptedHull);
 
   // Solid walkable hull deck & bow colliders matching the sculpted hull
-  addBox(12.4, 1.85, 35.5, yachtX, 0.475, yachtZ - 2.5, yachtHullMat, false, 'yacht-hull').visible = false;
-  addBox(8.6, 1.85, 9.5, yachtX, 0.475, yachtZ + 17.5, yachtHullMat, false, 'yacht-bow').visible = false;
+  addYachtBox(12.4, 1.85, 35.5, 0, 0.475, -2.5, yachtHullMat, false, 'yacht-hull', false);
+  addYachtBox(8.6, 1.85, 9.5, 0, 0.475, 17.5, yachtHullMat, false, 'yacht-bow', false);
 
-  // Aft Teak Swim Platform right at water level (z = yachtZ - 22.8) + Chrome Swim Ladder
-  addBox(11.4, 0.26, 2.6, yachtX, 0.42, yachtZ - 22.2, plankedTeakMat, true, 'yacht-swim');
+  // Aft Teak Swim Platform right at water level (local z = -22.2)
+  addYachtBox(11.4, 0.26, 2.6, 0, 0.42, -22.2, plankedTeakMat, true, 'yacht-swim');
 
   // Deep Navy Waterline Bootstripe + Neon Cyan Chine Accent + Illuminated Hull Portholes!
   for (const sx of [-6.32, 6.32]) {
     const bootStripe = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.32, 34.5), navyBootMat);
-    bootStripe.position.set(yachtX + sx, 0.28, yachtZ - 2.5);
-    scene.add(bootStripe);
+    bootStripe.position.set(sx, 0.28, -2.5);
+    yachtRoot.add(bootStripe);
 
     const hullNeon = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.1, 35.2), cyanNeon);
-    hullNeon.position.set(yachtX + sx, 1.24, yachtZ - 2.0);
-    scene.add(hullNeon);
+    hullNeon.position.set(sx, 1.24, -2.0);
+    yachtRoot.add(hullNeon);
 
     // 7 Warm Illuminated Circular Portholes per side
     for (let p = 0; p < 7; p++) {
-      const pz = yachtZ - 14 + p * 4.2;
+      const pz = -14 + p * 4.2;
       const bezel = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.08, 12), chromeRailMat);
       bezel.rotation.z = Math.PI / 2;
-      bezel.position.set(yachtX + sx, 0.82, pz);
-      scene.add(bezel);
+      bezel.position.set(sx, 0.82, pz);
+      yachtRoot.add(bezel);
       const portGlass = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.1, 12), portholeMat);
       portGlass.rotation.z = Math.PI / 2;
-      portGlass.position.set(yachtX + sx, 0.82, pz);
-      scene.add(portGlass);
+      portGlass.position.set(sx, 0.82, pz);
+      yachtRoot.add(portGlass);
     }
 
     // Chrome Bow Anchor mounted near the stem
     const anchor = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.55, 0.36), chromeRailMat);
-    anchor.position.set(yachtX + sx * 0.72, 1.05, yachtZ + 18.2);
+    anchor.position.set(sx * 0.72, 1.05, 18.2);
     anchor.rotation.x = 0.45;
-    scene.add(anchor);
+    yachtRoot.add(anchor);
   }
 
   // Planked Honey-Teak Main Deck surface (y = 1.40m)
   const teakDeck = new THREE.Mesh(new THREE.BoxGeometry(12.1, 0.06, 37.5), plankedTeakMat);
-  teakDeck.position.set(yachtX, mainDeckY + 0.02, yachtZ - 1.5);
+  teakDeck.position.set(0, mainDeckY + 0.02, -1.5);
   teakDeck.receiveShadow = true;
-  scene.add(teakDeck);
-  worldMeshes.push(teakDeck);
+  yachtRoot.add(teakDeck);
 
   // Stainless Steel Perimeter Deck Railings & Stanchions along Port, Starboard & Foredeck
   for (const sx of [-6.05, 6.05]) {
     const topRail = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 35.0, 8), chromeRailMat);
     topRail.rotation.x = Math.PI / 2;
-    topRail.position.set(yachtX + sx, mainDeckY + 0.92, yachtZ - 1.5);
-    scene.add(topRail);
+    topRail.position.set(sx, mainDeckY + 0.92, -1.5);
+    yachtRoot.add(topRail);
 
     const midRail = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 35.0, 6), chromeRailMat);
     midRail.rotation.x = Math.PI / 2;
-    midRail.position.set(yachtX + sx, mainDeckY + 0.5, yachtZ - 1.5);
-    scene.add(midRail);
+    midRail.position.set(sx, mainDeckY + 0.5, -1.5);
+    yachtRoot.add(midRail);
 
-    for (let rz = yachtZ - 18.5; rz <= yachtZ + 15.5; rz += 3.4) {
+    for (let rz = -18.5; rz <= 15.5; rz += 3.4) {
       const post = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.024, 0.92, 6), chromeRailMat);
-      post.position.set(yachtX + sx, mainDeckY + 0.46, rz);
-      scene.add(post);
+      post.position.set(sx, mainDeckY + 0.46, rz);
+      yachtRoot.add(post);
     }
   }
 
   // Aft Main Deck Lounge: U-Shaped Cream Leather Sofa & Teak Cocktail Table
-  addBox(4.8, 0.55, 0.95, yachtX, mainDeckY + 0.28, yachtZ - 18.4, cushionMat, true, 'yacht-sofa');
-  addBox(0.9, 0.55, 2.2, yachtX - 2.1, mainDeckY + 0.28, yachtZ - 17.2, cushionMat, true, 'yacht-sofa');
-  addBox(0.9, 0.55, 2.2, yachtX + 2.1, mainDeckY + 0.28, yachtZ - 17.2, cushionMat, true, 'yacht-sofa');
-  addBox(2.0, 0.48, 1.1, yachtX, mainDeckY + 0.24, yachtZ - 16.9, plankedTeakMat, true, 'yacht-table');
+  addYachtBox(4.8, 0.55, 0.95, 0, mainDeckY + 0.28, -18.4, cushionMat, true, 'yacht-sofa');
+  addYachtBox(0.9, 0.55, 2.2, -2.1, mainDeckY + 0.28, -17.2, cushionMat, true, 'yacht-sofa');
+  addYachtBox(0.9, 0.55, 2.2, 2.1, mainDeckY + 0.28, -17.2, cushionMat, true, 'yacht-sofa');
+  addYachtBox(2.0, 0.48, 1.1, 0, mainDeckY + 0.24, -16.9, plankedTeakMat, true, 'yacht-table');
 
   // --- Sculpted Aerodynamic Main Salon Superstructure (Raked Front + Swept Mullions!) ---
   const salonShape = new THREE.Shape();
@@ -473,62 +519,61 @@ export function buildStarfishIsland(
   salonGeo.rotateY(-Math.PI / 2);
   salonGeo.computeVertexNormals();
   const salonMesh = new THREE.Mesh(salonGeo, yachtHullMat);
-  salonMesh.position.set(yachtX, 0, yachtZ);
   salonMesh.castShadow = true;
   salonMesh.receiveShadow = true;
-  scene.add(salonMesh);
+  yachtRoot.add(salonMesh);
 
   // Solid collider for the main salon cabin (leaves 2.0m walkable side decks on Port & Starboard!)
-  addBox(8.2, 2.88, 16.8, yachtX, mainDeckY + 1.44, yachtZ - 2.4, yachtHullMat, false, 'yacht-cabin').visible = false;
+  addYachtBox(8.2, 2.88, 16.8, 0, mainDeckY + 1.44, -2.4, yachtHullMat, false, 'yacht-cabin', false);
 
   // Wraparound Dark-Tinted Salon Windows + Raked Front Panoramic Glass + Diagonal White Superyacht Pillars
   for (const sx of [-4.18, 4.18]) {
     const sideGlass = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.22, 13.8), yachtGlassMat);
-    sideGlass.position.set(yachtX + sx, mainDeckY + 1.58, yachtZ - 3.2);
-    scene.add(sideGlass);
+    sideGlass.position.set(sx, mainDeckY + 1.58, -3.2);
+    yachtRoot.add(sideGlass);
 
     // Swept 80s diagonal superstructure mullions
     for (const mz of [-7.5, -2.5, 2.2]) {
       const mullion = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.45, 0.36), yachtHullMat);
-      mullion.position.set(yachtX + sx * 1.01, mainDeckY + 1.58, yachtZ + mz);
+      mullion.position.set(sx * 1.01, mainDeckY + 1.58, mz);
       mullion.rotation.x = -0.45;
-      scene.add(mullion);
+      yachtRoot.add(mullion);
     }
   }
   const frontSalonGlass = new THREE.Mesh(new THREE.BoxGeometry(7.6, 0.08, 3.6), yachtGlassMat);
-  frontSalonGlass.position.set(yachtX, mainDeckY + 1.56, yachtZ + 5.75);
+  frontSalonGlass.position.set(0, mainDeckY + 1.56, 5.75);
   frontSalonGlass.rotation.x = 0.72;
-  scene.add(frontSalonGlass);
+  yachtRoot.add(frontSalonGlass);
 
   // Walkable Aft Staircase from Main Deck (y = 1.40) up to Upper Bridge & Helipad Deck (y = 4.28)
   for (let s = 0; s < 12; s++) {
     const topY = mainDeckY + (s + 1) * 0.24;
-    const sz = yachtZ - 15.0 + s * 0.36;
-    addBox(2.4, topY - mainDeckY, 0.4, yachtX, (topY + mainDeckY) / 2, sz, plankedTeakMat, true, 'yacht-stairs');
+    const sz = -15.0 + s * 0.36;
+    addYachtBox(2.4, topY - mainDeckY, 0.4, 0, (topY + mainDeckY) / 2, sz, plankedTeakMat, true, 'yacht-stairs');
   }
 
   // --- Upper Flybridge, Raked Captain's Wheelhouse, Satcom Domes, Life Rafts & Helipad (y = 4.28m) ---
-  addBox(8.8, 0.24, 19.6, yachtX, upperDeckY - 0.12, yachtZ - 1.5, yachtHullMat, true, 'yacht-upper');
+  addYachtBox(8.8, 0.24, 19.6, 0, upperDeckY - 0.12, -1.5, yachtHullMat, true, 'yacht-upper');
   const upperTeak = new THREE.Mesh(new THREE.PlaneGeometry(8.4, 19.0), plankedTeakMat);
   upperTeak.rotation.x = -Math.PI / 2;
-  upperTeak.position.set(yachtX, upperDeckY + 0.01, yachtZ - 1.5);
-  scene.add(upperTeak);
+  upperTeak.position.set(0, upperDeckY + 0.01, -1.5);
+  yachtRoot.add(upperTeak);
 
   // Upper deck perimeter safety rails
   for (const sx of [-4.3, 4.3]) {
     const uRail = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 18.8, 6), chromeRailMat);
     uRail.rotation.x = Math.PI / 2;
-    uRail.position.set(yachtX + sx, upperDeckY + 0.85, yachtZ - 1.5);
-    scene.add(uRail);
+    uRail.position.set(sx, upperDeckY + 0.85, -1.5);
+    yachtRoot.add(uRail);
 
     // Cylindrical Emergency Life Raft Canisters mounted on upper deck sides
     const raft = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 1.15, 12), yachtHullMat);
     raft.rotation.x = Math.PI / 2;
-    raft.position.set(yachtX + sx * 1.05, upperDeckY + 0.35, yachtZ + 1.5);
-    scene.add(raft);
+    raft.position.set(sx * 1.05, upperDeckY + 0.35, 1.5);
+    yachtRoot.add(raft);
   }
 
-  // Sculpted Raked Captain's Wheelhouse / Flybridge (z = yachtZ + 3.2 .. +8.0)
+  // Sculpted Raked Captain's Wheelhouse / Flybridge (local z = +3.2 .. +8.0)
   const bridgeShape = new THREE.Shape();
   bridgeShape.moveTo(2.8, upperDeckY);
   bridgeShape.lineTo(8.0, upperDeckY);
@@ -540,56 +585,67 @@ export function buildStarfishIsland(
   bridgeGeo.rotateY(-Math.PI / 2);
   bridgeGeo.computeVertexNormals();
   const bridgeMesh = new THREE.Mesh(bridgeGeo, yachtHullMat);
-  bridgeMesh.position.set(yachtX, 0, yachtZ);
   bridgeMesh.castShadow = true;
-  scene.add(bridgeMesh);
-  addBox(6.8, 2.15, 4.8, yachtX, upperDeckY + 1.07, yachtZ + 5.2, yachtHullMat, false, 'yacht-bridge').visible = false;
+  yachtRoot.add(bridgeMesh);
+  addYachtBox(6.8, 2.15, 4.8, 0, upperDeckY + 1.07, 5.2, yachtHullMat, false, 'yacht-bridge', false);
 
   const bridgeWindshield = new THREE.Mesh(new THREE.BoxGeometry(6.5, 0.08, 2.5), yachtGlassMat);
-  bridgeWindshield.position.set(yachtX, upperDeckY + 1.25, yachtZ + 6.95);
+  bridgeWindshield.position.set(0, upperDeckY + 1.25, 6.95);
   bridgeWindshield.rotation.x = 0.78;
-  scene.add(bridgeWindshield);
+  yachtRoot.add(bridgeWindshield);
 
-  // Port (Red) & Starboard (Green) Marine Navigation Lights + Chrome Air Horns
+  // Exterior Captain's Helm Console & Ship's Wheel on Upper Bridge Deck (press [E] to pilot!)
+  const helmConsole = new THREE.Mesh(new THREE.BoxGeometry(1.3, 1.05, 0.65), navyBootMat);
+  helmConsole.position.set(0, upperDeckY + 0.525, 2.35);
+  yachtRoot.add(helmConsole);
+  const helmWheel = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.032, 8, 18), goldMat);
+  helmWheel.position.set(0, upperDeckY + 1.06, 2.02);
+  helmWheel.rotation.x = -0.35;
+  yachtRoot.add(helmWheel);
+  const helmTrim = new THREE.Mesh(new THREE.BoxGeometry(1.22, 0.06, 0.08), cyanNeon);
+  helmTrim.position.set(0, upperDeckY + 1.04, 2.05);
+  yachtRoot.add(helmTrim);
+
+  // Port (Red) & Starboard (Green) Marine Navigation Lights
   const portLight = new THREE.Mesh(
     new THREE.SphereGeometry(0.12, 8, 8),
     new THREE.MeshStandardMaterial({ color: '#ff2244', emissive: '#ff1a3a', emissiveIntensity: 2.6 }),
   );
-  portLight.position.set(yachtX + 3.55, upperDeckY + 1.9, yachtZ + 5.2);
-  scene.add(portLight);
+  portLight.position.set(3.55, upperDeckY + 1.9, 5.2);
+  yachtRoot.add(portLight);
   const stbdLight = new THREE.Mesh(
     new THREE.SphereGeometry(0.12, 8, 8),
     new THREE.MeshStandardMaterial({ color: '#22ff66', emissive: '#18ee55', emissiveIntensity: 2.6 }),
   );
-  stbdLight.position.set(yachtX - 3.55, upperDeckY + 1.9, yachtZ + 5.2);
-  scene.add(stbdLight);
+  stbdLight.position.set(-3.55, upperDeckY + 1.9, 5.2);
+  yachtRoot.add(stbdLight);
 
   // Swept 80s Radar Arch + Twin Satcom Radomes + Communications Mast + Spinning Radar Bar!
   for (const sx of [-3.3, 3.3]) {
     const pylon = new THREE.Mesh(new THREE.BoxGeometry(0.32, 2.6, 0.85), yachtHullMat);
-    pylon.position.set(yachtX + sx, upperDeckY + 2.1, yachtZ + 3.2);
+    pylon.position.set(sx, upperDeckY + 2.1, 3.2);
     pylon.rotation.x = -0.22;
-    scene.add(pylon);
+    yachtRoot.add(pylon);
   }
   const archTop = new THREE.Mesh(new THREE.BoxGeometry(7.3, 0.32, 1.1), yachtHullMat);
-  archTop.position.set(yachtX, upperDeckY + 3.38, yachtZ + 2.9);
-  scene.add(archTop);
+  archTop.position.set(0, upperDeckY + 3.38, 2.9);
+  yachtRoot.add(archTop);
 
   // Twin Spherical Satcom Domes flanking the radar scanner
   for (const sx of [-2.1, 2.1]) {
     const dome = new THREE.Mesh(new THREE.SphereGeometry(0.42, 14, 12), yachtHullMat);
-    dome.position.set(yachtX + sx, upperDeckY + 3.82, yachtZ + 2.9);
-    scene.add(dome);
+    dome.position.set(sx, upperDeckY + 3.82, 2.9);
+    yachtRoot.add(dome);
   }
 
   // Tall Tapered Marine Mast + Spinning Open-Array Radar Scanner
   const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.14, 2.4, 8), chromeRailMat);
-  mast.position.set(yachtX, upperDeckY + 4.6, yachtZ + 2.7);
-  scene.add(mast);
+  mast.position.set(0, upperDeckY + 4.6, 2.7);
+  yachtRoot.add(mast);
 
   const radarBar = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.15, 0.22), yachtHullMat);
-  radarBar.position.set(yachtX, upperDeckY + 3.85, yachtZ + 3.15);
-  scene.add(radarBar);
+  radarBar.position.set(0, upperDeckY + 3.85, 3.15);
+  yachtRoot.add(radarBar);
 
   // Glowing "LADY VICE" Neon Nameplates on both Port & Starboard Superstructure!
   const yachtSignTex = createNeonSignTexture('LADY VICE', '#36f1e6');
@@ -601,9 +657,9 @@ export function buildStarfishIsland(
   });
   for (const sx of [-4.48, 4.48]) {
     const yachtSign = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.82, 4.6), yachtSignMat);
-    yachtSign.position.set(yachtX + sx, upperDeckY + 0.08, yachtZ - 2.0);
+    yachtSign.position.set(sx, upperDeckY + 0.08, -2.0);
     if (sx > 0) yachtSign.rotation.y = Math.PI;
-    scene.add(yachtSign);
+    yachtRoot.add(yachtSign);
   }
 
   // Upper Deck Aft Helipad Ring + "H" Marking
@@ -612,50 +668,109 @@ export function buildStarfishIsland(
     new THREE.MeshStandardMaterial({ color: '#ff4fa3', emissive: '#ff4fa3', emissiveIntensity: 1.4, side: THREE.DoubleSide }),
   );
   yachtHeliRing.rotation.x = -Math.PI / 2;
-  yachtHeliRing.position.set(yachtX, upperDeckY + 0.03, yachtZ - 5.8);
-  scene.add(yachtHeliRing);
+  yachtHeliRing.position.set(0, upperDeckY + 0.03, -5.8);
+  yachtRoot.add(yachtHeliRing);
 
   const yhL = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.03, 2.2), yellowPaintMat);
-  yhL.position.set(yachtX - 0.75, upperDeckY + 0.03, yachtZ - 5.8);
-  scene.add(yhL);
+  yhL.position.set(-0.75, upperDeckY + 0.03, -5.8);
+  yachtRoot.add(yhL);
   const yhR = yhL.clone();
-  yhR.position.x = yachtX + 0.75;
-  scene.add(yhR);
+  yhR.position.x = 0.75;
+  yachtRoot.add(yhR);
   const yhC = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.03, 0.32), yellowPaintMat);
-  yhC.position.set(yachtX, upperDeckY + 0.03, yachtZ - 5.8);
-  scene.add(yhC);
+  yhC.position.set(0, upperDeckY + 0.03, -5.8);
+  yachtRoot.add(yhC);
 
-  // Foredeck Turquoise Jacuzzi Pool & Twin Luxury Sunbeds (z = yachtZ + 11.5 .. 16.5)
-  addBox(3.6, 0.65, 3.6, yachtX, mainDeckY + 0.32, yachtZ + 11.2, yachtHullMat, false, 'yacht-jacuzzi');
+  // Foredeck Turquoise Jacuzzi Pool & Twin Luxury Sunbeds
+  addYachtBox(3.6, 0.65, 3.6, 0, mainDeckY + 0.32, 11.2, yachtHullMat, false, 'yacht-jacuzzi');
   const jacuzziWater = new THREE.Mesh(
     new THREE.PlaneGeometry(3.05, 3.05),
     new THREE.MeshStandardMaterial({ color: '#24d2e6', emissive: '#0c5c6b', emissiveIntensity: 0.28, roughness: 0.08 }),
   );
   jacuzziWater.rotation.x = -Math.PI / 2;
-  jacuzziWater.position.set(yachtX, mainDeckY + 0.66, yachtZ + 11.2);
-  scene.add(jacuzziWater);
+  jacuzziWater.position.set(0, mainDeckY + 0.66, 11.2);
+  yachtRoot.add(jacuzziWater);
 
   for (const sx of [-1.45, 1.45]) {
     const sunbed = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.28, 2.8), cushionMat);
-    sunbed.position.set(yachtX + sx, mainDeckY + 0.18, yachtZ + 15.2);
+    sunbed.position.set(sx, mainDeckY + 0.18, 15.2);
     sunbed.castShadow = true;
-    scene.add(sunbed);
+    yachtRoot.add(sunbed);
     const pillow = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.14, 0.45), coralMat);
-    pillow.position.set(yachtX + sx, mainDeckY + 0.36, yachtZ + 14.05);
-    scene.add(pillow);
+    pillow.position.set(sx, mainDeckY + 0.36, 14.05);
+    yachtRoot.add(pillow);
   }
 
   // Captain's Gold Stash on the Upper Bridge Deck (+$1,800!)
-  const yachtLootPos = new THREE.Vector3(yachtX, upperDeckY, yachtZ + 1.0);
-  addBox(1.1, 0.85, 0.9, yachtLootPos.x, upperDeckY + 0.42, yachtLootPos.z, plankedTeakMat);
+  const yachtLootLocal = new THREE.Vector3(0, upperDeckY, 0.6);
+  addYachtBox(1.1, 0.85, 0.9, yachtLootLocal.x, upperDeckY + 0.42, yachtLootLocal.z, plankedTeakMat);
   const yachtLootMesh = new THREE.Mesh(new THREE.OctahedronGeometry(0.28, 0), goldMat);
-  yachtLootMesh.position.set(yachtLootPos.x, upperDeckY + 1.18, yachtLootPos.z);
-  scene.add(yachtLootMesh);
+  yachtLootMesh.position.set(yachtLootLocal.x, upperDeckY + 1.18, yachtLootLocal.z);
+  yachtRoot.add(yachtLootMesh);
   let yachtLootAvailable = true;
   let yachtLootRespawn = 0;
 
+  let curYachtX = yachtX;
+  let curYachtY = 0;
+  let curYachtZ = yachtZ;
+  let curYachtYaw = 0;
+
+  const syncYachtColliders = (x: number, y: number, z: number, yaw: number): void => {
+    curYachtX = x;
+    curYachtY = y;
+    curYachtZ = z;
+    curYachtYaw = yaw;
+    const cos = Math.cos(yaw);
+    const sin = Math.sin(yaw);
+    const absC = Math.abs(cos);
+    const absS = Math.abs(sin);
+    for (const e of yachtColliderEntries) {
+      const wx = x + e.lx * cos + e.lz * sin;
+      const wz = z - e.lx * sin + e.lz * cos;
+      const halfX = (e.w * 0.5) * absC + (e.d * 0.5) * absS;
+      const halfZ = (e.w * 0.5) * absS + (e.d * 0.5) * absC;
+      e.box.minX = wx - halfX;
+      e.box.maxX = wx + halfX;
+      e.box.minY = y + e.ly - e.h * 0.5;
+      e.box.maxY = y + e.ly + e.h * 0.5;
+      e.box.minZ = wz - halfZ;
+      e.box.maxZ = wz + halfZ;
+    }
+  };
+
+  const getYachtWorldPos = (localOffset: THREE.Vector3, out = new THREE.Vector3()): THREE.Vector3 => {
+    const cos = Math.cos(curYachtYaw);
+    const sin = Math.sin(curYachtYaw);
+    return out.set(
+      curYachtX + localOffset.x * cos + localOffset.z * sin,
+      curYachtY + localOffset.y,
+      curYachtZ - localOffset.x * sin + localOffset.z * cos,
+    );
+  };
+
+  const yachtLootScratch = new THREE.Vector3();
+
+  const yachtHandle: SuperyachtHandle = {
+    group: yachtRoot,
+    initialPos: new THREE.Vector3(yachtX, 0, yachtZ),
+    upperDeckY,
+    syncColliders: syncYachtColliders,
+    getWorldPos: getYachtWorldPos,
+    isPlayerOnOrNearYacht: (pos: THREE.Vector3) => {
+      // Transform player position into yacht local coordinates
+      const dx = pos.x - curYachtX;
+      const dz = pos.z - curYachtZ;
+      const cos = Math.cos(-curYachtYaw);
+      const sin = Math.sin(-curYachtYaw);
+      const lx = dx * cos + dz * sin;
+      const lz = -dx * sin + dz * cos;
+      return Math.abs(lx) < 8.5 && lz > -24.5 && lz < 24.5 && pos.y > -2.0 && pos.y < upperDeckY + 4.5;
+    },
+  };
+
   return {
     helipadSpawn: new THREE.Vector3(helipadPos.x, islandY + 0.12, helipadPos.z),
+    yacht: yachtHandle,
     getGroundHeight: (x: number, z: number) => {
       // On Causeway Bridge roadway
       if (x >= bridgeStartX && x <= bridgeEndX && Math.abs(z - bridgeZ) <= bridgeW / 2 + 0.2) {
@@ -674,8 +789,14 @@ export function buildStarfishIsland(
     },
     isNearIslandVault: (pos: THREE.Vector3) =>
       islandVaultAvailable && Math.hypot(pos.x - vaultPos.x, pos.z - vaultPos.z) < 2.5 && Math.abs(pos.y - islandY) < 2.4,
-    isNearYachtLoot: (pos: THREE.Vector3) =>
-      yachtLootAvailable && Math.hypot(pos.x - yachtLootPos.x, pos.z - yachtLootPos.z) < 2.4 && Math.abs(pos.y - upperDeckY) < 2.4,
+    isNearYachtLoot: (pos: THREE.Vector3) => {
+      if (!yachtLootAvailable) return false;
+      getYachtWorldPos(yachtLootLocal, yachtLootScratch);
+      return (
+        Math.hypot(pos.x - yachtLootScratch.x, pos.z - yachtLootScratch.z) < 2.4 &&
+        Math.abs(pos.y - yachtLootScratch.y) < 2.4
+      );
+    },
     takeIslandVault: () => {
       islandVaultAvailable = false;
       vaultMesh.visible = false;

@@ -13,6 +13,7 @@ export interface SaveProgress {
   armor: number;
   outfitIndex: number;
   ownedPets?: string[];
+  rooftopBarOwned?: boolean;
   starterBonusApplied?: boolean;
 }
 
@@ -34,6 +35,7 @@ export const DEFAULT_PROGRESS: SaveProgress = {
   armor: 0,
   outfitIndex: 0,
   ownedPets: [],
+  rooftopBarOwned: false,
   starterBonusApplied: true,
 };
 
@@ -90,6 +92,7 @@ export function loadProgress(): SaveProgress {
       ownedPets: Array.isArray(parsed.ownedPets)
         ? parsed.ownedPets.filter((p): p is string => typeof p === 'string')
         : [],
+      rooftopBarOwned: Boolean(parsed.rooftopBarOwned),
       starterBonusApplied: true,
     };
   } catch {

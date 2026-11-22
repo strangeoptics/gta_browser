@@ -152,6 +152,43 @@
         </div>
       </div>
 
+      <!-- Developer Panel Modal ([Alt+D] / [F2] / [D] im Pause-Menü) -->
+      <div id="dev-overlay">
+        <div class="shop-card dev-card">
+          <div class="title-eyebrow">VICE DUSK · DEBUG &amp; CHEAT TOOLS</div>
+          <h2 class="shop-title">DEVELOPER PANEL</h2>
+          <div class="shop-balance">
+            Guthaben: <span id="dev-cash">$0</span> · Sterne: <span id="dev-stars">0★</span>
+          </div>
+          <div class="dev-section">
+            <div class="dev-label">FAHNDUNGSSTERNE SETZEN</div>
+            <div class="dev-star-row">
+              <button class="dev-btn dev-star-btn" data-stars="0" type="button">0★</button>
+              <button class="dev-btn dev-star-btn" data-stars="1" type="button">1★</button>
+              <button class="dev-btn dev-star-btn" data-stars="2" type="button">2★</button>
+              <button class="dev-btn dev-star-btn" data-stars="3" type="button">3★</button>
+              <button class="dev-btn dev-star-btn" data-stars="4" type="button">4★</button>
+              <button class="dev-btn dev-star-btn" data-stars="5" type="button">5★</button>
+            </div>
+          </div>
+          <div class="dev-section">
+            <div class="dev-label">GELD / CASH ÄNDERN</div>
+            <div class="dev-cash-row">
+              <button id="dev-cash-minus" class="dev-btn" type="button">-$1.000</button>
+              <button id="dev-cash-500" class="dev-btn" type="button">+$500</button>
+              <button id="dev-cash-2500" class="dev-btn" type="button">+$2.500</button>
+              <button id="dev-cash-10k" class="dev-btn" type="button">+$10.000</button>
+              <button id="dev-cash-zero" class="dev-btn" type="button">$0</button>
+            </div>
+            <div class="dev-custom-row">
+              <input id="dev-cash-input" type="number" min="0" step="100" value="5000" />
+              <button id="dev-cash-set" class="dev-btn dev-btn-accent" type="button">BETRAG SETZEN</button>
+            </div>
+          </div>
+          <button id="dev-close" class="shop-close-btn" type="button">SCHLIESSEN [ALT+D / F2 / ESC]</button>
+        </div>
+      </div>
+
       <!-- Pointer Lock / Pause Overlay -->
       <div id="overlay">
         <div class="overlay-card">
@@ -201,6 +238,7 @@
             <div><kbd>Q</kbd> / <kbd>V</kbd> Radio / Auto-Kamera</div>
             <div><kbd>T</kbd> / <kbd>Y</kbd> Tageszeit / Regen</div>
             <div><kbd>B</kbd> / <kbd>M</kbd> Shop / Audio Stumm</div>
+            <div><kbd>Alt+D</kbd> / <kbd>F2</kbd> Developer-Panel (<kbd>D</kbd> im Menü)</div>
           </div>
         </div>
       </div>

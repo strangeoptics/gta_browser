@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { AABB } from '../types';
 import type { ShootableTarget } from '../combat/WeaponSystem';
 import { BLOCK_CENTERS } from '../world/CityLayout';
-import { getFaceTexture, getOutfitTexture } from './CharacterTextures';
+import { getFaceTexture, getOutfitBackTexture, getOutfitTexture } from './CharacterTextures';
 
 export type NpcRole = 'civilian' | 'police' | 'bounty' | 'guard';
 
@@ -627,8 +627,19 @@ export class NpcSystem {
     belt.position.y = 0.86;
     bodyRoot.add(belt);
 
-    // Torso (broad shoulders, textured front/back)
-    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.58, 0.26), torsoMat);
+    // Torso (broad shoulders: distinct front +Z & tailored back -Z textures)
+    const torsoBackMat = new THREE.MeshStandardMaterial({
+      map: getOutfitBackTexture(role, shirtColor, accentColor, seed),
+      roughness: 0.62,
+    });
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.58, 0.26), [
+      sleeveMat,
+      sleeveMat,
+      sleeveMat,
+      sleeveMat,
+      torsoMat,
+      torsoBackMat,
+    ]);
     torso.position.y = 1.16;
     torso.castShadow = true;
     bodyRoot.add(torso);

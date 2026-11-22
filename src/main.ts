@@ -276,6 +276,8 @@ let isBustedState = false;
 let bustProgress = 0;
 let lastBustedFine = 0;
 let cocktailScore = 0; // <= 1.0 = sober, > 1.0 = progressively drunk (max 4.5 -> drunkLevel 1.0)
+let carryingSnackTimer = 0;
+let carryingSnackName = 'DONUT';
 const wastedTextEl = wastedOverlayEl.querySelector<HTMLElement>('.wasted-text')!;
 const wastedSubEl = wastedOverlayEl.querySelector<HTMLElement>('.wasted-sub')!;
 
@@ -411,6 +413,8 @@ function eatLookedFood(): boolean {
     showQuickToast(
       gained > 0 ? `${item.name} GEGESSEN · +${gained} HP` : `${item.name} GEGESSEN · LECKER!`,
     );
+    carryingSnackTimer = 45.0;
+    carryingSnackName = item.name;
   }
   lookedFood = null;
   return true;
@@ -912,7 +916,34 @@ wildlife.onRoosterSpooked = () => {
 wildlife.onSharkNipPlayer = () => {
   audio.playWaterSplash();
   applyPlayerDamage(8);
-  showQuickToast('VORSICHT · RIFFHAI IM TIEFEN MEER!');
+  showQuickToast('HAI-ALARM! · RIFFHAI IM TIEFEN WASSER — SCHNELL ZURÜCK ZUM PIER!');
+};
+
+wildlife.onSeagullStealSnack = (hadSnack) => {
+  audio.playSeagullSquawk();
+  addCameraShake(0.16);
+  if (hadSnack) {
+    carryingSnackTimer = 0;
+    showQuickToast(`FRECHE MÖWE! · HAT DIR IM STURZFLUG DEINEN ${carryingSnackName} GEKLAUT!`);
+  } else {
+    const stolen = Math.min(objectives.cash, 15);
+    if (stolen > 0) {
+      objectives.cash -= stolen;
+      persistProgress();
+    }
+    showQuickToast('FRECHE STRAND-MÖWE! · HAT DIR IM STURZFLUG EINEN SNACK AUS DER HAND GEKLAUT!');
+  }
+};
+
+wildlife.onBeachBallBounce = (intensity) => {
+  audio.playBeachBallBounce(intensity);
+};
+
+wildlife.onBeachBallPortGoal = () => {
+  objectives.cash += 750;
+  audio.playMissionPassed();
+  persistProgress();
+  showQuickToast('STRANDBALL-CHAMPION! · ÜBER OCEAN DRIVE BIS IN DEN VICE PORT GEKICKT · +$750!');
 };
 
 heli.onPlayerDamaged = (dmg) => {
@@ -2105,6 +2136,8 @@ window.addEventListener('keydown', (e) => {
         playerHp = playerMaxHp;
         audio.playEatCrunch();
         persistProgress();
+        carryingSnackTimer = 50.0;
+        carryingSnackName = 'CUBAN BURGER';
         showQuickToast(`STARLIGHT DINER · CUBAN BURGER & SHAKE (${playerMaxHp} HP · -$40)`);
       } else {
         showQuickToast(`STARLIGHT DINER · ZU WENIG CASH (BENÖTIGT $${mealCost})`);
@@ -2585,7 +2618,21 @@ function animate(now: number): void {
   );
   const inSafehouse = world.isInsideSafehouse(player.position);
   pets.update(dt, elapsed, player.position, inSafehouse);
-  wildlife.update(dt, elapsed, player.position, playerSwimming && !inAnyCraft);
+  if (carryingSnackTimer > 0) carryingSnackTimer = Math.max(0, carryingSnackTimer - dt);
+  const activeCarForBall = vehicles.getActiveVehicle();
+  const wildlifeHud = wildlife.update(
+    dt,
+    elapsed,
+    player.position,
+    playerSwimming && !inAnyCraft,
+    carryingSnackTimer > 0,
+    inAnyCraft,
+    activeCarForBall?.position,
+    activeCarForBall?.speed ?? 0,
+    world.getGroundHeight,
+    rbColliders,
+    world.vehicleGrid,
+  );
   destructibles.update(dt);
   roadblocks.update(dt, elapsed, wanted.stars);
   shop.update(elapsed);
@@ -2853,6 +2900,7 @@ function animate(now: number): void {
     inGarageRide && garageRideHud.rideId ? garageRideHud.rideId : 'motor',
     specialHud.kind === 'firefighter' || specialHud.kind === 'paramedic',
     iceCreamJingleOn,
+    wildlifeHud.sharkDanger,
   );
 
   shootableHitboxes.length = 0;
@@ -2860,6 +2908,7 @@ function animate(now: number): void {
   vehicles.appendShootableHitboxes(shootableHitboxes);
   destructibles.appendShootableHitboxes(shootableHitboxes);
   heli.appendShootableHitboxes(shootableHitboxes);
+  wildlife.appendShootableHitboxes(shootableHitboxes);
 
   // Crosshair raycast for Safehouse food items, gun cabinet weapons, CRT TV & Safehouse Pets -> switches weapon to open Hand!
   if (handHoldTimer > 0) handHoldTimer = Math.max(0, handHoldTimer - dt);

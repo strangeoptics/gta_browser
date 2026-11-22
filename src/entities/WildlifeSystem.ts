@@ -1,4 +1,7 @@
 import * as THREE from 'three';
+import type { AABB } from '../types';
+import type { ShootableTarget } from '../combat/WeaponSystem';
+import type { SpatialGrid } from '../engine/SpatialGrid';
 
 // -----------------------------------------------------------------------------
 // Procedural High-Detail Animal Coat, Plumage & Shell Textures (Zero Assets!)
@@ -107,6 +110,8 @@ interface SharkAgent {
   radius: number;
   speed: number;
   phase: number;
+  isStalker?: boolean;
+  stalkAngle?: number;
 }
 
 interface PelicanAgent {
@@ -172,8 +177,33 @@ export class WildlifeSystem {
   private sharkBiteCooldown = 0;
   private roosterCluckCooldown = 0;
 
+  // Cheeky Dive-Bombing Seagull (steals snacks & donuts on the beach / Ocean Drive!)
+  private thiefGullGroup!: THREE.Group;
+  private thiefWingL!: THREE.Mesh;
+  private thiefWingR!: THREE.Mesh;
+  private thiefDonutMesh!: THREE.Mesh;
+  private thiefState: 'idle' | 'diving' | 'escaping' = 'idle';
+  private thiefTimer = 0;
+  private thiefCooldown = 14.0;
+  private thiefStartPos = new THREE.Vector3();
+  private thiefTargetPos = new THREE.Vector3();
+  private thiefEscapeDir = new THREE.Vector3(1, 0, 0);
+
+  // Oversized Kickable / Drivable / Shootable 80s Miami Beach Ball!
+  private beachBallMesh!: THREE.Mesh;
+  private beachBallHitbox!: THREE.Mesh;
+  private beachBallPos = new THREE.Vector3(80.5, 1.35, 22.0);
+  private beachBallVel = new THREE.Vector3();
+  private beachBallRadius = 1.15;
+  private beachBallPortGoalClaimed = false;
+  private beachBallBounceCooldown = 0;
+  private readonly ballColliderScratch: AABB[] = [];
+
   public onSharkNipPlayer?: () => void;
   public onRoosterSpooked?: () => void;
+  public onSeagullStealSnack?: (hadSnack: boolean) => void;
+  public onBeachBallBounce?: (intensity: number) => void;
+  public onBeachBallPortGoal?: () => void;
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
@@ -183,6 +213,22 @@ export class WildlifeSystem {
     this.spawnPelicans();
     this.spawnSeaTurtles();
     this.spawnHavanaRoosters();
+    this.spawnThiefSeagull();
+    this.spawnGiantBeachBall();
+  }
+
+  public appendShootableHitboxes(out: THREE.Object3D[]): void {
+    if (this.beachBallHitbox) out.push(this.beachBallHitbox);
+  }
+
+  public kickBeachBall(impulseX: number, impulseY: number, impulseZ: number): void {
+    this.beachBallVel.x = THREE.MathUtils.clamp(this.beachBallVel.x + impulseX, -28, 28);
+    this.beachBallVel.y = THREE.MathUtils.clamp(Math.max(this.beachBallVel.y, 0) + impulseY, 0, 14);
+    this.beachBallVel.z = THREE.MathUtils.clamp(this.beachBallVel.z + impulseZ, -28, 28);
+    if (this.beachBallBounceCooldown <= 0) {
+      this.beachBallBounceCooldown = 0.14;
+      this.onBeachBallBounce?.(Math.min(1, Math.hypot(impulseX, impulseZ) / 14));
+    }
   }
 
   // ===========================================================================
@@ -430,12 +476,13 @@ export class WildlifeSystem {
     sharkDorsalGeo.translate(0, 0, -0.0175);
     sharkDorsalGeo.rotateY(Math.PI / 2);
 
-    const spots: [number, number, number, number, number][] = [
-      [138, 44, 15, 0.32, 0.0], // Outer East Deep Ocean
-      [-24, -138, 13, 0.35, 1.9], // Outer North Bay beyond Marina Piers
+    const spots: [number, number, number, number, number, boolean][] = [
+      [138, 44, 15, 0.32, 0.0, false], // Outer East Deep Ocean
+      [-24, -138, 13, 0.35, 1.9, false], // Outer North Bay beyond Marina Piers
+      [126, 12, 16, 0.52, 3.4, true], // Dynamic Deep-Water Stalker Shark (circles swimmers past Pier / Superyacht!)
     ];
 
-    spots.forEach(([cx, cz, radius, speed, phase]) => {
+    spots.forEach(([cx, cz, radius, speed, phase, isStalker]) => {
       const g = new THREE.Group();
 
       const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.28, 1.45, 12, 18), sharkGreyMat);
@@ -488,7 +535,7 @@ export class WildlifeSystem {
 
       g.add(torso, belly, snout, dorsal, tailPivot);
       this.scene.add(g);
-      this.sharks.push({ group: g, tailPivot, centerX: cx, centerZ: cz, radius, speed, phase });
+      this.sharks.push({ group: g, tailPivot, centerX: cx, centerZ: cz, radius, speed, phase, isStalker, stalkAngle: phase });
     });
   }
 
@@ -778,10 +825,117 @@ export class WildlifeSystem {
   // ===========================================================================
   // UPDATE LOOP (Distance-LOD Optimized!)
   // ===========================================================================
-  public update(dt: number, elapsed: number, playerPos: THREE.Vector3, playerSwimming = false): void {
+  // 7) CHEEKY DIVE-BOMBING SEAGULL (Steals Donuts & Diner Snacks in Mid-Air!)
+  // ===========================================================================
+  private spawnThiefSeagull(): void {
+    const g = new THREE.Group();
+    g.userData.dynamic = true;
+    const whiteMat = new THREE.MeshStandardMaterial({ color: '#faf7f2', roughness: 0.55 });
+    const greyWingMat = new THREE.MeshStandardMaterial({ color: '#cfd6de', roughness: 0.58 });
+    const beakMat = new THREE.MeshStandardMaterial({ color: '#ff9f2e', roughness: 0.4 });
+    const donutMat = new THREE.MeshStandardMaterial({ color: '#ff5ea8', roughness: 0.3 });
+
+    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.11, 0.34, 6, 10), whiteMat);
+    body.rotation.x = Math.PI / 2;
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.095, 8, 8), whiteMat);
+    head.position.set(0, 0.06, 0.24);
+    const beak = new THREE.Mesh(new THREE.ConeGeometry(0.032, 0.14, 6), beakMat);
+    beak.rotation.x = Math.PI / 2;
+    beak.position.set(0, 0.05, 0.36);
+
+    // Tiny stolen pink donut carried in beak while escaping!
+    this.thiefDonutMesh = new THREE.Mesh(new THREE.TorusGeometry(0.085, 0.034, 8, 14), donutMat);
+    this.thiefDonutMesh.position.set(0, 0.03, 0.43);
+    this.thiefDonutMesh.visible = false;
+
+    const wingGeo = new THREE.BoxGeometry(0.72, 0.035, 0.24);
+    this.thiefWingL = new THREE.Mesh(wingGeo, greyWingMat);
+    this.thiefWingL.position.set(-0.38, 0.03, 0.02);
+    this.thiefWingR = new THREE.Mesh(wingGeo, greyWingMat);
+    this.thiefWingR.position.set(0.38, 0.03, 0.02);
+
+    g.add(body, head, beak, this.thiefDonutMesh, this.thiefWingL, this.thiefWingR);
+    g.visible = false;
+    this.scene.add(g);
+    this.thiefGullGroup = g;
+  }
+
+  // ===========================================================================
+  // 8) OVERSIZED 80s MIAMI STRIPED BEACH BALL (Kick, Ram or Shoot to Vice Port!)
+  // ===========================================================================
+  private spawnGiantBeachBall(): void {
+    const c = document.createElement('canvas');
+    c.width = 256;
+    c.height = 128;
+    const ctx = c.getContext('2d')!;
+    const stripes = ['#ff4fa3', '#fff7f0', '#36f1e6', '#fff7f0', '#ffd15c', '#fff7f0'];
+    const sw = c.width / stripes.length;
+    stripes.forEach((col, idx) => {
+      ctx.fillStyle = col;
+      ctx.fillRect(idx * sw, 0, sw + 1, c.height);
+    });
+    // White polar caps
+    ctx.fillStyle = '#fff7f0';
+    ctx.fillRect(0, 0, c.width, 16);
+    ctx.fillRect(0, c.height - 16, c.width, 16);
+
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const mat = new THREE.MeshStandardMaterial({
+      map: tex,
+      roughness: 0.24,
+      metalness: 0.06,
+    });
+
+    this.beachBallMesh = new THREE.Mesh(new THREE.SphereGeometry(this.beachBallRadius, 20, 14), mat);
+    this.beachBallMesh.castShadow = true;
+    this.beachBallMesh.receiveShadow = true;
+    this.beachBallMesh.userData.dynamic = true;
+    this.beachBallMesh.position.copy(this.beachBallPos);
+    this.scene.add(this.beachBallMesh);
+
+    this.beachBallHitbox = new THREE.Mesh(
+      new THREE.SphereGeometry(this.beachBallRadius * 1.08, 10, 8),
+      new THREE.MeshBasicMaterial({ visible: false }),
+    );
+    this.beachBallHitbox.userData.dynamic = true;
+    this.beachBallHitbox.position.copy(this.beachBallPos);
+    const shootable: ShootableTarget = {
+      id: 'giant-beach-ball',
+      mesh: this.beachBallHitbox,
+      onHit: (damage: number, hitPoint?: THREE.Vector3) => {
+        const dx = hitPoint ? this.beachBallPos.x - hitPoint.x : (Math.random() - 0.5);
+        const dz = hitPoint ? this.beachBallPos.z - hitPoint.z : (Math.random() - 0.5);
+        const len = Math.hypot(dx, dz) || 1;
+        const power = Math.min(20, 7.5 + damage * 0.22);
+        this.kickBeachBall((dx / len) * power, Math.min(9.5, 4.2 + damage * 0.08), (dz / len) * power);
+        return false;
+      },
+    };
+    this.beachBallHitbox.userData.shootableTarget = shootable;
+    this.scene.add(this.beachBallHitbox);
+  }
+
+  // ===========================================================================
+  // UPDATE LOOP (LOD distance-culled for silky-smooth 60-144 FPS!)
+  // ===========================================================================
+  public update(
+    dt: number,
+    elapsed: number,
+    playerPos: THREE.Vector3,
+    playerSwimming = false,
+    hasSnack = false,
+    inAnyCraft = false,
+    activeCarPos?: THREE.Vector3,
+    activeCarSpeed = 0,
+    getGroundHeight?: (x: number, z: number) => number,
+    worldColliders: AABB[] = [],
+    vehicleGrid?: SpatialGrid,
+  ): { sharkDanger: number } {
     const clampedDt = Math.min(dt, 0.05);
     if (this.sharkBiteCooldown > 0) this.sharkBiteCooldown -= clampedDt;
     if (this.roosterCluckCooldown > 0) this.roosterCluckCooldown -= clampedDt;
+    if (this.beachBallBounceCooldown > 0) this.beachBallBounceCooldown -= clampedDt;
 
     const lodDistSq = 105 * 105;
 
@@ -845,20 +999,59 @@ export class WildlifeSystem {
       }
     }
 
-    // 3) Circling Deep-Sea Reef Sharks
+    // 3) Circling Deep-Sea Reef Sharks + Dynamic "Jaws" Stalker Fin!
+    const inDeepOcean =
+      playerSwimming &&
+      (playerPos.x > 107 || playerPos.z < -103 || playerPos.z > 127);
+    let sharkDanger = 0;
+
     for (const s of this.sharks) {
-      const ang = elapsed * s.speed + s.phase;
-      const sx = s.centerX + Math.cos(ang) * s.radius;
-      const sz = s.centerZ + Math.sin(ang) * s.radius;
+      let sx: number;
+      let sz: number;
+      let yaw: number;
+
+      if (s.isStalker) {
+        if (inDeepOcean) {
+          // Orbit smoothly around the swimmer & tighten the circle menacingly!
+          s.centerX += (playerPos.x - s.centerX) * (1 - Math.exp(-1.4 * clampedDt));
+          s.centerZ += (playerPos.z - s.centerZ) * (1 - Math.exp(-1.4 * clampedDt));
+          s.radius = Math.max(3.0, s.radius - clampedDt * 1.15);
+          s.stalkAngle = (s.stalkAngle ?? s.phase) + clampedDt * (0.65 + (16 - s.radius) * 0.065);
+          const ang = s.stalkAngle;
+          sx = s.centerX + Math.cos(ang) * s.radius;
+          sz = s.centerZ + Math.sin(ang) * s.radius;
+          yaw = Math.atan2(-Math.sin(ang), Math.cos(ang));
+        } else {
+          // Patrol calmly beyond the beach pier until someone swims out too far
+          s.centerX += (126 - s.centerX) * (1 - Math.exp(-0.6 * clampedDt));
+          s.centerZ += (12 - s.centerZ) * (1 - Math.exp(-0.6 * clampedDt));
+          s.radius = Math.min(16, s.radius + clampedDt * 2.2);
+          s.stalkAngle = (s.stalkAngle ?? s.phase) + clampedDt * 0.36;
+          const ang = s.stalkAngle;
+          sx = s.centerX + Math.cos(ang) * s.radius;
+          sz = s.centerZ + Math.sin(ang) * s.radius;
+          yaw = Math.atan2(-Math.sin(ang), Math.cos(ang));
+        }
+      } else {
+        const ang = elapsed * s.speed + s.phase;
+        sx = s.centerX + Math.cos(ang) * s.radius;
+        sz = s.centerZ + Math.sin(ang) * s.radius;
+        yaw = Math.atan2(-Math.sin(ang), Math.cos(ang));
+      }
+
       // Cruises at y = -0.44 so its 0.52m dorsal fin slices cleanly above y = -0.18 ocean surface!
       s.group.position.set(sx, -0.44 + Math.sin(elapsed * 1.8 + s.phase) * 0.04, sz);
-      s.group.rotation.y = Math.atan2(-Math.sin(ang), Math.cos(ang));
-      s.tailPivot.rotation.y = Math.sin(elapsed * 5.2 + s.phase) * 0.34;
+      s.group.rotation.y = yaw;
+      s.tailPivot.rotation.y = Math.sin(elapsed * (inDeepOcean && s.isStalker ? 8.5 : 5.2) + s.phase) * 0.34;
 
-      if (playerSwimming && this.sharkBiteCooldown <= 0) {
-        const dSq = (sx - playerPos.x) ** 2 + (sz - playerPos.z) ** 2;
-        if (dSq < 6.2) {
-          this.sharkBiteCooldown = 6.0;
+      if (playerSwimming) {
+        const dist = Math.hypot(sx - playerPos.x, sz - playerPos.z);
+        if (dist < 26) {
+          sharkDanger = Math.max(sharkDanger, THREE.MathUtils.clamp(1 - (dist - 3.2) / 22.8, 0.08, 1));
+        }
+        if (dist < 2.65 && this.sharkBiteCooldown <= 0) {
+          this.sharkBiteCooldown = 5.5;
+          if (s.isStalker) s.radius = 9.5; // Brief pull-back after a nip!
           this.onSharkNipPlayer?.();
         }
       }
@@ -964,5 +1157,179 @@ export class WildlifeSystem {
       r.group.position.set(r.pos.x, 0.21 + flutterHop, r.pos.z);
       r.group.rotation.y = r.yaw;
     }
+
+    // 7) Cheeky Dive-Bombing Seagull (swoops down on beach/Ocean Drive to steal snacks & donuts!)
+    this.thiefCooldown = Math.max(0, this.thiefCooldown - clampedDt);
+    const onBeachOrPromenade = !inAnyCraft && !playerSwimming && playerPos.x > 54 && playerPos.x < 103 && Math.abs(playerPos.z) < 62;
+    if (this.thiefState === 'idle') {
+      if (onBeachOrPromenade && this.thiefCooldown <= 0 && (hasSnack || playerPos.x > 72)) {
+        this.thiefState = 'diving';
+        this.thiefTimer = 0;
+        const ang = Math.random() * Math.PI * 2;
+        this.thiefStartPos.set(playerPos.x + Math.cos(ang) * 18, 14.5, playerPos.z + Math.sin(ang) * 18);
+        this.thiefTargetPos.set(playerPos.x, playerPos.y + 1.35, playerPos.z);
+        this.thiefEscapeDir.set(-Math.cos(ang), 0, -Math.sin(ang)).normalize();
+        this.thiefDonutMesh.visible = false;
+        this.thiefGullGroup.visible = true;
+        this.thiefGullGroup.position.copy(this.thiefStartPos);
+      }
+    } else if (this.thiefState === 'diving') {
+      this.thiefTimer += clampedDt;
+      const dur = 1.45;
+      const t = Math.min(1, this.thiefTimer / dur);
+      // Track player slightly during dive so the swoop feels sharp and personal
+      this.thiefTargetPos.set(playerPos.x, playerPos.y + 1.35, playerPos.z);
+      const gx = THREE.MathUtils.lerp(this.thiefStartPos.x, this.thiefTargetPos.x, t);
+      const gz = THREE.MathUtils.lerp(this.thiefStartPos.z, this.thiefTargetPos.z, t);
+      const gy = THREE.MathUtils.lerp(this.thiefStartPos.y, this.thiefTargetPos.y, t * t);
+      this.thiefGullGroup.position.set(gx, gy, gz);
+      this.thiefGullGroup.rotation.y = Math.atan2(this.thiefTargetPos.x - gx, this.thiefTargetPos.z - gz);
+      this.thiefGullGroup.rotation.x = 0.45 * (1 - t);
+      const flap = Math.sin(elapsed * 22) * 0.55;
+      this.thiefWingL.rotation.z = flap;
+      this.thiefWingR.rotation.z = -flap;
+
+      if (t >= 1) {
+        this.thiefState = 'escaping';
+        this.thiefTimer = 0;
+        this.thiefStartPos.copy(this.thiefGullGroup.position);
+        this.thiefDonutMesh.visible = true;
+        this.thiefCooldown = hasSnack ? 22.0 : 32.0;
+        this.onSeagullStealSnack?.(hasSnack);
+      }
+    } else if (this.thiefState === 'escaping') {
+      this.thiefTimer += clampedDt;
+      const t = Math.min(1, this.thiefTimer / 2.6);
+      const gx = this.thiefStartPos.x + this.thiefEscapeDir.x * (t * 28);
+      const gz = this.thiefStartPos.z + this.thiefEscapeDir.z * (t * 28);
+      const gy = this.thiefStartPos.y + t * 15.5;
+      this.thiefGullGroup.position.set(gx, gy, gz);
+      this.thiefGullGroup.rotation.y = Math.atan2(this.thiefEscapeDir.x, this.thiefEscapeDir.z);
+      this.thiefGullGroup.rotation.x = -0.32;
+      const flap = Math.sin(elapsed * 26) * 0.65;
+      this.thiefWingL.rotation.z = flap;
+      this.thiefWingR.rotation.z = -flap;
+      if (t >= 1) {
+        this.thiefState = 'idle';
+        this.thiefGullGroup.visible = false;
+      }
+    }
+
+    // 8) Oversized 80s Miami Beach Ball Physics (Kick on foot, Ram with cars, Shoot with guns!)
+    if (this.beachBallMesh) {
+      // Foot kick interaction
+      if (!inAnyCraft) {
+        const dx = this.beachBallPos.x - playerPos.x;
+        const dz = this.beachBallPos.z - playerPos.z;
+        const dist = Math.hypot(dx, dz);
+        const minDist = this.beachBallRadius + 0.55;
+        if (dist < minDist && dist > 0.01 && Math.abs(this.beachBallPos.y - (playerPos.y + 0.8)) < 2.0) {
+          const nx = dx / dist;
+          const nz = dz / dist;
+          this.beachBallPos.x = playerPos.x + nx * minDist;
+          this.beachBallPos.z = playerPos.z + nz * minDist;
+          this.kickBeachBall(nx * 10.5, 4.4, nz * 10.5);
+        }
+      }
+      // Car ramming interaction
+      if (activeCarPos) {
+        const dx = this.beachBallPos.x - activeCarPos.x;
+        const dz = this.beachBallPos.z - activeCarPos.z;
+        const dist = Math.hypot(dx, dz);
+        const minDist = this.beachBallRadius + 1.85;
+        if (dist < minDist && dist > 0.01 && Math.abs(this.beachBallPos.y - (activeCarPos.y + 0.9)) < 2.6) {
+          const nx = dx / dist;
+          const nz = dz / dist;
+          this.beachBallPos.x = activeCarPos.x + nx * minDist;
+          this.beachBallPos.z = activeCarPos.z + nz * minDist;
+          const kickSpd = Math.max(9.0, Math.abs(activeCarSpeed) * 1.35);
+          this.kickBeachBall(nx * kickSpd, Math.min(11.0, 4.5 + Math.abs(activeCarSpeed) * 0.25), nz * kickSpd);
+        }
+      }
+
+      // Gravity, air/ground drag & world bounds
+      this.beachBallVel.y -= 15.5 * clampedDt;
+      this.beachBallPos.x = THREE.MathUtils.clamp(this.beachBallPos.x + this.beachBallVel.x * clampedDt, -118, 128);
+      this.beachBallPos.y += this.beachBallVel.y * clampedDt;
+      this.beachBallPos.z = THREE.MathUtils.clamp(this.beachBallPos.z + this.beachBallVel.z * clampedDt, -128, 125);
+
+      const groundY = getGroundHeight ? getGroundHeight(this.beachBallPos.x, this.beachBallPos.z) : 0;
+      const surfaceY = Math.max(-0.18, groundY);
+      const minY = surfaceY + this.beachBallRadius;
+      if (this.beachBallPos.y <= minY) {
+        this.beachBallPos.y = minY;
+        if (this.beachBallVel.y < -2.2) {
+          this.beachBallVel.y = -this.beachBallVel.y * 0.68;
+          if (this.beachBallBounceCooldown <= 0) {
+            this.beachBallBounceCooldown = 0.14;
+            this.onBeachBallBounce?.(Math.min(1, Math.abs(this.beachBallVel.y) / 10));
+          }
+        } else {
+          this.beachBallVel.y = 0;
+        }
+        // Gentle rolling friction on sand/asphalt/water
+        const drag = Math.exp(-1.25 * clampedDt);
+        this.beachBallVel.x *= drag;
+        this.beachBallVel.z *= drag;
+      } else {
+        const airDrag = Math.exp(-0.22 * clampedDt);
+        this.beachBallVel.x *= airDrag;
+        this.beachBallVel.z *= airDrag;
+      }
+
+      // Bounce cleanly off solid buildings & walls!
+      const r = this.beachBallRadius;
+      const boxes = vehicleGrid
+        ? vehicleGrid.queryBox(
+            this.beachBallPos.x - r,
+            this.beachBallPos.x + r,
+            this.beachBallPos.z - r,
+            this.beachBallPos.z + r,
+            worldColliders,
+            this.ballColliderScratch,
+          )
+        : worldColliders;
+      for (let i = 0; i < boxes.length; i++) {
+        const box = boxes[i];
+        if (this.beachBallPos.y - r >= box.maxY || this.beachBallPos.y + r <= box.minY) continue;
+        if (
+          this.beachBallPos.x + r > box.minX &&
+          this.beachBallPos.x - r < box.maxX &&
+          this.beachBallPos.z + r > box.minZ &&
+          this.beachBallPos.z - r < box.maxZ
+        ) {
+          const pL = box.minX - (this.beachBallPos.x + r);
+          const pR = box.maxX - (this.beachBallPos.x - r);
+          const pB = box.minZ - (this.beachBallPos.z + r);
+          const pF = box.maxZ - (this.beachBallPos.z - r);
+          const minAbs = Math.min(Math.abs(pL), Math.abs(pR), Math.abs(pB), Math.abs(pF));
+          if (minAbs === Math.abs(pL) || minAbs === Math.abs(pR)) {
+            this.beachBallPos.x += minAbs === Math.abs(pL) ? pL : pR;
+            this.beachBallVel.x *= -0.72;
+          } else {
+            this.beachBallPos.z += minAbs === Math.abs(pB) ? pB : pF;
+            this.beachBallVel.z *= -0.72;
+          }
+          if (this.beachBallBounceCooldown <= 0) {
+            this.beachBallBounceCooldown = 0.16;
+            this.onBeachBallBounce?.(0.55);
+          }
+        }
+      }
+
+      // Realistic rolling rotation proportional to horizontal velocity
+      this.beachBallMesh.rotation.x += (this.beachBallVel.z / this.beachBallRadius) * clampedDt;
+      this.beachBallMesh.rotation.z -= (this.beachBallVel.x / this.beachBallRadius) * clampedDt;
+      this.beachBallMesh.position.copy(this.beachBallPos);
+      this.beachBallHitbox.position.copy(this.beachBallPos);
+
+      // Secret Easter Egg: Kick/drive the giant beach ball all the way into Vice Port (z > 68)!
+      if (!this.beachBallPortGoalClaimed && this.beachBallPos.z > 68) {
+        this.beachBallPortGoalClaimed = true;
+        this.onBeachBallPortGoal?.();
+      }
+    }
+
+    return { sharkDanger };
   }
 }

@@ -32,6 +32,8 @@ export class AudioEngine {
   private radioBeatPulse = 0;
   private iceCreamTimer = 0;
   private iceCreamStep = 0;
+  private sharkBassTimer = 0;
+  private sharkBassToggle = false;
   private clubBeatTimer = 0;
   private clubStep = 0;
   private stepTimer = 0;
@@ -1077,6 +1079,50 @@ export class AudioEngine {
     });
   }
 
+  public playSeagullSquawk(): void {
+    if (!this.ctx || !this.masterGain || this.muted) return;
+    const now = this.ctx.currentTime;
+    for (let k = 0; k < 2; k++) {
+      const t = now + k * 0.16;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      const bp = this.ctx.createBiquadFilter();
+      osc.type = 'sawtooth';
+      bp.type = 'bandpass';
+      bp.frequency.value = 1850;
+      bp.Q.value = 3.2;
+      osc.frequency.setValueAtTime(1180 + k * 140, t);
+      osc.frequency.exponentialRampToValueAtTime(1750, t + 0.05);
+      osc.frequency.exponentialRampToValueAtTime(760, t + 0.14);
+      gain.gain.setValueAtTime(0.18, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+      osc.connect(bp);
+      bp.connect(gain);
+      gain.connect(this.masterGain);
+      this.autoDisconnect(osc, bp, gain);
+      osc.start(t);
+      osc.stop(t + 0.16);
+    }
+  }
+
+  public playBeachBallBounce(intensity = 0.7): void {
+    if (!this.ctx || !this.masterGain || this.muted) return;
+    const now = this.ctx.currentTime;
+    const vol = Math.max(0.08, Math.min(0.32, intensity * 0.28));
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(195 + intensity * 65, now);
+    osc.frequency.exponentialRampToValueAtTime(82, now + 0.13);
+    gain.gain.setValueAtTime(vol, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+    osc.connect(gain);
+    gain.connect(this.masterGain);
+    this.autoDisconnect(osc, gain);
+    osc.start(now);
+    osc.stop(now + 0.16);
+  }
+
   public getRadioBeatPulse(): number {
     return this.radioBeatPulse;
   }
@@ -1096,6 +1142,7 @@ export class AudioEngine {
     rideAudioMode: 'motor' | 'skateboard' | 'roadbike' = 'motor',
     emergencySirenActive = false,
     iceCreamJingleActive = false,
+    sharkDanger = 0,
   ): void {
     if (
       !this.ctx ||
@@ -1197,6 +1244,24 @@ export class AudioEngine {
 
     // 6) Car Radio / Street Ambient Synthwave (ducks automatically when inside NEON CLUB or when Ice Cream Jingle rings!)
     this.radioBeatPulse = Math.max(0, this.radioBeatPulse - dt * 4.8);
+
+    // 6a) Accelerating 2-Note Jaws Synth-Bass Alarm when swimming in deep ocean near a shark!
+    if (isActive && !this.muted && sharkDanger > 0.05) {
+      this.sharkBassTimer -= dt;
+      if (this.sharkBassTimer <= 0) {
+        // Tempo accelerates from 0.82s (distant fin) down to frantic 0.19s (shark right beside you!)
+        const interval = 0.82 - Math.min(1, sharkDanger) * 0.63;
+        this.sharkBassTimer = interval;
+        const noteFreq = this.sharkBassToggle ? 46.25 : 41.2; // F#1 / E1 menacing half-step!
+        this.sharkBassToggle = !this.sharkBassToggle;
+        const bassVol = 0.14 + Math.min(1, sharkDanger) * 0.18;
+        this.playSynthNote(noteFreq, 'sawtooth', bassVol, interval * 0.82, 260 + sharkDanger * 220);
+        this.playSynthNote(noteFreq * 2, 'triangle', bassVol * 0.55, interval * 0.72, 340);
+      }
+    } else {
+      this.sharkBassTimer = 0.12;
+      this.sharkBassToggle = false;
+    }
 
     if (isActive && !this.muted && iceCreamJingleActive) {
       this.iceCreamTimer -= dt;

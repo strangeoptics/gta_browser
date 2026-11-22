@@ -37,7 +37,10 @@ export class VigilanteSystem {
     this.spawnNextSuspect(playerPos, npcs);
   }
 
-  public stop(): void {
+  public stop(npcs?: NpcSystem): void {
+    if (this.targetNpc && npcs) {
+      npcs.removeNpc(this.targetNpc);
+    }
     this.active = false;
     this.targetNpc = null;
     this.timer = 0;
@@ -89,7 +92,7 @@ export class VigilanteSystem {
     if (!inPoliceVehicle) {
       this.outOfCarTimer += clampedDt;
       if (this.outOfCarTimer >= 15) {
-        this.stop();
+        this.stop(npcs);
         return {
           active: false,
           level: 0,
@@ -108,7 +111,7 @@ export class VigilanteSystem {
     }
 
     if (this.timer <= 0) {
-      this.stop();
+      this.stop(npcs);
       return {
         active: false,
         level: 0,

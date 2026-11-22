@@ -323,6 +323,7 @@ export class StoryCampaign {
 
   public startChapter(index: number, npcs: NpcSystem, wanted: WantedSystem): boolean {
     if (!this.canStartChapter(index)) return false;
+    this.clearStageEnemies(npcs);
     this.activeChapter = STORY_CHAPTERS[index];
     this.stageIdx = 0;
     this.setupStage(npcs, wanted);
@@ -330,20 +331,27 @@ export class StoryCampaign {
     return true;
   }
 
-  public cancelChapter(): void {
+  private clearStageEnemies(npcs?: NpcSystem): void {
+    if (npcs) {
+      for (const e of this.stageEnemies) npcs.removeNpc(e);
+    }
+    this.stageEnemies = [];
+  }
+
+  public cancelChapter(npcs?: NpcSystem): void {
+    this.clearStageEnemies(npcs);
     this.activeChapter = null;
     this.stageIdx = 0;
-    this.stageEnemies = [];
     this.beaconGroup.visible = false;
     this.dialogueTimer = 0;
     this.dialogueSpeaker = null;
     this.dialogueText = null;
   }
 
-  public failChapter(): void {
+  public failChapter(npcs?: NpcSystem): void {
     if (!this.activeChapter) return;
     const num = this.activeChapter.number;
-    this.cancelChapter();
+    this.cancelChapter(npcs);
     this.pendingToast = `STORY KAPITEL ${num} GESCHEITERT · [J] FÜR NEUSTART`;
   }
 

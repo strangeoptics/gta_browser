@@ -409,7 +409,7 @@ resetSaveBtn.addEventListener('click', () => {
   world.setSafehouseRooftopBarOwned(false);
   objectives.setCompletedIds([]);
   story.setCompletedChapters(0);
-  story.cancelChapter();
+  story.cancelChapter(npcs);
   persistProgress();
 });
 
@@ -1060,10 +1060,10 @@ phoneTabBtns.forEach((btn) => {
 
 phoneCancelBtn.addEventListener('click', () => {
   if (story.isActive()) {
-    story.cancelChapter();
+    story.cancelChapter(npcs);
     showQuickToast('STORY-KAPITEL ABGEBROCHEN · [J] FÜR NEUSTART');
   } else {
-    objectives.cancelActiveObjective();
+    objectives.cancelActiveObjective(npcs);
     showQuickToast('AUFTRAG ABGEBROCHEN · [J] FÜR NEUE JOBS');
   }
   renderPhoneMissions();
@@ -1377,7 +1377,7 @@ window.addEventListener('keydown', (e) => {
     }
     const car = vehicles.getActiveVehicle();
     if (vigilante.isActive()) {
-      vigilante.stop();
+      vigilante.stop(npcs);
       showQuickToast('VIGILANTE-MODUS BEENDET');
     } else if (car && car.isPolice) {
       vigilante.start(player.position, npcs);
@@ -1808,8 +1808,8 @@ function animate(now: number): void {
       wanted.reset();
       npcs.clearPolice();
       heli.clear();
-      if (heist.isActive()) heist.failHeist();
-      if (story.isActive()) story.failChapter();
+      if (heist.isActive()) heist.failHeist(npcs);
+      if (story.isActive()) story.failChapter(npcs);
       if (isBustedState) {
         isBustedState = false;
         // Respawn inside Holding Cell 2 of Vice PD Precinct 06; cell gate slides open after 1.8s!

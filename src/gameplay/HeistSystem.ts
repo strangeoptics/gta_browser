@@ -95,8 +95,11 @@ export class HeistSystem {
     this.pendingToast = 'HEIST GESTARTET · STELL EIN AUTO AM OCEAN CLUB AB';
   }
 
-  public failHeist(): void {
+  public failHeist(npcs?: NpcSystem): void {
     if (this.stage === 'idle') return;
+    if (npcs) {
+      for (const g of this.guards) npcs.removeNpc(g);
+    }
     this.stage = 'idle';
     this.guards = [];
     this.vaultCase.visible = false;

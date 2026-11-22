@@ -332,7 +332,10 @@ export class ObjectiveSystem {
     return this.completedIds.has(id);
   }
 
-  public cancelActiveObjective(): void {
+  public cancelActiveObjective(npcs?: NpcSystem): void {
+    if (this.current?.bountyNpc && npcs) {
+      npcs.removeNpc(this.current.bountyNpc);
+    }
     this.current = null;
     this.beaconGroup.visible = false;
     this.nextObjectiveTimer = 999999; // stay idle until user accepts a job or triggers next
@@ -342,6 +345,9 @@ export class ObjectiveSystem {
     const c = MISSION_CONTRACTS.find((m) => m.id === id);
     if (!c) return false;
 
+    if (this.current?.bountyNpc) {
+      npcs.removeNpc(this.current.bountyNpc);
+    }
     this.nextObjectiveTimer = 0;
 
     if (c.kind === 'stash') {
@@ -458,7 +464,8 @@ export class ObjectiveSystem {
   }
 
   public startNextObjective(npcs: NpcSystem, wanted?: WantedSystem): void {
-    const coreIds = ['neon_stash', 'ocean_sprint', 'syndikat_ziel', 'hot_wheels', 'heat_survival'];
+    // Exclude 'heat_survival' from auto-rotation so 2-star police chases never trigger unprompted!
+    const coreIds = ['neon_stash', 'ocean_sprint', 'syndikat_ziel', 'hot_wheels'];
     const id = coreIds[this.cycleIndex % coreIds.length];
     this.cycleIndex++;
     this.startContract(id, npcs, wanted);

@@ -255,7 +255,17 @@ export class NpcSystem {
     return count;
   }
 
+  public removeNpc(target: NpcEntity | null | undefined): void {
+    if (!target) return;
+    const idx = this.npcs.indexOf(target);
+    if (idx !== -1) {
+      this.scene.remove(target.group);
+      this.npcs.splice(idx, 1);
+    }
+  }
+
   public clearPolice(): void {
+    this.guardAlertTimer = 0;
     for (let i = this.npcs.length - 1; i >= 0; i--) {
       const n = this.npcs[i];
       if (n.role === 'police') {
@@ -379,10 +389,13 @@ export class NpcSystem {
               : distToPlayer < 34 || npc.hp < npc.maxHp;
 
         if (!shouldEngage) {
-          if (npc.role === 'police' && wantedStars === 0 && distToPlayer > 35) {
-            this.scene.remove(npc.group);
-            this.npcs.splice(i, 1);
-            continue;
+          if (npc.role === 'police' && wantedStars === 0) {
+            npc.state = 'walk';
+            if (distToPlayer > 18) {
+              this.scene.remove(npc.group);
+              this.npcs.splice(i, 1);
+              continue;
+            }
           }
           const dx = npc.targetPos.x - npc.position.x;
           const dz = npc.targetPos.z - npc.position.z;

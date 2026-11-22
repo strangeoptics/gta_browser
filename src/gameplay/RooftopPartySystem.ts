@@ -716,6 +716,38 @@ export class RooftopPartySystem {
           'Niemand legt sich mit der Pferdemasken-Gang an!',
         ],
       },
+      {
+        id: 'party-mrt',
+        name: 'MR. T (B.A. BARACUS)',
+        role: 'dancer',
+        canDefend: true,
+        x: 42.5,
+        z: -39.2,
+        yaw: -0.35,
+        opts: {
+          role: 'civilian',
+          bodyType: 'muscular',
+          skinColor: '#6b422b',
+          hairColor: '#141114',
+          primaryColor: '#2a4c7a',
+          accentColor: '#ffd15c',
+          pantsColor: '#233b5e',
+          shoeColor: '#161418',
+          outfitVariant: 1,
+          hairStyle: 'mohawk',
+          wearsSunglasses: false,
+          hasMustache: false,
+          sleeveless: true,
+          mrTGoldChains: true,
+          fullBeard: true,
+          scale: 1.08,
+        },
+        quips: [
+          'Ich habe Mitleid mit jedem Narren, der diese Party crasht!',
+          'Ich liebe es, wenn ein Plan funktioniert — aber fliegen tu ich heute nicht!',
+          'Kein Alkohol für mich, Mann — gib mir ein Glas frische Milch!',
+        ],
+      },
     ];
 
     specs.forEach((s, idx) => {

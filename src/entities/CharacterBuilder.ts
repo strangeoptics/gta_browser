@@ -11,7 +11,8 @@ export type CharacterHairStyle =
   | 'cap'
   | 'police'
   | 'rambo'
-  | 'flattop';
+  | 'flattop'
+  | 'mohawk';
 
 export interface LowPolyCharacterOptions {
   role: NpcRole;
@@ -30,6 +31,8 @@ export interface LowPolyCharacterOptions {
   shortSleeves?: boolean;
   sleeveless?: boolean;
   dogTags?: boolean;
+  mrTGoldChains?: boolean;
+  fullBeard?: boolean;
   bikerJacket?: boolean;
   terminatorShades?: boolean;
   horseMask?: boolean;
@@ -542,6 +545,22 @@ export function buildLowPolyCharacter(opts: LowPolyCharacterOptions): LowPolyCha
     zip.position.set(0.045, 1.16, lapelZ + 0.005);
     zip.rotation.z = -0.1;
     bodyRoot.add(zip);
+  } else if (opts.mrTGoldChains) {
+    // Iconic Mr. T / B.A. Baracus stack of 6 heavy gleaming gold chains cascading down the chest!
+    const chainZ = isMuscular ? 0.164 : 0.138;
+    for (let c = 0; c < 6; c++) {
+      const r = 0.056 + c * 0.015;
+      const thick = 0.008 + (c % 2) * 0.0035;
+      const chain = new THREE.Mesh(new THREE.TorusGeometry(r, thick, 6, 14, Math.PI), acc.gold);
+      chain.position.set(0, 1.445 - c * 0.012, chainZ + c * 0.0025);
+      chain.rotation.z = Math.PI;
+      bodyRoot.add(chain);
+    }
+    // Chunky gold medallion hanging at the bottom of the stack
+    const medallion = new THREE.Mesh(new THREE.OctahedronGeometry(0.026, 0), acc.gold);
+    medallion.scale.set(1.0, 1.15, 0.35);
+    medallion.position.set(0, 1.255, chainZ + 0.016);
+    bodyRoot.add(medallion);
   } else if (opts.dogTags) {
     const silverMat = new THREE.MeshStandardMaterial({ color: '#d6dee8', metalness: 0.88, roughness: 0.22, flatShading: true });
     const tagZ = isMuscular ? 0.162 : 0.136;
@@ -683,8 +702,19 @@ export function buildLowPolyCharacter(opts: LowPolyCharacterOptions): LowPolyCha
       }
     }
 
-    // Optional 3D 80s Mustache & Mouth
-    if (opts.hasMustache && !isFemale) {
+    // Optional 3D 80s Mustache, Full Beard & Mouth
+    if (opts.fullBeard) {
+      const jawBeard = new THREE.Mesh(new THREE.BoxGeometry(0.168, 0.088, 0.125), hairMat);
+      jawBeard.position.set(0, -0.095, 0.068);
+      headGroup.add(jawBeard);
+      const chinBeard = new THREE.Mesh(new THREE.BoxGeometry(0.118, 0.048, 0.085), hairMat);
+      chinBeard.position.set(0, -0.135, 0.085);
+      headGroup.add(chinBeard);
+      const stache = new THREE.Mesh(g.mustacheBox, hairMat);
+      stache.scale.set(1.15, 1.15, 1.1);
+      stache.position.set(0, -0.045, 0.12);
+      headGroup.add(stache);
+    } else if (opts.hasMustache && !isFemale) {
       const stache = new THREE.Mesh(g.mustacheBox, hairMat);
       stache.position.set(0, -0.046, 0.116);
       headGroup.add(stache);
@@ -744,6 +774,16 @@ export function buildLowPolyCharacter(opts: LowPolyCharacterOptions): LowPolyCha
     lower.position.y = -forearmLen * 0.5;
     if (isMuscular) lower.scale.set(1.2, 1.0, 1.2);
     elbowPivot.add(lower);
+
+    if (opts.mrTGoldChains) {
+      // Heavy gold wrist bracelets on both arms
+      for (const wy of [-forearmLen + 0.04, -forearmLen + 0.072]) {
+        const bangle = new THREE.Mesh(new THREE.TorusGeometry(0.052, 0.009, 6, 12), acc.gold);
+        bangle.rotation.x = Math.PI / 2;
+        bangle.position.y = wy;
+        elbowPivot.add(bangle);
+      }
+    }
 
     const handAnchor = new THREE.Group();
     handAnchor.position.set(0, -forearmLen - 0.035, 0.01);
@@ -873,6 +913,23 @@ function addLowPolyHairOrHat(
     visor.position.set(0, 0.072, 0.12);
     visor.rotation.x = 0.12;
     headGroup.add(visor);
+    return;
+  }
+
+  if (style === 'mohawk') {
+    // Iconic Mr. T / B.A. Baracus central mohawk crest (clean shaved sides + gold feather earrings!)
+    const crestMain = new THREE.Mesh(new THREE.BoxGeometry(0.056, 0.095, 0.245), hairMat);
+    crestMain.position.set(0, 0.145, -0.008);
+    headGroup.add(crestMain);
+    const crestBack = new THREE.Mesh(new THREE.BoxGeometry(0.052, 0.115, 0.055), hairMat);
+    crestBack.position.set(0, 0.075, -0.118);
+    headGroup.add(crestBack);
+    for (const side of [-1, 1] as const) {
+      const earring = new THREE.Mesh(new THREE.ConeGeometry(0.014, 0.046, 5), acc.gold);
+      earring.rotation.x = Math.PI;
+      earring.position.set(side * 0.122, -0.025, 0.005);
+      headGroup.add(earring);
+    }
     return;
   }
 

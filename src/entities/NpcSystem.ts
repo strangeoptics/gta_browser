@@ -20,6 +20,7 @@ export interface NpcEntity {
   group: THREE.Group;
   hitbox: THREE.Mesh;
   bodyRoot: THREE.Group;
+  headGroup: THREE.Group;
   position: THREE.Vector3;
   yaw: number;
   hp: number;
@@ -93,6 +94,11 @@ export class NpcSystem {
   private nextId = 1;
   private guardAlertTimer = 0;
   private guardRespawnTimer = 0;
+  private bigHeadMode = false;
+
+  public setBigHeadMode(active: boolean): void {
+    this.bigHeadMode = active;
+  }
 
   public onPlayerDamaged?: (amount: number) => void;
   public onNpcKilled?: (npc: NpcEntity) => void;
@@ -602,6 +608,11 @@ export class NpcSystem {
       const targetFlinch = npc.flinchTimer > 0 ? -0.28 : 0;
       npc.bodyRoot.rotation.x += (targetFlinch - npc.bodyRoot.rotation.x) * (1 - Math.exp(-16 * clampedDt));
 
+      // Drunk Hallucination: Big Head Mode (smooth bobblehead inflation!)
+      const targetHeadScale = this.bigHeadMode ? 2.85 : 1.0;
+      const hs = npc.headGroup.scale.x + (targetHeadScale - npc.headGroup.scale.x) * (1 - Math.exp(-7 * clampedDt));
+      npc.headGroup.scale.setScalar(hs);
+
       const toPlayerX = playerPos.x - npc.position.x;
       const toPlayerZ = playerPos.z - npc.position.z;
       const distToPlayer = Math.hypot(toPlayerX, toPlayerZ);
@@ -1017,6 +1028,7 @@ export class NpcSystem {
       group,
       hitbox,
       bodyRoot,
+      headGroup: rig.headGroup,
       position: new THREE.Vector3(x, baseY, z),
       yaw: Math.random() * Math.PI * 2,
       hp: maxHp,
@@ -1105,6 +1117,7 @@ export class NpcSystem {
       group,
       hitbox,
       bodyRoot: rig.bodyRoot,
+      headGroup: rig.headGroup,
       position: new THREE.Vector3(x, baseY, z),
       yaw: 0,
       hp: maxHp,

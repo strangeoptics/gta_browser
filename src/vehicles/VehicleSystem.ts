@@ -53,6 +53,12 @@ export interface Vehicle {
   lightbarRed?: THREE.Mesh;
   lightbarBlue?: THREE.Mesh;
   scannerLeds?: THREE.Mesh[];
+  flamingoDisguise?: {
+    group: THREE.Group;
+    wingL: THREE.Group;
+    wingR: THREE.Group;
+    neckPivot: THREE.Group;
+  };
   // Vice Customs Tuning & Lowrider Hydraulics state
   tuned?: boolean;
   hydraulics?: boolean;
@@ -218,6 +224,113 @@ export class VehicleSystem {
   public onDeloreanTimeJump?: (v: Vehicle, fromPos: THREE.Vector3, toPos: THREE.Vector3, destLabel: string) => void;
   private ramCooldown = 0;
   private crashSoundCooldown = 0;
+  private policeFlamingoMode = false;
+
+  /**
+   * Drunk Hallucination Mode: turns every Vice PD cruiser into a giant pink flapping Flamingo!
+   */
+  public setPoliceFlamingoMode(active: boolean): void {
+    if (this.policeFlamingoMode === active) return;
+    this.policeFlamingoMode = active;
+
+    for (const v of this.vehicles) {
+      if (!v.isPolice) continue;
+      if (active && !v.flamingoDisguise) {
+        v.flamingoDisguise = this.buildGiantFlamingoDisguise();
+        v.mesh.add(v.flamingoDisguise.group);
+      }
+      for (const child of v.mesh.children) {
+        if (child === v.hitbox) continue;
+        if (v.flamingoDisguise && child === v.flamingoDisguise.group) {
+          child.visible = active;
+        } else {
+          child.visible = !active;
+        }
+      }
+    }
+  }
+
+  private buildGiantFlamingoDisguise(): {
+    group: THREE.Group;
+    wingL: THREE.Group;
+    wingR: THREE.Group;
+    neckPivot: THREE.Group;
+  } {
+    const g = new THREE.Group();
+    const pinkMat = new THREE.MeshStandardMaterial({ color: '#ff5ea8', roughness: 0.35, metalness: 0.1 });
+    const darkPinkMat = new THREE.MeshStandardMaterial({ color: '#e63788', roughness: 0.4 });
+    const legMat = new THREE.MeshStandardMaterial({ color: '#ff8cc2', roughness: 0.45 });
+    const beakBaseMat = new THREE.MeshStandardMaterial({ color: '#ffe4ef', roughness: 0.35 });
+    const beakTipMat = new THREE.MeshStandardMaterial({ color: '#18141e', roughness: 0.3 });
+    const eyeMat = new THREE.MeshBasicMaterial({ color: '#ffe066' });
+    const sirenRedMat = new THREE.MeshStandardMaterial({ color: '#ff2244', emissive: '#ff2244', emissiveIntensity: 3.4 });
+    const sirenBlueMat = new THREE.MeshStandardMaterial({ color: '#22aaff', emissive: '#22aaff', emissiveIntensity: 3.4 });
+
+    // Long comical flamingo stilt legs
+    for (const sx of [-0.36, 0.36]) {
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.065, 1.45, 8), legMat);
+      leg.position.set(sx, 0.72, -0.1);
+      g.add(leg);
+    }
+
+    // Giant plush pink oval flamingo torso
+    const body = new THREE.Mesh(new THREE.SphereGeometry(1.02, 16, 12), pinkMat);
+    body.scale.set(0.9, 0.88, 1.52);
+    body.position.set(0, 1.68, -0.1);
+    body.castShadow = true;
+    g.add(body);
+
+    // Flapping pink wings on both sides
+    const makeWing = (side: -1 | 1): THREE.Group => {
+      const wp = new THREE.Group();
+      wp.position.set(side * 0.85, 1.78, -0.05);
+      const wingMesh = new THREE.Mesh(new THREE.SphereGeometry(0.76, 10, 8), darkPinkMat);
+      wingMesh.scale.set(0.28, 0.7, 1.38);
+      wingMesh.position.set(side * 0.15, -0.08, -0.15);
+      wp.add(wingMesh);
+      return wp;
+    };
+    const wingL = makeWing(-1);
+    const wingR = makeWing(1);
+    g.add(wingL, wingR);
+
+    // Towering S-curved Flamingo Neck + Head + Hooked Beak + Tiny Police Sirens on Head!
+    const neckPivot = new THREE.Group();
+    neckPivot.position.set(0, 1.98, 1.15);
+    const neckCurve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(0, 0, 0),
+      new THREE.Vector3(0, 0.55, 0.42),
+      new THREE.Vector3(0, 1.25, 0.05),
+      new THREE.Vector3(0, 1.75, 0.3),
+    ]);
+    const neck = new THREE.Mesh(new THREE.TubeGeometry(neckCurve, 14, 0.17, 10, false), pinkMat);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.36, 12, 10), pinkMat);
+    head.scale.set(0.9, 0.92, 1.2);
+    head.position.set(0, 1.82, 0.36);
+
+    for (const sx of [-1, 1]) {
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.065, 8, 8), eyeMat);
+      eye.position.set(sx * 0.28, 1.88, 0.5);
+      neckPivot.add(eye);
+    }
+
+    const beakUpper = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.16, 0.45, 8), beakBaseMat);
+    beakUpper.rotation.x = Math.PI / 2 + 0.25;
+    beakUpper.position.set(0, 1.75, 0.85);
+    const beakHook = new THREE.Mesh(new THREE.ConeGeometry(0.13, 0.52, 8), beakTipMat);
+    beakHook.rotation.x = Math.PI * 0.78;
+    beakHook.position.set(0, 1.48, 1.12);
+
+    // Tiny Vice PD red/blue siren hat right on the flamingo's head!
+    const hatRed = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.12, 0.16), sirenRedMat);
+    hatRed.position.set(-0.14, 2.2, 0.34);
+    const hatBlue = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.12, 0.16), sirenBlueMat);
+    hatBlue.position.set(0.14, 2.2, 0.34);
+
+    neckPivot.add(neck, head, beakUpper, beakHook, hatRed, hatBlue);
+    g.add(neckPivot);
+    return { group: g, wingL, wingR, neckPivot };
+  }
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
@@ -1056,6 +1169,15 @@ export class VehicleSystem {
       const wheelRot = v.speed * clampedDt * 2.4;
       for (const w of v.wheels) {
         w.rotation.x += wheelRot;
+      }
+
+      // Animate Giant Pink Flamingo Police Car hallucination!
+      if (this.policeFlamingoMode && v.isPolice && v.flamingoDisguise) {
+        const speedBob = Math.min(1, Math.abs(v.speed) / 8);
+        const flap = Math.sin(elapsed * (6.5 + speedBob * 8.0)) * (0.28 + speedBob * 0.45);
+        v.flamingoDisguise.wingL.rotation.z = -0.2 - Math.abs(flap);
+        v.flamingoDisguise.wingR.rotation.z = 0.2 + Math.abs(flap);
+        v.flamingoDisguise.neckPivot.rotation.x = Math.sin(elapsed * 4.2) * 0.16;
       }
     }
 

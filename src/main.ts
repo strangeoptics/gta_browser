@@ -276,6 +276,8 @@ let isBustedState = false;
 let bustProgress = 0;
 let lastBustedFine = 0;
 let cocktailScore = 0; // <= 1.0 = sober, > 1.0 = progressively drunk (max 4.5 -> drunkLevel 1.0)
+let hallucinationMode: 'none' | 'flamingos' | 'bigheads' = 'none';
+let hallucinationSwitchTimer = 0;
 let carryingSnackTimer = 0;
 let carryingSnackName = 'DONUT';
 const wastedTextEl = wastedOverlayEl.querySelector<HTMLElement>('.wasted-text')!;
@@ -2435,6 +2437,37 @@ function animate(now: number): void {
   }
   const rawDrunk = THREE.MathUtils.clamp((cocktailScore - 1.0) / 3.8, 0, 1);
   const drunkLevel = Math.pow(rawDrunk, 1.25);
+
+  // Drunk Hallucinations (Neon Club / Cocktails): randomly alternates between
+  // Giant Pink Flamingo Police Cars & Big Head Mode for all pedestrians/NPCs!
+  if (drunkLevel >= 0.35) {
+    hallucinationSwitchTimer -= dt;
+    if (hallucinationMode === 'none' || hallucinationSwitchTimer <= 0) {
+      const nextMode: 'flamingos' | 'bigheads' =
+        hallucinationMode === 'none'
+          ? Math.random() < 0.5
+            ? 'flamingos'
+            : 'bigheads'
+          : hallucinationMode === 'flamingos'
+            ? 'bigheads'
+            : 'flamingos';
+      hallucinationMode = nextMode;
+      hallucinationSwitchTimer = 14 + Math.random() * 8;
+      vehicles.setPoliceFlamingoMode(nextMode === 'flamingos');
+      npcs.setBigHeadMode(nextMode === 'bigheads');
+      showQuickToast(
+        nextMode === 'flamingos'
+          ? '🍹 HALLUZINATION! · ALLE POLIZEIAUTOS SEHEN AUS WIE RIESIGE ROSA FLAMINGOS!'
+          : '🍹 HALLUZINATION! · BIG HEAD MODE — ALLE PASSANTEN HABEN RIESIGE KÖPFE!',
+      );
+    }
+  } else if (hallucinationMode !== 'none' && drunkLevel < 0.22) {
+    hallucinationMode = 'none';
+    hallucinationSwitchTimer = 0;
+    vehicles.setPoliceFlamingoMode(false);
+    npcs.setBigHeadMode(false);
+    showQuickToast('AUSGENÜCHTERT · HALLUZINATIONEN VERKLINGEN');
+  }
 
   if (isPlaying && pad.connected) {
     if (pad.interactPressed) tryToggleVehicleOrBoat();

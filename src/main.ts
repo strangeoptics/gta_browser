@@ -3148,8 +3148,8 @@ function animate(now: number): void {
           : car.timeJumpCooldown && car.timeJumpCooldown > 0
             ? `FLUX LÄDT (${Math.ceil(car.timeJumpCooldown)}s)`
             : car.timeJumpReady
-              ? '[SHIFT/G] ⚡ 88 MPH ZEITSPRUNG BEREIT!'
-              : 'AUF 88 MPH BESCHLEUNIGEN → [SHIFT/G]';
+              ? '[G / SHIFT] ⚡ ZEITSPRUNG BEREIT!'
+              : '100% TOPSPEED FÜR ZEITSPRUNG [G]';
       setText(
         vehicleCamHintEl,
         `${warpLbl} · [Q] ${audio.getRadioStation()} · [V] CAM · [E] AUS`,
@@ -3193,6 +3193,8 @@ function animate(now: number): void {
         : `[IMPORT / EXPORT] ${car.name} NICHT GESUCHT (SIEHE TAFEL)`;
     } else if (car && payNSpray.isCarInBay(car.position)) {
       nextPrompt = `[F] PAY 'N' SPRAY · $${payNSpray.cost} (REPARATUR & STERNE WEG)`;
+    } else if (car && car.isDelorean && car.timeJumpReady) {
+      nextPrompt = '[G] ⚡ 88 MPH ZEITSPRUNG AUSLÖSEN!';
     }
   } else {
     setText(weaponNameEl, wHud.name);

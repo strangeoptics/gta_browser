@@ -1693,7 +1693,7 @@ export class VehicleSystem {
     // - ~100% top speed: crackling electric mini lightning bolts & sparks around the chassis!
     if (v.isDelorean) {
       const speedRatio = Math.max(0, v.speed) / maxForward;
-      v.timeJumpReady = !v.airborne && (v.timeJumpCooldown ?? 0) <= 0 && speedRatio >= 0.88;
+      v.timeJumpReady = !v.airborne && (v.timeJumpCooldown ?? 0) <= 0 && speedRatio >= 0.985;
       const fwdX = Math.sin(v.yaw);
       const fwdZ = Math.cos(v.yaw);
       const rightX = Math.cos(v.yaw);

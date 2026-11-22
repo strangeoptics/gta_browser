@@ -361,6 +361,58 @@ function createFenceTexture(): THREE.CanvasTexture {
   return tex;
 }
 
+function createTaxiSignTexture(text: string, bgHex: string, fgHex: string): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = 96;
+  const ctx = c.getContext('2d')!;
+  ctx.fillStyle = bgHex;
+  ctx.fillRect(0, 0, 256, 96);
+  ctx.strokeStyle = fgHex;
+  ctx.lineWidth = 6;
+  ctx.strokeRect(6, 6, 244, 84);
+  ctx.fillStyle = fgHex;
+  ctx.font = '900 44px "Segoe UI", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, 128, 50);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+function createSteelGrateTexture(): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = 128;
+  c.height = 128;
+  const ctx = c.getContext('2d')!;
+  ctx.fillStyle = '#4f5764';
+  ctx.fillRect(0, 0, 128, 128);
+  ctx.strokeStyle = '#7b8594';
+  ctx.lineWidth = 3;
+  for (let i = -128; i <= 256; i += 16) {
+    ctx.beginPath();
+    ctx.moveTo(i, 0);
+    ctx.lineTo(i + 128, 128);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(i + 128, 0);
+    ctx.lineTo(i, 128);
+    ctx.stroke();
+  }
+  ctx.strokeStyle = 'rgba(18, 22, 28, 0.55)';
+  ctx.lineWidth = 2;
+  for (let p = 0; p < 128; p += 32) {
+    ctx.strokeRect(p, 0, 32, 128);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(2, 2);
+  return tex;
+}
+
 // -----------------------------------------------------------------------------
 // Detailed Procedural 80s Aircraft Builders
 // -----------------------------------------------------------------------------
@@ -641,6 +693,22 @@ export function buildViceAirfield(
   const taxiYellowMat = new THREE.MeshStandardMaterial({ color: '#e8b63a', roughness: 0.42 });
   const steelDarkMat = new THREE.MeshStandardMaterial({ color: '#222630', roughness: 0.42, metalness: 0.72 });
   const steelGalvMat = new THREE.MeshStandardMaterial({ color: '#8f98a6', roughness: 0.34, metalness: 0.78 });
+  const steelGrateMat = new THREE.MeshStandardMaterial({
+    map: createSteelGrateTexture(),
+    roughness: 0.46,
+    metalness: 0.68,
+  });
+  const safetyRailYellowMat = new THREE.MeshStandardMaterial({ color: '#e8b63a', roughness: 0.36, metalness: 0.25 });
+  const floodBulbMat = new THREE.MeshStandardMaterial({ color: '#fff2d0', emissive: '#ffbe66', emissiveIntensity: 3.1 });
+  const floodHazeMat = new THREE.MeshBasicMaterial({
+    color: '#ffb45c',
+    transparent: true,
+    opacity: 0.055,
+    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+  });
+  const radarScopeMat = new THREE.MeshStandardMaterial({ color: '#1b3d32', emissive: '#32e880', emissiveIntensity: 1.45 });
   const chromeMat = new THREE.MeshStandardMaterial({ color: '#e4ecf5', roughness: 0.16, metalness: 0.9 });
   const hangarWallMat = new THREE.MeshStandardMaterial({
     map: createCorrugatedHangarTexture(),
@@ -993,49 +1061,232 @@ export function buildViceAirfield(
   scene.add(cafeRing);
 
   // 80s Turquoise Waiting Lounge Benches inside Terminal
-  for (const bz of [73.4, 80.6]) {
-    addBox(3.6, 0.48, 0.85, -80.2, 0.36, bz, aircraftTealMat, true, 'airfield-bench');
-    addVisual(new THREE.BoxGeometry(3.6, 0.55, 0.14), aircraftTealMat, -80.2, 0.78, bz + (bz < 77 ? -0.35 : 0.35));
+  for (const bz of [73.2, 80.8]) {
+    addBox(3.6, 0.48, 0.85, -80.4, 0.36, bz, aircraftTealMat, true, 'airfield-bench');
+    addVisual(new THREE.BoxGeometry(3.6, 0.55, 0.14), aircraftTealMat, -80.4, 0.78, bz + (bz < 77 ? -0.35 : 0.35));
   }
 
+  // Animated Baggage Claim Carousel inside Terminal 1 (x = -78.2, z = 77.0)
+  const carouselX = -78.2;
+  const carouselZ = 77.0;
+  addBox(3.0, 0.58, 1.7, carouselX, 0.41, carouselZ, steelDarkMat, true, 'airfield-prop');
+  addVisual(new THREE.BoxGeometry(2.6, 0.08, 1.3), chromeMat, carouselX, 0.74, carouselZ);
+  addVisual(new THREE.BoxGeometry(1.6, 0.52, 0.65), stuccoMintMat, carouselX, 0.98, carouselZ);
+  const suitcaseColors = ['#ff4fa3', '#28c7bf', '#f2c14e', '#2d4675', '#d9483b'];
+  const carouselBags: { mesh: THREE.Mesh; phase: number }[] = [];
+  for (let i = 0; i < 5; i++) {
+    const bagMat = new THREE.MeshStandardMaterial({ color: suitcaseColors[i], roughness: 0.45 });
+    const bag = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.36, 0.24), bagMat);
+    bag.userData.dynamic = true;
+    scene.add(bag);
+    carouselBags.push({ mesh: bag, phase: (i / 5) * Math.PI * 2 });
+  }
+
+  // Airside Gate Security Metal Detector Archway + X-Ray Belt (x = -84.6, z = 77.0)
+  for (const sz of [75.8, 78.2]) {
+    addVisual(new THREE.BoxGeometry(0.45, 2.35, 0.22), steelGalvMat, -84.6, 1.3, sz);
+  }
+  addVisual(new THREE.BoxGeometry(0.5, 0.28, 2.62), steelGalvMat, -84.6, 2.52, 77.0);
+  addVisual(new THREE.BoxGeometry(0.52, 0.08, 0.42), rwyGreenBulbMat, -84.6, 2.68, 77.0);
+  // X-ray scanner box beside security arch
+  addBox(1.2, 1.15, 0.9, -84.6, 0.7, 79.35, steelDarkMat, true, 'airfield-prop');
+
+  // Terminal Curbside Luggage Trolleys + Rooftop HVAC Units & Satellite Dish
+  for (const lx of [-82.5, -73.5]) {
+    addVisual(new THREE.BoxGeometry(0.85, 0.08, 1.15), chromeMat, lx, 0.22, 69.4);
+    addVisual(new THREE.BoxGeometry(0.06, 0.95, 0.85), chromeMat, lx - 0.38, 0.68, 69.4);
+    addVisual(new THREE.BoxGeometry(0.54, 0.34, 0.44), aircraftPinkMat, lx + 0.08, 0.44, 69.35);
+    addVisual(new THREE.BoxGeometry(0.42, 0.26, 0.36), aircraftTealMat, lx + 0.06, 0.74, 69.42);
+  }
+  // Rooftop HVAC & Uplink Dish on Terminal 1
+  for (const hx of [-82.5, -74.0]) {
+    addVisual(new THREE.BoxGeometry(2.2, 0.85, 1.8), steelGalvMat, hx, tH + 0.85, 79.2);
+    addVisual(new THREE.CylinderGeometry(0.65, 0.65, 0.14, 12), steelDarkMat, hx, tH + 1.32, 79.2);
+  }
+  addVisual(new THREE.CylinderGeometry(0.12, 0.16, 1.2, 8), steelGalvMat, -72.2, tH + 1.0, 73.5);
+  const satDish = new THREE.Mesh(new THREE.SphereGeometry(0.95, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.45), aviationWhiteMat);
+  satDish.position.set(-72.2, tH + 1.65, 73.5);
+  satDish.rotation.set(0.7, 0.4, 0);
+  scene.add(satDish);
+
   // ===========================================================================
-  // 5) 22m ATC CONTROL TOWER + WALKABLE OBSERVATION DECK + ROTATING RADAR
+  // 5) 22m ATC CONTROL TOWER + 4-FLIGHT WRAP-AROUND STAIRCASE TO y=13.2m + RADAR
   // ===========================================================================
   const atcX = -75.5;
   const atcZ = 92.5;
 
-  // Lower concrete tower shaft (0 .. 14.2m) with aviation red/white trim bands
+  // Lower concrete tower shaft (0 .. 14.2m) with vertical pilasters, aviation bands & maintenance door
   addBox(4.0, 14.2, 4.0, atcX, 7.1, atcZ, stuccoCreamMat, true, 'airfield-tower');
-  addVisual(new THREE.BoxGeometry(4.12, 0.7, 4.12), aviationRedMat, atcX, 11.4, atcZ);
-  addVisual(new THREE.BoxGeometry(4.12, 0.7, 4.12), aviationRedMat, atcX, 13.0, atcZ);
-
-  // Walkable Observation Catwalk Deck at y = 6.6m (risers = 0.22m <= 0.24m!)
-  const deckY = 6.6;
-  const stepCount = 30; // 30 * 0.22m = 6.6m
-  const stairRiser = deckY / stepCount;
-  // Two-flight switchback external steel staircase on East/South side of tower
-  for (let i = 0; i < 15; i++) {
-    const sy = (i + 1) * stairRiser;
-    addBox(1.6, stairRiser, 0.42, atcX + 2.85, sy - stairRiser / 2, atcZ + 3.2 - i * 0.42, steelGalvMat, false, 'airfield-stairs');
+  for (const rx of [-2.02, 2.02]) {
+    for (const rz of [-2.02, 2.02]) {
+      addVisual(new THREE.BoxGeometry(0.28, 14.2, 0.28), stuccoMintMat, atcX + rx, 7.1, atcZ + rz);
+    }
   }
-  // Mid landing at y = 3.3m
-  addBox(2.2, 0.24, 2.2, atcX + 2.85, 3.18, atcZ - 3.6, steelGalvMat, true, 'airfield-stairs');
-  for (let i = 0; i < 15; i++) {
-    const sy = 3.3 + (i + 1) * stairRiser;
-    addBox(0.42, stairRiser, 1.6, atcX + 1.8 - i * 0.42, sy - stairRiser / 2, atcZ - 3.6, steelGalvMat, false, 'airfield-stairs');
+  addVisual(new THREE.BoxGeometry(4.14, 0.7, 4.14), aviationRedMat, atcX, 11.4, atcZ);
+  addVisual(new THREE.BoxGeometry(4.14, 0.7, 4.14), aviationRedMat, atcX, 13.0, atcZ);
+  // Ground steel access door on South face of shaft
+  addVisual(new THREE.BoxGeometry(1.15, 2.15, 0.12), steelDarkMat, atcX, 1.08, atcZ + 2.02);
+
+  // Engineered 4-Flight Wrap-Around Steel Staircase (0.0m -> 13.20m Upper ATC Catwalk!)
+  // Every flight: 15 steps, riser = 0.22m (<= 0.24m maxStepHeight!), tread = 0.32m (15*0.32 = 4.80m exact span!)
+  const stairsOffset = 3.35; // corridor center from tower center -> spans [2.40 .. 4.30]
+  const stairsWidth = 1.9;
+  const landingSize = 1.9;
+  const stepRiser = 0.22;
+  const stepTread = 0.32;
+  const stepsPerFlight = 15; // 3.30m vertical climb per flight
+
+  // 4 Heavy Steel I-Beam Corner Support Columns (y = 0 .. 13.2m) + Wall Tie Brackets
+  for (const sx of [-1, 1]) {
+    for (const sz of [-1, 1]) {
+      addVisual(
+        new THREE.BoxGeometry(0.24, 13.25, 0.24),
+        steelDarkMat,
+        atcX + sx * 4.24,
+        6.625,
+        atcZ + sz * 4.24,
+        true,
+      );
+    }
+  }
+  for (const bracketY of [3.2, 6.5, 9.8, 13.1]) {
+    addVisual(new THREE.BoxGeometry(8.5, 0.16, 0.16), steelDarkMat, atcX, bracketY, atcZ - 2.38);
+    addVisual(new THREE.BoxGeometry(8.5, 0.16, 0.16), steelDarkMat, atcX, bracketY, atcZ + 2.38);
+    addVisual(new THREE.BoxGeometry(0.16, 0.16, 8.5), steelDarkMat, atcX - 2.38, bracketY, atcZ);
+    addVisual(new THREE.BoxGeometry(0.16, 0.16, 8.5), steelDarkMat, atcX + 2.38, bracketY, atcZ);
   }
 
-  // Wrap-around Observation Balcony Deck at y = 6.6m
-  addBox(7.8, 0.28, 1.8, atcX, deckY - 0.14, atcZ - 2.9, steelGalvMat, true, 'airfield-deck');
-  addBox(7.8, 0.28, 1.8, atcX, deckY - 0.14, atcZ + 2.9, steelGalvMat, true, 'airfield-deck');
-  addBox(1.8, 0.28, 4.0, atcX - 2.9, deckY - 0.14, atcZ, steelGalvMat, true, 'airfield-deck');
-  addBox(1.8, 0.28, 4.0, atcX + 2.9, deckY - 0.14, atcZ, steelGalvMat, true, 'airfield-deck');
-  // Neon cyan balcony railing trim
-  addVisual(new THREE.BoxGeometry(7.9, 0.08, 0.08), cyanNeon, atcX, deckY + 0.95, atcZ - 3.78);
-  addVisual(new THREE.BoxGeometry(7.9, 0.08, 0.08), cyanNeon, atcX, deckY + 0.95, atcZ + 3.78);
-  addVisual(new THREE.BoxGeometry(0.08, 0.08, 7.6), cyanNeon, atcX - 3.78, deckY + 0.95, atcZ);
+  // Helper to build a precision steel flight with solid tread steps, twin sloped stringers & outer handrails
+  const buildTowerFlight = (
+    startX: number,
+    startZ: number,
+    dirX: number,
+    dirZ: number,
+    outX: number,
+    outZ: number,
+    baseY: number,
+  ) => {
+    const isAlongZ = Math.abs(dirZ) > 0.5;
+    const totalRun = stepsPerFlight * stepTread; // 4.80m
+    const totalRise = stepsPerFlight * stepRiser; // 3.30m
+    const hyp = Math.hypot(totalRun, totalRise);
+    const slopeAngle = Math.atan2(totalRise, totalRun);
 
-  // Upper ATC Control Cab (y = 14.2 .. 18.2m) — flared octagonal-style control room
+    for (let i = 0; i < stepsPerFlight; i++) {
+      const dist = (i + 0.5) * stepTread;
+      const sx = startX + dirX * dist;
+      const sz = startZ + dirZ * dist;
+      const topY = baseY + (i + 1) * stepRiser;
+      const w = isAlongZ ? stairsWidth : stepTread + 0.04;
+      const d = isAlongZ ? stepTread + 0.04 : stairsWidth;
+      addBox(w, stepRiser, d, sx, topY - stepRiser / 2, sz, steelGrateMat, false, 'airfield-stairs');
+    }
+
+    // Twin sloped steel stringer beams under each flight
+    const midX = startX + dirX * (totalRun / 2);
+    const midZ = startZ + dirZ * (totalRun / 2);
+    const midY = baseY + totalRise / 2 - 0.12;
+    const yaw = Math.atan2(dirX, dirZ);
+
+    for (const side of [-0.78, 0.78]) {
+      const stringer = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.24, hyp), steelDarkMat);
+      stringer.position.set(
+        midX + (isAlongZ ? side : 0),
+        midY,
+        midZ + (isAlongZ ? 0 : side),
+      );
+      stringer.rotation.set(-slopeAngle, yaw, 0, 'YXZ');
+      scene.add(stringer);
+    }
+
+    // Sloped outer safety handrail (top rail + mid rail + vertical stanchions)
+    const railEdgeOffset = stairsWidth / 2 - 0.06;
+    const railMidX = midX + outX * railEdgeOffset;
+    const railMidZ = midZ + outZ * railEdgeOffset;
+    for (const hOff of [0.55, 1.02]) {
+      const rail = new THREE.Mesh(
+        new THREE.BoxGeometry(0.06, 0.06, hyp),
+        hOff > 0.9 ? safetyRailYellowMat : steelGalvMat,
+      );
+      rail.position.set(railMidX, baseY + totalRise / 2 + hOff, railMidZ);
+      rail.rotation.set(-slopeAngle, yaw, 0, 'YXZ');
+      scene.add(rail);
+    }
+    for (const pIdx of [2, 7, 12]) {
+      const dist = (pIdx + 0.5) * stepTread;
+      const px = startX + dirX * dist + outX * railEdgeOffset;
+      const pz = startZ + dirZ * dist + outZ * railEdgeOffset;
+      const py = baseY + (pIdx + 1) * stepRiser;
+      addVisual(new THREE.BoxGeometry(0.06, 1.04, 0.06), steelDarkMat, px, py + 0.52, pz);
+    }
+  };
+
+  // Helper for corner landings with outer safety railings on the two exposed outer sides
+  const buildCornerLanding = (lx: number, lz: number, topY: number, railNorth: boolean, railSouth: boolean, railEast: boolean, railWest: boolean) => {
+    addBox(landingSize, 0.22, landingSize, lx, topY - 0.11, lz, steelGrateMat, true, 'airfield-stairs');
+    const half = landingSize / 2 - 0.05;
+    const addEdgeRail = (x: number, z: number, lenX: number, lenZ: number) => {
+      addVisual(new THREE.BoxGeometry(lenX, 0.06, lenZ), safetyRailYellowMat, x, topY + 1.02, z);
+      addVisual(new THREE.BoxGeometry(lenX, 0.05, lenZ), steelGalvMat, x, topY + 0.55, z);
+    };
+    if (railNorth) addEdgeRail(lx, lz - half, landingSize, 0.06);
+    if (railSouth) addEdgeRail(lx, lz + half, landingSize, 0.06);
+    if (railEast) addEdgeRail(lx + half, lz, 0.06, landingSize);
+    if (railWest) addEdgeRail(lx - half, lz, 0.06, landingSize);
+  };
+
+  // Ground Entry Pad at SE Corner (atcX + 3.35, atcZ + 3.35)
+  addVisual(new THREE.BoxGeometry(2.1, 0.06, 2.1), hazardMat, atcX + stairsOffset, 0.03, atcZ + stairsOffset);
+
+  // Flight 1 (East side, climbing North -Z: 0.0m -> 3.30m)
+  buildTowerFlight(atcX + stairsOffset, atcZ + 2.4, 0, -1, 1, 0, 0.0);
+  buildCornerLanding(atcX + stairsOffset, atcZ - stairsOffset, 3.3, true, false, true, false);
+
+  // Flight 2 (North side, climbing West -X: 3.30m -> 6.60m)
+  buildTowerFlight(atcX + 2.4, atcZ - stairsOffset, -1, 0, 0, -1, 3.3);
+  buildCornerLanding(atcX - stairsOffset, atcZ - stairsOffset, 6.6, true, false, false, true);
+
+  // Flight 3 (West side, climbing South +Z: 6.60m -> 9.90m)
+  buildTowerFlight(atcX - stairsOffset, atcZ - 2.4, 0, 1, -1, 0, 6.6);
+  buildCornerLanding(atcX - stairsOffset, atcZ + stairsOffset, 9.9, false, true, false, true);
+
+  // Flight 4 (South side, climbing East +X: 9.90m -> 13.20m into the 360° Upper ATC Catwalk!)
+  buildTowerFlight(atcX - 2.4, atcZ + stairsOffset, 1, 0, 0, 1, 9.9);
+
+  // 360° Upper ATC Observation Catwalk Deck at y = 13.20m (wraps all 4 sides around shaft!)
+  const upperDeckY = 13.2;
+  // North, West, East full catwalk strips + South-East arrival landing (leaves South flight opening clean!)
+  addBox(8.6, 0.26, 2.3, atcX, upperDeckY - 0.13, atcZ - 3.15, steelGrateMat, true, 'airfield-deck');
+  addBox(2.3, 0.26, 8.6, atcX - 3.15, upperDeckY - 0.13, atcZ, steelGrateMat, true, 'airfield-deck');
+  addBox(2.3, 0.26, 8.6, atcX + 3.15, upperDeckY - 0.13, atcZ, steelGrateMat, true, 'airfield-deck');
+  // Outer safety railings + cyan neon trim around the 360° Upper Catwalk (with open entry on South where Flight 4 arrives!)
+  const catOuter = 4.26;
+  const addCatwalkRail = (x: number, z: number, lx: number, lz: number) => {
+    addVisual(new THREE.BoxGeometry(lx, 0.07, lz), safetyRailYellowMat, x, upperDeckY + 1.04, z);
+    addVisual(new THREE.BoxGeometry(lx, 0.05, lz), steelGalvMat, x, upperDeckY + 0.54, z);
+    addVisual(new THREE.BoxGeometry(lx, 0.06, lz), cyanNeon, x, upperDeckY + 0.1, z);
+  };
+  addCatwalkRail(atcX, atcZ - catOuter, 8.6, 0.07);
+  addCatwalkRail(atcX - catOuter, atcZ, 0.07, 8.6);
+  addCatwalkRail(atcX + catOuter, atcZ, 0.07, 8.6);
+  // South rail only on the SE arrival platform & SW corner (leaves x = atcX-2.0..atcX+2.4 open for Flight 4!)
+  addCatwalkRail(atcX + 3.3, atcZ + catOuter, 2.0, 0.07);
+  addCatwalkRail(atcX - 3.3, atcZ + catOuter, 2.0, 0.07);
+  // Vertical railing stanchions + corner red aviation obstruction lights on upper catwalk
+  for (const sx of [-catOuter, 0, catOuter]) {
+    addVisual(new THREE.BoxGeometry(0.07, 1.06, 0.07), steelDarkMat, atcX + sx, upperDeckY + 0.53, atcZ - catOuter);
+  }
+  for (const sz of [-catOuter, 0, catOuter]) {
+    addVisual(new THREE.BoxGeometry(0.07, 1.06, 0.07), steelDarkMat, atcX - catOuter, upperDeckY + 0.53, atcZ + sz);
+    addVisual(new THREE.BoxGeometry(0.07, 1.06, 0.07), steelDarkMat, atcX + catOuter, upperDeckY + 0.53, atcZ + sz);
+  }
+  for (const sx of [-catOuter, catOuter]) {
+    for (const sz of [-catOuter, catOuter]) {
+      addVisual(bulbGeo, rwyRedBulbMat, atcX + sx, upperDeckY + 1.18, atcZ + sz);
+    }
+  }
+
+  // Upper ATC Control Cab (y = 14.2 .. 18.2m) — flared octagonal control room with mullions & radar scopes
   const cabFloor = new THREE.Mesh(new THREE.CylinderGeometry(4.1, 2.7, 1.1, 8), stuccoCreamMat);
   cabFloor.position.set(atcX, 14.75, atcZ);
   cabFloor.castShadow = true;
@@ -1045,15 +1296,41 @@ export function buildViceAirfield(
   cabGlass.position.set(atcX, 16.5, atcZ);
   scene.add(cabGlass);
 
-  // Subtle glowing green radar screens inside cab
+  // 8 Angled Structural Window Mullions around the octagonal ATC Cab
+  for (let m = 0; m < 8; m++) {
+    const ang = (m / 8) * Math.PI * 2 + Math.PI / 8;
+    const mullion = new THREE.Mesh(new THREE.BoxGeometry(0.14, 2.52, 0.14), steelDarkMat);
+    mullion.position.set(atcX + Math.cos(ang) * 4.05, 16.5, atcZ + Math.sin(ang) * 4.05);
+    mullion.rotation.set(0, -ang, -0.22);
+    scene.add(mullion);
+  }
+
+  // Glowing Green Radar Scope Consoles inside ATC Cab
   const cabConsole = new THREE.Mesh(new THREE.CylinderGeometry(2.6, 2.6, 0.9, 8), steelDarkMat);
   cabConsole.position.set(atcX, 15.8, atcZ);
   scene.add(cabConsole);
+  for (let sc = 0; sc < 4; sc++) {
+    const ang = (sc / 4) * Math.PI * 2;
+    const screen = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.48, 0.08), radarScopeMat);
+    screen.position.set(atcX + Math.cos(ang) * 2.4, 16.45, atcZ + Math.sin(ang) * 2.4);
+    screen.rotation.y = -ang + Math.PI / 2;
+    scene.add(screen);
+  }
 
   const cabRoof = new THREE.Mesh(new THREE.CylinderGeometry(4.8, 4.5, 0.65, 8), roofDarkMat);
   cabRoof.position.set(atcX, 18.0, atcZ);
   cabRoof.castShadow = true;
   scene.add(cabRoof);
+
+  // VHF Communication Whip Antennas on ATC Cab Roof
+  for (const [ax, az, ah] of [
+    [-2.4, 1.8, 3.2],
+    [-1.8, 2.4, 2.4],
+    [2.5, 2.1, 2.8],
+  ]) {
+    addVisual(new THREE.CylinderGeometry(0.03, 0.05, ah, 6), chromeMat, atcX + ax, 18.3 + ah / 2, atcZ + az);
+    addVisual(bulbGeo, rwyRedBulbMat, atcX + ax, 18.35 + ah, atcZ + az);
+  }
 
   // Thin pink neon crown around ATC cab roof
   const cabNeonRing = new THREE.Mesh(new THREE.TorusGeometry(4.65, 0.08, 8, 24), pinkNeon);
@@ -1196,13 +1473,32 @@ export function buildViceAirfield(
   hangarSign.position.set(hX - hW / 2 - 0.35, hWallH + 0.55, hZ);
   scene.add(hangarSign);
 
-  // Interior Hangar Props: Tool Chests, Oil Drums, Cargo Pallets
+  // Interior Hangar Steel Roof Trusses & Hanging High-Bay Industrial Lamps (0 extra PointLights!)
+  for (const tx of [-85.0, -81.0, -77.0, -73.0]) {
+    addVisual(new THREE.BoxGeometry(0.24, 0.24, hD - 0.6), steelDarkMat, tx, hWallH + 0.1, hZ);
+    for (const lz of [hZ - 4.2, hZ + 4.2]) {
+      addVisual(new THREE.CylinderGeometry(0.32, 0.45, 0.28, 10), steelDarkMat, tx, hWallH - 0.15, lz);
+      addVisual(new THREE.SphereGeometry(0.18, 8, 8), floodBulbMat, tx, hWallH - 0.3, lz);
+    }
+  }
+  // Yellow safety parking box painted on Hangar 06 floor
+  drawTaxiLine(13.5, 0.22, hX - 0.8, hZ - 6.6);
+  drawTaxiLine(13.5, 0.22, hX - 0.8, hZ + 6.6);
+  drawTaxiLine(0.22, 13.4, hX + 6.0, hZ);
+
+  // Interior Hangar Props: Tool Chests, Oil Drums, Cargo Pallets, Mobile GPU & Fire Cart
   addBox(1.8, 1.1, 0.9, -73.0, 0.55, 106.2, aviationRedMat, true, 'airfield-prop');
   addBox(2.2, 1.2, 1.4, -73.2, 0.6, 118.4, crateWoodMat, true, 'airfield-prop');
   addBox(1.3, 1.1, 1.3, -75.4, 0.55, 118.6, crateWoodMat, true, 'airfield-prop');
   for (const dz of [105.8, 106.7, 107.6]) {
     addVisual(new THREE.CylinderGeometry(0.32, 0.32, 0.96, 10), aircraftTealMat, -76.2, 0.48, dz);
   }
+  // Yellow Mobile Ground Power Unit (GPU) Cart inside Hangar 06
+  addBox(1.5, 0.92, 0.95, -83.5, 0.56, 106.5, safetyRailYellowMat, true, 'airfield-prop');
+  addVisual(new THREE.BoxGeometry(0.45, 0.35, 0.12), steelDarkMat, -83.5, 0.72, 107.02);
+  // Red Wheeled Aviation Fire Extinguisher Cart
+  addVisual(new THREE.CylinderGeometry(0.24, 0.24, 1.05, 10), aviationRedMat, -85.8, 0.68, 118.4);
+  addVisual(new THREE.CylinderGeometry(0.18, 0.18, 0.08, 10), steelDarkMat, -85.8, 0.18, 118.68);
 
   // Interactive Smuggler Cargo Stash inside Hangar 06 (x = -73.8, z = 112.5)
   const lootPos = new THREE.Vector3(-73.8, 0.0, 112.5);
@@ -1360,6 +1656,136 @@ export function buildViceAirfield(
     addVisual(bulbGeo, rwyGreenBulbMat, hx, 0.2, hz);
   }
 
+  // ===========================================================================
+  // 9) GROUND SUPPORT EQUIPMENT (BAGGAGE TUG + CARTS), TAXIWAY SIGNS & FLOODLIGHTS
+  // ===========================================================================
+  // Baggage Tractor (Tug) + 2 Towed Luggage Carts near Terminal & Learjet (x = -87.2, z = 85.4)
+  const tugGroup = new THREE.Group();
+  tugGroup.position.set(-87.2, 0, 85.4);
+  tugGroup.rotation.y = 0.25;
+  const tugBody = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.92, 2.35), safetyRailYellowMat);
+  tugBody.position.set(0, 0.64, 0);
+  tugBody.castShadow = true;
+  tugGroup.add(tugBody);
+  const tugHood = new THREE.Mesh(new THREE.BoxGeometry(1.32, 0.48, 0.95), aviationWhiteMat);
+  tugHood.position.set(0, 1.32, -0.35);
+  tugGroup.add(tugHood);
+  const tugBeacon = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 8), goldGlowMat);
+  tugBeacon.position.set(0, 1.66, -0.35);
+  tugGroup.add(tugBeacon);
+  for (const [wx, wz] of [
+    [-0.72, -0.75],
+    [0.72, -0.75],
+    [-0.72, 0.75],
+    [0.72, 0.75],
+  ]) {
+    const wh = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.26, 0.18, 10), steelDarkMat);
+    wh.rotation.z = Math.PI / 2;
+    wh.position.set(wx, 0.26, wz);
+    tugGroup.add(wh);
+  }
+  // 2 Towed Baggage Carts behind the tug
+  for (let cIdx = 0; cIdx < 2; cIdx++) {
+    const cz = 2.65 + cIdx * 2.45;
+    const towBar = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.06, 0.75), steelDarkMat);
+    towBar.position.set(0, 0.34, cz - 1.25);
+    tugGroup.add(towBar);
+    const deck = new THREE.Mesh(new THREE.BoxGeometry(1.35, 0.12, 1.75), steelGalvMat);
+    deck.position.set(0, 0.42, cz);
+    tugGroup.add(deck);
+    const canopy = new THREE.Mesh(new THREE.BoxGeometry(1.38, 0.08, 1.78), aviationWhiteMat);
+    canopy.position.set(0, 1.52, cz);
+    tugGroup.add(canopy);
+    for (const px of [-0.62, 0.62]) {
+      for (const pz of [-0.8, 0.8]) {
+        const post = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.1, 0.05), steelDarkMat);
+        post.position.set(px, 0.96, cz + pz);
+        tugGroup.add(post);
+      }
+    }
+    // Stacked colorful 80s suitcases on each cart
+    const s1 = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.38, 0.45), aircraftPinkMat);
+    s1.position.set(-0.22, 0.68, cz - 0.25);
+    tugGroup.add(s1);
+    const s2 = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.36, 0.48), aircraftTealMat);
+    s2.position.set(0.24, 0.66, cz + 0.3);
+    tugGroup.add(s2);
+    const s3 = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.32, 0.42), aviationRedMat);
+    s3.position.set(0.0, 1.02, cz - 0.1);
+    tugGroup.add(s3);
+  }
+  scene.add(tugGroup);
+  colliders.push({
+    minX: -88.2,
+    maxX: -85.2,
+    minY: 0,
+    maxY: 1.7,
+    minZ: 84.2,
+    maxZ: 91.2,
+    tag: 'airfield-prop',
+  });
+
+  // Illuminated Airport Taxiway & Runway Guidance Signs + Distance-Remaining Markers
+  const addAirportSign = (
+    text: string,
+    bgHex: string,
+    fgHex: string,
+    x: number,
+    z: number,
+    rotY: number,
+    w = 2.1,
+    h = 0.72,
+  ) => {
+    const tex = createTaxiSignTexture(text, bgHex, fgHex);
+    const mat = new THREE.MeshStandardMaterial({
+      map: tex,
+      emissive: '#ffffff',
+      emissiveMap: tex,
+      emissiveIntensity: 0.72,
+      roughness: 0.35,
+    });
+    const box = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.24), mat);
+    box.position.set(x, h / 2 + 0.22, z);
+    box.rotation.y = rotY;
+    scene.add(box);
+    addVisual(new THREE.BoxGeometry(0.08, 0.25, 0.08), steelDarkMat, x, 0.12, z);
+  };
+  addAirportSign('18-36', '#d62828', '#ffffff', -103.4, 78.2, Math.PI / 2);
+  addAirportSign('A · TERM 1', '#f2be32', '#14151a', -97.6, 78.2, Math.PI / 2);
+  addAirportSign('HANGAR 06', '#f2be32', '#14151a', -97.6, 108.5, Math.PI / 2);
+  addAirportSign('18-36', '#d62828', '#ffffff', -103.4, 126.5, Math.PI / 2);
+  // Runway Distance-Remaining Signs along West side of Runway 18/36
+  addAirportSign('3', '#14151a', '#ffffff', -121.2, 88.0, Math.PI / 2, 0.9, 0.9);
+  addAirportSign('2', '#14151a', '#ffffff', -121.2, 103.0, Math.PI / 2, 0.9, 0.9);
+  addAirportSign('1', '#14151a', '#ffffff', -121.2, 118.0, Math.PI / 2, 0.9, 0.9);
+
+  // 4 High-Mast Apron Floodlight Towers (sodium bulbs + soft volumetric haze cones, 0 extra PointLights!)
+  const floodConeGeo = new THREE.ConeGeometry(5.5, 11.5, 12, 1, true);
+  for (const [fx, fz, aimYaw] of [
+    [-69.6, 70.2, -2.35],
+    [-69.6, 101.8, -1.65],
+    [-69.6, 123.5, -1.85],
+    [-101.2, 136.2, 0.35],
+  ]) {
+    addVisual(new THREE.CylinderGeometry(0.14, 0.24, 12.2, 8), steelGalvMat, fx, 6.1, fz, true);
+    const head = new THREE.Group();
+    head.position.set(fx, 12.2, fz);
+    head.rotation.y = aimYaw;
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.45, 0.35), steelDarkMat);
+    head.add(bar);
+    for (const bx of [-0.72, 0, 0.72]) {
+      const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.32, 0.14), floodBulbMat);
+      lamp.position.set(bx, 0, 0.2);
+      head.add(lamp);
+    }
+    const haze = new THREE.Mesh(floodConeGeo, floodHazeMat);
+    haze.position.set(0, -5.6, 1.8);
+    haze.rotation.x = 0.28;
+    head.add(haze);
+    scene.add(head);
+    addVisual(bulbGeo, rwyRedBulbMat, fx, 12.6, fz);
+  }
+
   return {
     // Keep entire reclaimed airfield peninsula at y = 0.0 (overrides southern ocean -6.0m depth for z = 126..138!)
     getGroundHeight: (x: number, z: number) => {
@@ -1417,6 +1843,18 @@ export function buildViceAirfield(
       if (!lootTaken) {
         const s = 1 + Math.sin(elapsed * 4.2) * 0.08;
         lootBeaconRing.scale.set(s, s, 1);
+      }
+
+      // Orbit 5 colorful 80s suitcases around Terminal 1 Baggage Claim Carousel
+      for (let i = 0; i < carouselBags.length; i++) {
+        const b = carouselBags[i];
+        const a = elapsed * 0.75 + b.phase;
+        b.mesh.position.set(
+          carouselX + Math.cos(a) * 1.15,
+          0.92,
+          carouselZ + Math.sin(a) * 0.56,
+        );
+        b.mesh.rotation.y = -a;
       }
     },
   };

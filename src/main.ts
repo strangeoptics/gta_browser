@@ -19,36 +19,33 @@ import { DecalSystem } from './world/DecalSystem';
 import { RoadblockSystem } from './world/RoadblockSystem';
 import { NpcSystem } from './entities/NpcSystem';
 import { HelicopterSystem } from './entities/HelicopterSystem';
-import { SafehousePets, PET_CATALOG, type PetId, type PetInteractable } from './entities/SafehousePets';
+import { SafehousePets, type PetId, type PetInteractable } from './entities/SafehousePets';
 import { WildlifeSystem } from './entities/WildlifeSystem';
 import { WantedSystem } from './gameplay/WantedSystem';
-import { MISSION_CONTRACTS, ObjectiveSystem, type MissionDistrict } from './gameplay/ObjectiveSystem';
-import { STORY_CHAPTERS, StoryCampaign } from './gameplay/StoryCampaign';
+import { ObjectiveSystem } from './gameplay/ObjectiveSystem';
+import { StoryCampaign } from './gameplay/StoryCampaign';
 import { HeistSystem } from './gameplay/HeistSystem';
 import { RooftopPartySystem } from './gameplay/RooftopPartySystem';
 import { VigilanteSystem } from './gameplay/VigilanteSystem';
-import { SpecialVehicleMissionSystem, PARAMEDIC_MAX_HP_RESCUES_REQUIRED } from './gameplay/SpecialVehicleMissions';
+import { SpecialVehicleMissionSystem } from './gameplay/SpecialVehicleMissions';
 import { KittAiSystem } from './gameplay/KittAiSystem';
-import { LowriderBattleSystem, LOWRIDER_DIR_SYMBOL } from './gameplay/LowriderBattleSystem';
+import { LowriderBattleSystem } from './gameplay/LowriderBattleSystem';
+import { handleInteractKeyF, handleSpecialActionKeyG, type InteractionContext } from './gameplay/InteractionRouter';
 import { ShopSystem } from './gameplay/ShopSystem';
 import { PayNSpray } from './gameplay/PayNSpray';
 import { Minimap } from './hud/Minimap';
 import { AudioEngine } from './audio/AudioEngine';
 import { GamepadInput } from './engine/GamepadInput';
 import { TouchControls } from './engine/TouchControls';
+import { HudController } from './ui/HudController';
+import { ModalController } from './ui/ModalController';
 import type { AABB } from './types';
 import {
-  clearProgress,
-  createProfile,
-  deleteProfile,
   getActiveProfile,
-  listProfiles,
   loadProgress,
   loadSettings,
-  renameProfile,
   saveProgress,
   saveSettings,
-  setActiveProfile,
   type GameSettings,
 } from './engine/Storage';
 
@@ -59,125 +56,15 @@ const overlay = document.getElementById('overlay') as HTMLDivElement;
 const playBtn = document.getElementById('play-btn') as HTMLButtonElement;
 const gpStatusEl = document.getElementById('gamepad-status');
 
-// HUD elements
-const crosshairEl = document.getElementById('crosshair') as HTMLDivElement;
-const hitmarkerEl = document.getElementById('hitmarker') as HTMLDivElement;
-const weaponPanelEl = document.getElementById('weapon-panel') as HTMLDivElement;
-const weaponNameEl = document.getElementById('weapon-name') as HTMLDivElement;
-const ammoCurrentEl = document.getElementById('ammo-current') as HTMLSpanElement;
-const ammoMaxEl = document.getElementById('ammo-max') as HTMLSpanElement;
-const reloadBarEl = document.getElementById('reload-bar') as HTMLDivElement;
-const reloadFillEl = document.getElementById('reload-fill') as HTMLDivElement;
-const slotEls = [
-  document.getElementById('slot-0') as HTMLSpanElement,
-  document.getElementById('slot-1') as HTMLSpanElement,
-  document.getElementById('slot-2') as HTMLSpanElement,
-  document.getElementById('slot-3') as HTMLSpanElement,
-  document.getElementById('slot-4') as HTMLSpanElement,
-];
-
-const objTagEl = document.querySelector('.obj-tag') as HTMLSpanElement;
-
-const starsEl = document.getElementById('wanted-stars') as HTMLDivElement;
-const cashEl = document.getElementById('cash-display') as HTMLDivElement;
-const hpFillEl = document.getElementById('hp-fill') as HTMLDivElement;
-const hpTextEl = document.getElementById('hp-text') as HTMLSpanElement;
-const armorFillEl = document.getElementById('armor-fill') as HTMLDivElement;
-const armorTextEl = document.getElementById('armor-text') as HTMLSpanElement;
-const objTitleEl = document.getElementById('obj-title') as HTMLDivElement;
-const objDescEl = document.getElementById('obj-desc') as HTMLDivElement;
-const objDistEl = document.getElementById('obj-dist') as HTMLSpanElement;
-const interactPromptEl = document.getElementById('interact-prompt') as HTMLDivElement;
-const storyDialogueBannerEl = document.getElementById('story-dialogue-banner') as HTMLDivElement;
-const storySpeakerEl = document.getElementById('story-speaker') as HTMLSpanElement;
-const storyLineEl = document.getElementById('story-line') as HTMLSpanElement;
-const lowriderHudEl = document.getElementById('lowrider-hud') as HTMLDivElement;
-const lowriderScoreEl = document.getElementById('lowrider-score') as HTMLSpanElement;
-const lowriderNotesEl = document.getElementById('lowrider-notes') as HTMLDivElement;
-const lowriderFeedbackEl = document.getElementById('lowrider-feedback') as HTMLSpanElement;
-const lowriderProgressEl = document.getElementById('lowrider-progress') as HTMLSpanElement;
-const vehiclePanelEl = document.getElementById('vehicle-panel') as HTMLDivElement;
-const vehicleNameEl = document.getElementById('vehicle-name') as HTMLDivElement;
-const vehicleSpeedEl = document.getElementById('vehicle-speed') as HTMLSpanElement;
-const vehicleHpFillEl = document.getElementById('vehicle-hp-fill') as HTMLDivElement;
-const vehicleCamHintEl = document.getElementById('vehicle-cam-hint') as HTMLDivElement;
+// Core DOM elements (all HUD panels & modals are owned by HudController & ModalController)
 const hudEl = document.getElementById('hud') as HTMLDivElement;
 const photoBarEl = document.getElementById('photo-bar') as HTMLDivElement;
-const toastBannerEl = document.getElementById('toast-banner') as HTMLDivElement;
 const dispatchBannerEl = document.getElementById('dispatch-banner') as HTMLDivElement;
 const dispatchTextEl = document.getElementById('dispatch-text') as HTMLSpanElement;
-const damageVignetteEl = document.getElementById('damage-vignette') as HTMLDivElement;
-const timeJumpFlashEl = document.getElementById('timejump-flash') as HTMLDivElement;
 const wastedOverlayEl = document.getElementById('wasted-overlay') as HTMLDivElement;
 const audioStatusEl = document.getElementById('audio-status') as HTMLDivElement;
 const minimapCanvas = document.getElementById('minimap-canvas') as HTMLCanvasElement;
-
-// AMMU-NEON Shop Modal
-const shopOverlayEl = document.getElementById('shop-overlay') as HTMLDivElement;
-const shopCashEl = document.getElementById('shop-cash') as HTMLSpanElement;
-const buyMedkitBtn = document.getElementById('buy-medkit') as HTMLButtonElement;
-const buyArmorBtn = document.getElementById('buy-armor') as HTMLButtonElement;
-const buyLauncherBtn = document.getElementById('buy-launcher') as HTMLButtonElement;
-const shopCloseBtn = document.getElementById('shop-close') as HTMLButtonElement;
-
-// HAVANA PETS & EXOTICS Modal
-const petShopOverlayEl = document.getElementById('pet-shop-overlay') as HTMLDivElement;
-const petShopCashEl = document.getElementById('pet-shop-cash') as HTMLSpanElement;
-const buyPetBtns: Record<PetId, HTMLButtonElement> = {
-  cleo: document.getElementById('buy-pet-cleo') as HTMLButtonElement,
-  rico: document.getElementById('buy-pet-rico') as HTMLButtonElement,
-  zeus: document.getElementById('buy-pet-zeus') as HTMLButtonElement,
-  elvis: document.getElementById('buy-pet-elvis') as HTMLButtonElement,
-};
-const petShopCloseBtn = document.getElementById('pet-shop-close') as HTMLButtonElement;
-
-// Developer Panel Modal
-const devOverlayEl = document.getElementById('dev-overlay') as HTMLDivElement;
-const devCashEl = document.getElementById('dev-cash') as HTMLSpanElement;
-const devStarsEl = document.getElementById('dev-stars') as HTMLSpanElement;
-const devStarBtns = Array.from(document.querySelectorAll<HTMLButtonElement>('.dev-star-btn'));
-const devClearCrimeBtn = document.getElementById('dev-clear-crime') as HTMLButtonElement;
-const devCashMinusBtn = document.getElementById('dev-cash-minus') as HTMLButtonElement;
-const devCash500Btn = document.getElementById('dev-cash-500') as HTMLButtonElement;
-const devCash2500Btn = document.getElementById('dev-cash-2500') as HTMLButtonElement;
-const devCash10kBtn = document.getElementById('dev-cash-10k') as HTMLButtonElement;
-const devCashZeroBtn = document.getElementById('dev-cash-zero') as HTMLButtonElement;
-const devCashInput = document.getElementById('dev-cash-input') as HTMLInputElement;
-const devCashSetBtn = document.getElementById('dev-cash-set') as HTMLButtonElement;
-const devCloseBtn = document.getElementById('dev-close') as HTMLButtonElement;
-
-// 80s Missions-Telefon / Auftragsboard Modal ([J])
-const phoneOverlayEl = document.getElementById('phone-overlay') as HTMLDivElement;
-const phoneCashEl = document.getElementById('phone-cash') as HTMLDivElement;
-const phoneDoneEl = document.getElementById('phone-done') as HTMLDivElement;
-const phoneActiveLabelEl = document.getElementById('phone-active-label') as HTMLSpanElement;
-const phoneCancelBtn = document.getElementById('phone-cancel-btn') as HTMLButtonElement;
-const phoneHeistBtn = document.getElementById('phone-heist-btn') as HTMLButtonElement;
-const phonePartyBtn = document.getElementById('phone-party-btn') as HTMLButtonElement;
-const phoneTabBtns = Array.from(document.querySelectorAll<HTMLButtonElement>('.phone-tab'));
-const phoneMissionListEl = document.getElementById('phone-mission-list') as HTMLDivElement;
-const phoneCloseBtn = document.getElementById('phone-close') as HTMLButtonElement;
-
-// Pause Settings, Multi-Player Profiles & Saved Stats UI
-const profileSelectEl = document.getElementById('profile-select') as HTMLSelectElement;
-const profileNewBtn = document.getElementById('profile-new-btn') as HTMLButtonElement;
-const profileRenameBtn = document.getElementById('profile-rename-btn') as HTMLButtonElement;
-const profileDeleteBtn = document.getElementById('profile-delete-btn') as HTMLButtonElement;
-const profileFormEl = document.getElementById('profile-form') as HTMLDivElement;
-const profileNameInput = document.getElementById('profile-name-input') as HTMLInputElement;
-const profileSaveBtn = document.getElementById('profile-save-btn') as HTMLButtonElement;
-const profileCancelBtn = document.getElementById('profile-cancel-btn') as HTMLButtonElement;
-const statCashEl = document.getElementById('stat-cash') as HTMLElement;
-const statMissionsEl = document.getElementById('stat-missions') as HTMLElement;
-const resetSaveBtn = document.getElementById('reset-save-btn') as HTMLButtonElement;
-const optSensInput = document.getElementById('opt-sens') as HTMLInputElement;
-const optSensValEl = document.getElementById('opt-sens-val') as HTMLSpanElement;
-const optInvertYInput = document.getElementById('opt-invert-y') as HTMLInputElement;
-const optSfxInput = document.getElementById('opt-sfx') as HTMLInputElement;
-const optSfxValEl = document.getElementById('opt-sfx-val') as HTMLSpanElement;
-const optMusicInput = document.getElementById('opt-music') as HTMLInputElement;
-const optMusicValEl = document.getElementById('opt-music-val') as HTMLSpanElement;
-const optPerfInput = document.getElementById('opt-perf') as HTMLInputElement;
+const hud = new HudController();
 
 // Renderer (antialias: false on default backbuffer because EffectComposer uses a 4x MSAA HalfFloat target!)
 const initialDpr = Math.min(window.devicePixelRatio, 2);
@@ -296,11 +183,6 @@ function sendPoliceDispatch(message: string, force = false): void {
   audio.playRadioChirp();
 }
 let lastCompletedCount = savedProgress.completedMissions;
-let shopOpen = false;
-let petShopOpen = false;
-let devOpen = false;
-let phoneOpen = false;
-let phoneDistrictFilter: 'story' | 'all' | MissionDistrict = 'story';
 let photoMode = false;
 let photoYaw = 0;
 let photoPitch = 0;
@@ -317,58 +199,6 @@ let lookedAtTv = false;
 let lookedPet: PetInteractable | null = null;
 let lookedWallRide: GarageWallInteractable | null = null;
 let handHoldTimer = 0;
-
-// Dirty-checked DOM write helpers to eliminate redundant style/layout work at 60-144 FPS
-const domCache = new WeakMap<Element, string>();
-function setText(el: HTMLElement, text: string): void {
-  if (domCache.get(el) !== text) {
-    domCache.set(el, text);
-    el.textContent = text;
-  }
-}
-const widthCache = new WeakMap<HTMLElement, string>();
-function setWidth(el: HTMLElement, w: string): void {
-  if (widthCache.get(el) !== w) {
-    widthCache.set(el, w);
-    el.style.width = w;
-  }
-}
-const opacityCache = new WeakMap<HTMLElement, string>();
-function setOpacity(el: HTMLElement, op: string): void {
-  if (opacityCache.get(el) !== op) {
-    opacityCache.set(el, op);
-    el.style.opacity = op;
-  }
-}
-const displayCache = new WeakMap<HTMLElement, string>();
-function setDisplay(el: HTMLElement, disp: string): void {
-  if (displayCache.get(el) !== disp) {
-    displayCache.set(el, disp);
-    el.style.display = disp;
-  }
-}
-const classCache = new WeakMap<Element, Map<string, boolean>>();
-function setClass(el: Element, cls: string, enabled: boolean): void {
-  let map = classCache.get(el);
-  if (!map) {
-    map = new Map<string, boolean>();
-    classCache.set(el, map);
-  }
-  if (map.get(cls) !== enabled) {
-    map.set(cls, enabled);
-    el.classList.toggle(cls, enabled);
-  }
-}
-const STAR_STRINGS = ['☆☆☆☆☆', '★☆☆☆☆', '★★☆☆☆', '★★★☆☆', '★★★★☆', '★★★★★'];
-let cachedCashValue = -1;
-let cachedCashText = '$0';
-function formatHudCash(cash: number): string {
-  if (cash !== cachedCashValue) {
-    cachedCashValue = cash;
-    cachedCashText = `$${cash.toLocaleString('en-US')}`;
-  }
-  return cachedCashText;
-}
 
 function toggleSafehouseTv(): void {
   const isOn = world.toggleTv(objectives.cash, wanted.stars);
@@ -422,21 +252,6 @@ function eatLookedFood(): boolean {
   return true;
 }
 
-function refreshProfileSelector(): void {
-  const profiles = listProfiles();
-  const active = getActiveProfile();
-  profileSelectEl.innerHTML = '';
-  for (const p of profiles) {
-    const opt = document.createElement('option');
-    opt.value = p.id;
-    const ch = p.progress.storyChapter ?? 0;
-    opt.textContent = `${p.name} · $${p.progress.cash.toLocaleString('en-US')} · Kap. ${ch}/5`;
-    opt.selected = p.id === active.id;
-    profileSelectEl.appendChild(opt);
-  }
-  profileDeleteBtn.disabled = profiles.length <= 1;
-}
-
 function applyActiveProfileToWorld(respawnPlayer: boolean): void {
   const active = getActiveProfile();
   const prog = loadProgress();
@@ -483,11 +298,10 @@ function applyActiveProfileToWorld(respawnPlayer: boolean): void {
   weapons.setLauncherUnlocked(Boolean(prog.launcherUnlocked));
   weapons.refillAllAmmo();
   weapons.switchWeapon(1);
-  slotEls[4].classList.toggle('locked', !prog.launcherUnlocked);
+  hud.setLauncherLocked(!prog.launcherUnlocked);
 
   applySettings(nextSettings);
   persistProgress();
-  refreshProfileSelector();
   if (respawnPlayer) {
     showQuickToast(`SPIELER GEWECHSELT · ${active.name.toUpperCase()}`);
   }
@@ -509,9 +323,7 @@ function persistProgress(): void {
     maxHpUnlocked: paramedic.maxHpUnlocked,
     starterBonusApplied: true,
   });
-  statCashEl.textContent = `$${objectives.cash.toLocaleString('en-US')}`;
-  statMissionsEl.textContent = String(objectives.completedCount);
-  refreshProfileSelector();
+  modals.updateStats(objectives.cash, objectives.completedCount);
 }
 
 function renderFrame(): void {
@@ -538,100 +350,62 @@ function applySettings(next: GameSettings): void {
   bloomPass.setSize(Math.max(1, Math.floor(window.innerWidth / 2)), Math.max(1, Math.floor(window.innerHeight / 2)));
   document.body.classList.toggle('perf-mode', settings.performanceMode);
 
-  optSensInput.value = String(settings.mouseSensitivity);
-  optSensValEl.textContent = `${settings.mouseSensitivity.toFixed(1)}×`;
-  optInvertYInput.checked = settings.invertMouseY;
-  optSfxInput.value = String(settings.sfxVolume);
-  optSfxValEl.textContent = `${Math.round(settings.sfxVolume * 100)}%`;
-  optMusicInput.value = String(settings.musicVolume);
-  optMusicValEl.textContent = `${Math.round(settings.musicVolume * 100)}%`;
-  optPerfInput.checked = settings.performanceMode;
+  modals.syncSettingsUi(settings);
   saveSettings(settings);
 }
 
+const modals = new ModalController({
+  canvas,
+  overlay,
+  slotLauncherEl: hud.slotLauncherEl,
+  player,
+  world,
+  weapons,
+  npcs,
+  heli,
+  pets,
+  wanted,
+  objectives,
+  story,
+  heist,
+  rooftopParty,
+  audio,
+  getPlayerHp: () => playerHp,
+  setPlayerHp: (hp) => {
+    playerHp = hp;
+  },
+  getPlayerMaxHp: () => playerMaxHp,
+  getPlayerArmor: () => playerArmor,
+  setPlayerArmor: (armor) => {
+    playerArmor = armor;
+  },
+  getSettings: () => settings,
+  applySettings,
+  onWantedStarsChanged: (stars) => {
+    lastWantedStars = stars;
+  },
+  onClearCrimeRecord: () => {
+    wanted.reset();
+    lastWantedStars = 0;
+    bustProgress = 0;
+    npcs.clearPolice();
+    npcs.calmAllLawAndGuards();
+    heli.clear();
+    world.clearPdAlarm();
+    dispatchTimer = 0;
+    dispatchCooldown = 0;
+    dispatchBannerEl.classList.remove('visible');
+    audio.playPurchase();
+    showQuickToast('DEV · POLIZEI-AKTE & FAHNDUNG KOMPLETT AUF 0 ZURÜCKGESETZT');
+    sendPoliceDispatch('Akten komplett gelöscht — alle Einheiten & Sperren abziehen.', true);
+  },
+  applyActiveProfileToWorld,
+  persistProgress,
+  requestLockSafely,
+  showQuickToast,
+});
+
 applyActiveProfileToWorld(false);
-
-// Multi-Player Profile Controls
-let profileFormMode: 'new' | 'rename' | null = null;
-function openProfileForm(mode: 'new' | 'rename'): void {
-  profileFormMode = mode;
-  profileFormEl.classList.add('visible');
-  profileNameInput.value = mode === 'rename' ? getActiveProfile().name : '';
-  profileNameInput.placeholder = mode === 'rename' ? 'Neuer Name…' : `Spieler ${listProfiles().length + 1}`;
-  profileNameInput.focus();
-  profileNameInput.select();
-}
-
-function closeProfileForm(): void {
-  profileFormMode = null;
-  profileFormEl.classList.remove('visible');
-}
-
-function submitProfileForm(): void {
-  if (!profileFormMode) return;
-  const rawName = profileNameInput.value;
-  if (profileFormMode === 'new') {
-    createProfile(rawName);
-    closeProfileForm();
-    applyActiveProfileToWorld(true);
-  } else {
-    const active = getActiveProfile();
-    renameProfile(active.id, rawName);
-    closeProfileForm();
-    refreshProfileSelector();
-    showQuickToast(`SPIELER UMBENANNT · ${getActiveProfile().name.toUpperCase()}`);
-  }
-}
-
-profileSelectEl.addEventListener('change', () => {
-  closeProfileForm();
-  if (setActiveProfile(profileSelectEl.value)) {
-    applyActiveProfileToWorld(true);
-  }
-});
-profileNewBtn.addEventListener('click', () => openProfileForm('new'));
-profileRenameBtn.addEventListener('click', () => openProfileForm('rename'));
-profileCancelBtn.addEventListener('click', () => closeProfileForm());
-profileSaveBtn.addEventListener('click', () => submitProfileForm());
-profileNameInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') {
-    e.preventDefault();
-    submitProfileForm();
-  } else if (e.key === 'Escape') {
-    e.preventDefault();
-    closeProfileForm();
-  }
-});
-profileDeleteBtn.addEventListener('click', () => {
-  if (listProfiles().length <= 1) return;
-  const active = getActiveProfile();
-  if (deleteProfile(active.id)) {
-    closeProfileForm();
-    applyActiveProfileToWorld(true);
-    showQuickToast(`PROFIL „${active.name.toUpperCase()}“ GELÖSCHT`);
-  }
-});
-
-optSensInput.addEventListener('input', () => {
-  applySettings({ ...settings, mouseSensitivity: parseFloat(optSensInput.value) });
-});
-optInvertYInput.addEventListener('change', () => {
-  applySettings({ ...settings, invertMouseY: optInvertYInput.checked });
-});
-optSfxInput.addEventListener('input', () => {
-  applySettings({ ...settings, sfxVolume: parseFloat(optSfxInput.value) });
-});
-optMusicInput.addEventListener('input', () => {
-  applySettings({ ...settings, musicVolume: parseFloat(optMusicInput.value) });
-});
-optPerfInput.addEventListener('change', () => {
-  applySettings({ ...settings, performanceMode: optPerfInput.checked });
-});
-resetSaveBtn.addEventListener('click', () => {
-  clearProgress();
-  applyActiveProfileToWorld(true);
-  showQuickToast(`SPEICHERSTAND VON „${getActiveProfile().name.toUpperCase()}“ ZURÜCKGESETZT`);
-});
 
 function triggerBusted(): void {
   if (wastedTimer > 0) return;
@@ -967,453 +741,6 @@ objectives.onCheckpointReached = () => {
   audio.playCheckpoint();
 };
 
-// AMMU-NEON Shop UI Flow
-function refreshShopUi(): void {
-  shopCashEl.textContent = `$${objectives.cash.toLocaleString('en-US')}`;
-  buyMedkitBtn.disabled = objectives.cash < 250 || playerHp >= playerMaxHp;
-  buyArmorBtn.disabled = objectives.cash < 400 || playerArmor >= 100;
-  if (weapons.isLauncherUnlocked()) {
-    buyLauncherBtn.textContent = 'FREIGESCHALTET [4] · MUNITION VOLL ($200)';
-    buyLauncherBtn.disabled = objectives.cash < 200;
-  } else {
-    buyLauncherBtn.textContent = 'NEON LAUNCHER [4] · $900';
-    buyLauncherBtn.disabled = objectives.cash < 900;
-  }
-}
-
-function openShop(): void {
-  shopOpen = true;
-  player.setActive(false);
-  if (document.pointerLockElement === canvas) {
-    document.exitPointerLock?.();
-  }
-  refreshShopUi();
-  shopOverlayEl.classList.add('visible');
-}
-
-function closeShop(): void {
-  shopOpen = false;
-  shopOverlayEl.classList.remove('visible');
-  overlay.classList.add('hidden');
-  player.setActive(true);
-  requestLockSafely();
-}
-
-buyMedkitBtn.addEventListener('click', () => {
-  if (objectives.cash < 250 || playerHp >= playerMaxHp) return;
-  objectives.cash -= 250;
-  playerHp = Math.min(playerMaxHp, playerHp + 50);
-  audio.playPurchase();
-  persistProgress();
-  refreshShopUi();
-});
-
-buyArmorBtn.addEventListener('click', () => {
-  if (objectives.cash < 400 || playerArmor >= 100) return;
-  objectives.cash -= 400;
-  playerArmor = 100;
-  audio.playPurchase();
-  persistProgress();
-  refreshShopUi();
-});
-
-buyLauncherBtn.addEventListener('click', () => {
-  if (!weapons.isLauncherUnlocked()) {
-    if (objectives.cash < 900) return;
-    objectives.cash -= 900;
-    weapons.unlockLauncher();
-    slotEls[4].classList.remove('locked');
-    audio.playPurchase();
-    persistProgress();
-    refreshShopUi();
-  } else {
-    if (objectives.cash < 200) return;
-    objectives.cash -= 200;
-    weapons.refillAllAmmo();
-    audio.playPurchase();
-    persistProgress();
-    refreshShopUi();
-  }
-});
-
-shopCloseBtn.addEventListener('click', () => {
-  closeShop();
-});
-
-// HAVANA PETS & EXOTICS UI Flow + Safehouse Pet Interaction
-function refreshPetShopUi(): void {
-  petShopCashEl.textContent = `$${objectives.cash.toLocaleString('en-US')}`;
-  for (const item of PET_CATALOG) {
-    const btn = buyPetBtns[item.id];
-    if (pets.ownsPet(item.id)) {
-      btn.textContent = `✓ ${item.name} · IM VICE SAFEHOUSE ZUHAUSE`;
-      btn.disabled = true;
-    } else {
-      btn.textContent = `${item.title} · $${item.price.toLocaleString('en-US')}`;
-      btn.disabled = objectives.cash < item.price;
-    }
-  }
-}
-
-function openPetShop(): void {
-  petShopOpen = true;
-  player.setActive(false);
-  if (document.pointerLockElement === canvas) {
-    document.exitPointerLock?.();
-  }
-  refreshPetShopUi();
-  petShopOverlayEl.classList.add('visible');
-}
-
-function closePetShop(): void {
-  petShopOpen = false;
-  petShopOverlayEl.classList.remove('visible');
-  overlay.classList.add('hidden');
-  player.setActive(true);
-  requestLockSafely();
-}
-
-for (const item of PET_CATALOG) {
-  buyPetBtns[item.id].addEventListener('click', () => {
-    if (pets.ownsPet(item.id) || objectives.cash < item.price) return;
-    objectives.cash -= item.price;
-    pets.adoptPet(item.id);
-    if (item.id === 'cleo') audio.playCatPurr();
-    else if (item.id === 'rico') audio.playParrotSquawk();
-    else if (item.id === 'zeus') audio.playDogBark();
-    else audio.playGatorSnap();
-    audio.playPurchase();
-    persistProgress();
-    refreshPetShopUi();
-    showQuickToast(
-      item.id === 'elvis'
-        ? 'ADOPTIERT! · ALLIGATOR „ELVIS“ WARTET AM SAFEHOUSE-DACHPOOL!'
-        : `ADOPTIERT! · ${item.name} WARTET JETZT IM VICE SAFEHOUSE AUF DICH!`,
-    );
-  });
-}
-
-petShopCloseBtn.addEventListener('click', () => {
-  closePetShop();
-});
-
-// Developer Panel Flow ([Alt+D] / [F2] / [D] im Pause-Menü)
-function refreshDevUi(): void {
-  devCashEl.textContent = `$${objectives.cash.toLocaleString('en-US')}`;
-  devStarsEl.textContent = `${wanted.stars}★`;
-  devStarBtns.forEach((btn) => {
-    const s = parseInt(btn.dataset.stars ?? '0', 10);
-    btn.classList.toggle('active', s === wanted.stars);
-  });
-}
-
-function openDevPanel(): void {
-  devOpen = true;
-  player.setActive(false);
-  if (document.pointerLockElement === canvas) {
-    document.exitPointerLock?.();
-  }
-  refreshDevUi();
-  devOverlayEl.classList.add('visible');
-}
-
-function closeDevPanel(): void {
-  devOpen = false;
-  devOverlayEl.classList.remove('visible');
-  overlay.classList.add('hidden');
-  player.setActive(true);
-  requestLockSafely();
-}
-
-function setDevCash(nextCash: number): void {
-  objectives.cash = Math.max(0, Math.floor(nextCash));
-  persistProgress();
-  refreshDevUi();
-  audio.playPurchase();
-}
-
-devStarBtns.forEach((btn) => {
-  btn.addEventListener('click', () => {
-    const targetStars = parseInt(btn.dataset.stars ?? '0', 10);
-    wanted.setStars(targetStars);
-    lastWantedStars = targetStars;
-    if (targetStars === 0) {
-      npcs.clearPolice();
-      heli.clear();
-    }
-    refreshDevUi();
-    audio.playPurchase();
-    showQuickToast(`DEV · FAHNDUNGSLEVEL AUF ${targetStars}★ GESETZT`);
-  });
-});
-
-devClearCrimeBtn.addEventListener('click', () => {
-  wanted.reset();
-  lastWantedStars = 0;
-  bustProgress = 0;
-  npcs.clearPolice();
-  npcs.calmAllLawAndGuards();
-  heli.clear();
-  world.clearPdAlarm();
-  dispatchTimer = 0;
-  dispatchCooldown = 0;
-  dispatchBannerEl.classList.remove('visible');
-  refreshDevUi();
-  audio.playPurchase();
-  showQuickToast('DEV · POLIZEI-AKTE & FAHNDUNG KOMPLETT AUF 0 ZURÜCKGESETZT');
-  sendPoliceDispatch('Akten komplett gelöscht — alle Einheiten & Sperren abziehen.', true);
-});
-
-devCashMinusBtn.addEventListener('click', () => setDevCash(objectives.cash - 1000));
-devCash500Btn.addEventListener('click', () => setDevCash(objectives.cash + 500));
-devCash2500Btn.addEventListener('click', () => setDevCash(objectives.cash + 2500));
-devCash10kBtn.addEventListener('click', () => setDevCash(objectives.cash + 10000));
-devCashZeroBtn.addEventListener('click', () => setDevCash(0));
-devCashSetBtn.addEventListener('click', () => {
-  const val = parseInt(devCashInput.value, 10);
-  if (!Number.isNaN(val)) {
-    setDevCash(val);
-    showQuickToast(`DEV · GELD AUF $${Math.max(0, Math.floor(val)).toLocaleString('en-US')} GESETZT`);
-  }
-});
-devCloseBtn.addEventListener('click', () => closeDevPanel());
-
-// 80s Missions-Telefon / Auftragsboard Flow ([J])
-function renderPhoneMissions(): void {
-  phoneCashEl.textContent = `$${objectives.cash.toLocaleString('en-US')}`;
-  const doneCount = objectives.getCompletedIds().length;
-  phoneDoneEl.textContent = `STORY ${story.getCompletedChapters()}/${STORY_CHAPTERS.length} · JOBS ${doneCount}/${MISSION_CONTRACTS.length}`;
-
-  const active = objectives.current;
-  const activeStoryIdx = story.getActiveChapterIndex();
-  if (activeStoryIdx >= 0) {
-    const ch = STORY_CHAPTERS[activeStoryIdx];
-    phoneActiveLabelEl.textContent = `AKTIV: ★ KAPITEL ${ch.number} · ${ch.title}`;
-    phoneCancelBtn.disabled = false;
-  } else {
-    phoneActiveLabelEl.textContent = active ? `AKTIV: ${active.title}` : 'AKTIV: KEIN AUFTRAG';
-    phoneCancelBtn.disabled = !active;
-  }
-
-  phoneHeistBtn.disabled = heist.isActive();
-  phoneHeistBtn.textContent = heist.isActive() ? 'LÄUFT…' : 'STARTEN [H]';
-
-  const hasBar = world.isSafehouseRooftopBarOwned();
-  phonePartyBtn.disabled = !hasBar;
-  phonePartyBtn.textContent = !hasBar
-    ? 'BAR NÖTIG ($1.800)'
-    : rooftopParty.isActive()
-      ? 'PARTY BEENDEN'
-      : 'PARTY STARTEN';
-
-  phoneTabBtns.forEach((btn) => {
-    btn.classList.toggle('active', (btn.dataset.district ?? 'story') === phoneDistrictFilter);
-  });
-
-  phoneMissionListEl.innerHTML = '';
-
-  if (phoneDistrictFilter === 'story') {
-    const completedCh = story.getCompletedChapters();
-    const header = document.createElement('div');
-    header.className = 'story-progress-header';
-    header.innerHTML = `<span>★ OPERATION NEON DUSK</span><span>${completedCh} / ${STORY_CHAPTERS.length} KAPITEL</span>`;
-    phoneMissionListEl.appendChild(header);
-
-    for (const ch of STORY_CHAPTERS) {
-      const isActive = activeStoryIdx === ch.index;
-      const isDone = ch.index < completedCh;
-      const isUnlocked = story.canStartChapter(ch.index);
-
-      const card = document.createElement('div');
-      card.className = `mission-item${isActive ? ' is-active' : ''}${!isUnlocked ? ' story-locked' : ''}`;
-
-      const left = document.createElement('div');
-      const meta = document.createElement('div');
-      meta.className = 'mission-meta';
-
-      const chPill = document.createElement('span');
-      chPill.className = 'mission-pill east';
-      chPill.textContent = `KAPITEL ${ch.number}`;
-
-      const distPill = document.createElement('span');
-      distPill.className = 'mission-pill';
-      distPill.textContent = ch.districtLabel;
-      meta.append(chPill, distPill);
-
-      if (isDone) {
-        const doneBadge = document.createElement('span');
-        doneBadge.className = 'mission-done-badge';
-        doneBadge.textContent = '✓ ABGESCHLOSSEN';
-        meta.appendChild(doneBadge);
-      }
-
-      const nameEl = document.createElement('div');
-      nameEl.className = 'mission-name';
-      nameEl.textContent = ch.title;
-
-      const descEl = document.createElement('div');
-      descEl.className = 'mission-desc';
-      descEl.textContent = ch.summary;
-
-      left.append(meta, nameEl, descEl);
-
-      const right = document.createElement('div');
-      right.className = 'mission-right';
-
-      const rewEl = document.createElement('div');
-      rewEl.className = 'mission-reward';
-      rewEl.textContent = ch.finaleBonus && !isDone
-        ? `+$${(ch.reward + ch.finaleBonus).toLocaleString('en-US')}`
-        : `+$${ch.reward.toLocaleString('en-US')}`;
-
-      const acceptBtn = document.createElement('button');
-      acceptBtn.type = 'button';
-      acceptBtn.className = 'mission-accept-btn';
-      acceptBtn.textContent = isActive
-        ? 'AKTIV'
-        : !isUnlocked
-          ? '🔒 GESPERRT'
-          : isDone
-            ? 'WIEDERHOLEN'
-            : 'STARTEN';
-      acceptBtn.disabled = isActive || !isUnlocked;
-      acceptBtn.addEventListener('click', () => {
-        if (story.startChapter(ch.index, npcs, wanted)) {
-          audio.playCheckpoint();
-          closePhone();
-        }
-      });
-
-      right.append(rewEl, acceptBtn);
-      card.append(left, right);
-      phoneMissionListEl.appendChild(card);
-    }
-    return;
-  }
-
-  const filtered =
-    phoneDistrictFilter === 'all'
-      ? MISSION_CONTRACTS
-      : MISSION_CONTRACTS.filter((c) => c.district === phoneDistrictFilter);
-
-  for (const c of filtered) {
-    const isActive = active?.id === c.id;
-    const isDone = objectives.isContractCompleted(c.id);
-
-    const card = document.createElement('div');
-    card.className = `mission-item${isActive ? ' is-active' : ''}`;
-
-    const left = document.createElement('div');
-    const meta = document.createElement('div');
-    meta.className = 'mission-meta';
-
-    const distPill = document.createElement('span');
-    distPill.className = `mission-pill ${c.district}`;
-    distPill.textContent = c.districtLabel;
-
-    const kindPill = document.createElement('span');
-    kindPill.className = 'mission-pill';
-    kindPill.textContent = c.kindLabel;
-    meta.append(distPill, kindPill);
-
-    if (isDone) {
-      const doneBadge = document.createElement('span');
-      doneBadge.className = 'mission-done-badge';
-      doneBadge.textContent = '✓ ERLEDIGT';
-      meta.appendChild(doneBadge);
-    }
-
-    const nameEl = document.createElement('div');
-    nameEl.className = 'mission-name';
-    nameEl.textContent = c.title;
-
-    const descEl = document.createElement('div');
-    descEl.className = 'mission-desc';
-    descEl.textContent = c.briefing;
-
-    left.append(meta, nameEl, descEl);
-
-    const right = document.createElement('div');
-    right.className = 'mission-right';
-
-    const rewEl = document.createElement('div');
-    rewEl.className = 'mission-reward';
-    rewEl.textContent = `+$${c.reward.toLocaleString('en-US')}`;
-
-    const acceptBtn = document.createElement('button');
-    acceptBtn.type = 'button';
-    acceptBtn.className = 'mission-accept-btn';
-    acceptBtn.textContent = isActive ? 'AKTIV' : 'ANNEHMEN';
-    acceptBtn.disabled = isActive;
-    acceptBtn.addEventListener('click', () => {
-      objectives.startContract(c.id, npcs, wanted);
-      audio.playCheckpoint();
-      closePhone();
-      showQuickToast(`AUFTRAG ANGENOMMEN · ${c.title} (+$${c.reward.toLocaleString('en-US')})`);
-    });
-
-    right.append(rewEl, acceptBtn);
-    card.append(left, right);
-    phoneMissionListEl.appendChild(card);
-  }
-}
-
-function openPhone(): void {
-  phoneOpen = true;
-  player.setActive(false);
-  if (document.pointerLockElement === canvas) {
-    document.exitPointerLock?.();
-  }
-  renderPhoneMissions();
-  phoneOverlayEl.classList.add('visible');
-}
-
-function closePhone(): void {
-  phoneOpen = false;
-  phoneOverlayEl.classList.remove('visible');
-  overlay.classList.add('hidden');
-  player.setActive(true);
-  requestLockSafely();
-}
-
-phoneTabBtns.forEach((btn) => {
-  btn.addEventListener('click', () => {
-    phoneDistrictFilter = (btn.dataset.district ?? 'story') as 'story' | 'all' | MissionDistrict;
-    renderPhoneMissions();
-  });
-});
-
-phoneCancelBtn.addEventListener('click', () => {
-  if (story.isActive()) {
-    story.cancelChapter(npcs);
-    showQuickToast('STORY-KAPITEL ABGEBROCHEN · [J] FÜR NEUSTART');
-  } else {
-    objectives.cancelActiveObjective(npcs);
-    showQuickToast('AUFTRAG ABGEBROCHEN · [J] FÜR NEUE JOBS');
-  }
-  renderPhoneMissions();
-});
-
-phoneHeistBtn.addEventListener('click', () => {
-  if (!heist.isActive()) {
-    heist.startHeist();
-    audio.playCheckpoint();
-    closePhone();
-  }
-});
-
-phonePartyBtn.addEventListener('click', () => {
-  if (!world.isSafehouseRooftopBarOwned()) return;
-  const started = rooftopParty.toggle();
-  audio.playCheckpoint();
-  if (!started) {
-    showQuickToast('ROOFTOP-PARTY BEENDET · BIS ZUM NÄCHSTEN MAL!');
-  }
-  closePhone();
-});
-
-phoneCloseBtn.addEventListener('click', () => closePhone());
-
 function interactWithLookedPet(): boolean {
   if (!lookedPet) return false;
   const p = lookedPet;
@@ -1577,10 +904,7 @@ window.addEventListener('mousedown', (e) => {
   if (
     e.button === 0 &&
     player.getIsActive() &&
-    !shopOpen &&
-    !petShopOpen &&
-    !devOpen &&
-    !phoneOpen &&
+    !modals.isAnyModalOpen() &&
     !photoMode &&
     !vehicles.isInVehicle() &&
     !boat.isInBoat() &&
@@ -1601,6 +925,66 @@ window.addEventListener('mousedown', (e) => {
     }
   }
 });
+
+const interactionCtx: InteractionContext = {
+  camera,
+  player,
+  playerAvatar,
+  world,
+  weapons,
+  vehicles,
+  garageRides,
+  npcs,
+  heli,
+  pets,
+  wanted,
+  objectives,
+  rooftopParty,
+  vigilante,
+  specialMissions,
+  lowriderBattle,
+  audio,
+  getPlayerHp: () => playerHp,
+  setPlayerHp: (hp) => {
+    playerHp = hp;
+  },
+  getPlayerMaxHp: () => playerMaxHp,
+  getPlayerArmor: () => playerArmor,
+  setPlayerArmor: (armor) => {
+    playerArmor = armor;
+  },
+  getCocktailScore: () => cocktailScore,
+  setCocktailScore: (score) => {
+    cocktailScore = score;
+  },
+  setCarryingSnack: (name, durationSec) => {
+    carryingSnackName = name;
+    carryingSnackTimer = durationSec;
+  },
+  onMissionCompletedIncrement: () => {
+    objectives.completedCount++;
+    lastCompletedCount = objectives.completedCount;
+  },
+  tryUsePayNSpray,
+  tryInteractLookedObject: () => {
+    if (lookedFood && lookedFood.available) return eatLookedFood();
+    if (lookedCabinetWeapon) return equipCabinetWeapon();
+    if (lookedAtTv) {
+      toggleSafehouseTv();
+      return true;
+    }
+    if (lookedPet) return interactWithLookedPet();
+    if (lookedWallRide) return interactWithLookedWallRide();
+    return false;
+  },
+  togglePetShop: () => {
+    if (modals.isPetShopOpen()) modals.closePetShop();
+    else modals.openPetShop();
+  },
+  persistProgress,
+  showQuickToast,
+  sendPoliceDispatch,
+};
 
 window.addEventListener('mousemove', (e) => {
   if (!photoMode || document.pointerLockElement !== canvas) return;
@@ -1625,32 +1009,32 @@ window.addEventListener('keydown', (e) => {
   if (
     e.code === 'F2' ||
     (e.code === 'KeyD' && e.altKey) ||
-    (e.code === 'KeyD' && pauseOverlayVisible && !shopOpen && !petShopOpen)
+    (e.code === 'KeyD' && pauseOverlayVisible && !modals.isShopOpen() && !modals.isPetShopOpen())
   ) {
     e.preventDefault();
-    if (devOpen) closeDevPanel();
-    else if (!shopOpen && !petShopOpen) openDevPanel();
+    if (modals.isDevOpen()) modals.closeDevPanel();
+    else if (!modals.isShopOpen() && !modals.isPetShopOpen()) modals.openDevPanel();
     return;
   }
-  if (devOpen) {
-    if (e.code === 'Escape') closeDevPanel();
+  if (modals.isDevOpen()) {
+    if (e.code === 'Escape') modals.closeDevPanel();
     return;
   }
 
-  if (e.code === 'KeyJ' && !shopOpen && !petShopOpen && !photoMode && wastedTimer <= 0) {
-    if (phoneOpen) {
-      closePhone();
+  if (e.code === 'KeyJ' && !modals.isShopOpen() && !modals.isPetShopOpen() && !photoMode && wastedTimer <= 0) {
+    if (modals.isPhoneOpen()) {
+      modals.closePhone();
     } else if (player.getIsActive()) {
-      openPhone();
+      modals.openPhone();
     }
     return;
   }
-  if (phoneOpen) {
-    if (e.code === 'Escape') closePhone();
+  if (modals.isPhoneOpen()) {
+    if (e.code === 'Escape') modals.closePhone();
     return;
   }
 
-  if (e.code === 'KeyP' && (player.getIsActive() || photoMode) && !shopOpen) {
+  if (e.code === 'KeyP' && (player.getIsActive() || photoMode) && !modals.isShopOpen()) {
     photoMode = !photoMode;
     hudEl.classList.toggle('photo-hidden', photoMode);
     photoBarEl.classList.toggle('visible', photoMode);
@@ -1683,7 +1067,7 @@ window.addEventListener('keydown', (e) => {
   }
 
   if (photoMode) return;
-  if (lowriderBattle.isActive() && player.getIsActive() && !shopOpen && !petShopOpen) {
+  if (lowriderBattle.isActive() && player.getIsActive() && !modals.isShopOpen() && !modals.isPetShopOpen()) {
     if (e.code === 'Escape') {
       lowriderBattle.cancel();
       showQuickToast('LOWRIDER-BATTLE ABGEBROCHEN');
@@ -1702,8 +1086,8 @@ window.addEventListener('keydown', (e) => {
       return;
     }
   }
-  if (petShopOpen && (e.code === 'KeyF' || e.code === 'KeyB' || e.code === 'Escape')) {
-    closePetShop();
+  if (modals.isPetShopOpen() && (e.code === 'KeyF' || e.code === 'KeyB' || e.code === 'Escape')) {
+    modals.closePetShop();
     return;
   }
   if (e.code === 'KeyM') {
@@ -1713,7 +1097,7 @@ window.addEventListener('keydown', (e) => {
     return;
   }
 
-  if (e.code === 'KeyX' && player.getIsActive() && !shopOpen && !petShopOpen && wastedTimer <= 0) {
+  if (e.code === 'KeyX' && player.getIsActive() && !modals.isShopOpen() && !modals.isPetShopOpen() && wastedTimer <= 0) {
     const onFoot =
       !vehicles.isInVehicle() &&
       !boat.isInBoat() &&
@@ -1735,7 +1119,7 @@ window.addEventListener('keydown', (e) => {
     return;
   }
 
-  if (e.code === 'KeyQ' && player.getIsActive() && !shopOpen) {
+  if (e.code === 'KeyQ' && player.getIsActive() && !modals.isShopOpen()) {
     const onFoot =
       !vehicles.isInVehicle() &&
       !boat.isInBoat() &&
@@ -1758,19 +1142,19 @@ window.addEventListener('keydown', (e) => {
     return;
   }
 
-  if (e.code === 'KeyT' && player.getIsActive() && !shopOpen) {
+  if (e.code === 'KeyT' && player.getIsActive() && !modals.isShopOpen()) {
     const label = world.cycleTimeOfDay();
     showQuickToast(`LICHT · ${label}`);
     return;
   }
 
-  if (e.code === 'KeyY' && player.getIsActive() && !shopOpen) {
+  if (e.code === 'KeyY' && player.getIsActive() && !modals.isShopOpen()) {
     const raining = world.toggleRain();
     showQuickToast(raining ? 'WETTER · TROPENSCHAUER' : 'WETTER · NACH DEM REGEN');
     return;
   }
 
-  if (e.code === 'KeyH' && player.getIsActive() && !shopOpen && wastedTimer <= 0) {
+  if (e.code === 'KeyH' && player.getIsActive() && !modals.isShopOpen() && wastedTimer <= 0) {
     if (!heist.isActive()) {
       heist.startHeist();
       audio.playCheckpoint();
@@ -1778,447 +1162,35 @@ window.addEventListener('keydown', (e) => {
     return;
   }
 
-  if (e.code === 'KeyG' && player.getIsActive() && !shopOpen && wastedTimer <= 0) {
-    if (garageRides.getActiveRideId() === 'roadbike') {
-      audio.playBikeBell();
-      showQuickToast('KLINGELING! · FREIE BAHN FÜR DAS 80s RENNRAD!');
-      return;
-    }
-    const car = vehicles.getActiveVehicle();
-    if (car && world.isCarInTuningBay(car.position)) {
-      if (car.isBike) {
-        showQuickToast('VICE CUSTOMS · LOWRIDER-HYDRAULIK NUR FÜR AUTOS!');
-      } else if (car.hydraulics) {
-        vehicles.triggerHydraulicHop(car, 'up');
-        audio.playHydraulicBounce(true);
-        showQuickToast('VICE CUSTOMS · LOWRIDER-HYDRAULIK BEREITS INSTALLIERT!');
-      } else {
-        const hydroCost = 500;
-        if (objectives.cash >= hydroCost) {
-          objectives.cash -= hydroCost;
-          vehicles.installHydraulics(car);
-          audio.playPurchase();
-          audio.playHydraulicBounce(true);
-          persistProgress();
-          showQuickToast(
-            'VICE CUSTOMS · LOWRIDER-HYDRAULIK EINGEBAUT (-$500) · HÜPFT IM RADIO-TAKT & LITTLE HAVANA BATTLE!',
-          );
-        } else {
-          showQuickToast(`VICE CUSTOMS · HYDRAULIK KOSTET $${hydroCost}`);
-        }
-      }
-      return;
-    }
-    if (car && car.isKitt) {
-      if (!vehicles.triggerKittTurboBoost(car)) {
-        showQuickToast(
-          car.turboBoostCooldown > 0
-            ? `K.I.T.T. TURBO-BOOST LÄDT… (${car.turboBoostCooldown.toFixed(1)}s)`
-            : 'K.I.T.T. TURBO-BOOST · NUR AUF FESTEM BODEN!',
-        );
-      }
-      return;
-    }
-    if (car && car.isDelorean) {
-      if (!vehicles.triggerDeloreanTimeJump(car)) {
-        if (car.timeJumpCooldown && car.timeJumpCooldown > 0) {
-          showQuickToast(`FLUXKOMPENSATOR LÄDT… (${Math.ceil(car.timeJumpCooldown)}s)`);
-        } else {
-          showQuickToast('DELOREAN · ERST AUF 88 MPH (HÖCHSTGESCHWINDIGKEIT) BESCHLEUNIGEN!');
-        }
-      }
-      return;
-    }
-    if (car && car.specialRole === 'icecream') {
-      car.jingleActive = !car.jingleActive;
-      if (car.jingleActive) {
-        const nearPd = Math.hypot(car.position.x - -40, car.position.z) < 38;
-        showQuickToast(
-          nearPd
-            ? "CHERRY POPPER '86 · JINGLE AN! VICE PD COPS RENNEN FÜR DONUTS RAUS!"
-            : "CHERRY POPPER '86 · 8-BIT JINGLE AN! PASSANTEN & COPS KOMMEN ANGELAUFEN!",
-        );
-        if (nearPd) {
-          sendPoliceDispatch('Alle Einheiten am Precinct 06: Gratis-Donuts vor der Tür! Verfolgung kurzzeitig unterbrochen!', true);
-        }
-      } else {
-        showQuickToast("CHERRY POPPER '86 · JINGLE AUS");
-      }
-      return;
-    }
-    if (!car && world.isSafehouseRooftopBarOwned() && rooftopParty.isPlayerOnSafehouseRoof(player.position)) {
-      const started = rooftopParty.toggle();
-      audio.playCheckpoint();
-      if (!started) {
-        showQuickToast('ROOFTOP-PARTY BEENDET · BIS ZUM NÄCHSTEN MAL!');
-      }
-      return;
-    }
-    if (vigilante.isActive()) {
-      vigilante.stop(npcs);
-      showQuickToast('VIGILANTE-MODUS BEENDET');
-    } else if (specialMissions.isActive()) {
-      const k = specialMissions.getActiveKind();
-      specialMissions.stop();
-      showQuickToast(
-        k === 'taxi'
-          ? 'TAXI-MODUS BEENDET'
-          : k === 'firefighter'
-            ? 'FEUERWEHR-EINSATZ BEENDET'
-            : 'RETTUNGSDIENST BEENDET',
-      );
-    } else if (car && car.isPolice) {
-      vigilante.start(player.position, npcs);
-      audio.playCheckpoint();
-      sendPoliceDispatch('Vigilante-Modus aktiv! Erster Verdächtiger auf dem Radar markiert.', true);
-      showQuickToast('VIGILANTE · STUFE 1 GESTARTET');
-    } else if (car && car.specialRole === 'taxi') {
-      specialMissions.start('taxi', player.position);
-      audio.playCheckpoint();
-      showQuickToast('VICE CAB · TAXI-MODUS AKTIV · FAHRGAST AUF RADAR MARKIERT!');
-    } else if (car && car.specialRole === 'firetruck') {
-      specialMissions.start('firefighter', player.position);
-      audio.playCheckpoint();
-      sendPoliceDispatch('Feuerwehr-Zentrale: Brennendes Autowrack gemeldet — Wasserwerfer [LMB] bereit!', true);
-      showQuickToast('FEUERWEHR-EINSATZ · STUFE 1 · [LMB] WASSERWERFER!');
-    } else if (car && car.specialRole === 'ambulance') {
-      specialMissions.start('paramedic', player.position);
-      const prog = specialMissions.getParamedicProgress();
-      audio.playCheckpoint();
-      sendPoliceDispatch('Vice EMS Notruf: Verletzte Person auf dem Radar markiert!', true);
-      showQuickToast(
-        prog.maxHpUnlocked
-          ? 'RETTUNGSDIENST AKTIV · 150 MAX-HP BEREITS FREIGESCHALTET!'
-          : `RETTUNGSDIENST AKTIV · ${prog.rescues}/${PARAMEDIC_MAX_HP_RESCUES_REQUIRED} RETTUNGEN FÜR 150 MAX-HP!`,
-      );
-    } else if (car && car.hydraulics) {
-      car.hydraulicsAutoBounce = !car.hydraulicsAutoBounce;
-      vehicles.triggerHydraulicHop(car, 'up');
-      audio.playHydraulicBounce(true);
-      showQuickToast(
-        car.hydraulicsAutoBounce
-          ? 'LOWRIDER-HYDRAULIK · RADIO-BEAT-BOUNCE AN!'
-          : 'LOWRIDER-HYDRAULIK · RADIO-BEAT-BOUNCE AUS',
-      );
-    } else {
-      showQuickToast('EINSATZ [G] · NUR IN K.I.T.T., EISWAGEN, HYDRAULIK, VICE PD, TAXI, EMS ODER FEUERWEHR');
-    }
+  if (e.code === 'KeyG' && player.getIsActive() && !modals.isShopOpen() && wastedTimer <= 0) {
+    handleSpecialActionKeyG(interactionCtx);
     return;
   }
 
-  if (e.code === 'KeyF' && player.getIsActive() && !shopOpen && wastedTimer <= 0) {
-    const activeGarageRide = garageRides.getActiveRideId();
-    if (activeGarageRide && garageRides.canRehangActiveRide(player.position)) {
-      const res = garageRides.hangRideOnWall(activeGarageRide);
-      if (res.dismountedPlayerPos) {
-        player.setSpawn(
-          res.dismountedPlayerPos.x,
-          res.dismountedPlayerPos.y,
-          res.dismountedPlayerPos.z,
-          res.dismountedPlayerPos.yaw,
-        );
-        camera.fov = 75;
-        camera.updateProjectionMatrix();
-        weapons.setEnabled(true);
-      }
-      showQuickToast(`GARAGENWAND · ${res.name} WIEDER AN DER WAND BEFESTIGT`);
-      return;
-    }
-    const car = vehicles.getActiveVehicle();
-    if (car) {
-      if (world.isInSafehouseGarage(car.position)) {
-        car.hp = car.maxHp;
-        car.destroyed = false;
-        audio.playPurchase();
-        showQuickToast(`PRIVATE GARAGE · ${car.name} REPARIERT (100%)`);
-      } else if (world.isCarInTuningBay(car.position)) {
-        const tuneCost = car.tuned ? 400 : 600;
-        if (objectives.cash >= tuneCost) {
-          objectives.cash -= tuneCost;
-          const { firstUpgrade, neonLabel } = vehicles.tuneVehicle(car);
-          audio.playPurchase();
-          persistProgress();
-          showQuickToast(
-            firstUpgrade
-              ? `VICE CUSTOMS · TURBO + PANZERUNG + ${neonLabel} NEON (-$${tuneCost})`
-              : `VICE CUSTOMS · ${neonLabel} NEON-FINISH & 100% REPARATUR (-$${tuneCost})`,
-          );
-        } else {
-          showQuickToast(`VICE CUSTOMS · ZU WENIG CASH (BENÖTIGT $${tuneCost})`);
-        }
-      } else if (world.isCarInLowriderArena(car.position)) {
-        if (lowriderBattle.isActive()) {
-          lowriderBattle.cancel();
-          showQuickToast('LOWRIDER-BATTLE ABGEBROCHEN');
-        } else if (car.hydraulics) {
-          lowriderBattle.start();
-          vehicles.triggerHydraulicHop(car, 'up');
-          audio.playHydraulicBounce(true);
-          showQuickToast('LITTLE HAVANA LOWRIDER BATTLE · [W A S D / SPACE] IM TAKT HÜPFEN!');
-        } else {
-          showQuickToast('LOWRIDER-HYDRAULIK NÖTIG · ERST BEI VICE CUSTOMS EINBAUEN ([G] · $500)');
-        }
-      } else if (world.isCarInExportBay(car.position)) {
-        const exportSpec = world.canDeliverExportVehicle(car.name);
-        if (exportSpec) {
-          const { reward, allDoneBonus } = world.deliverExportVehicle(car.name);
-          objectives.cash += reward + allDoneBonus;
-          objectives.completedCount++;
-          lastCompletedCount = objectives.completedCount;
-          audio.playMissionPassed();
-          persistProgress();
-          const exitPos = vehicles.exitVehicle();
-          if (exitPos) {
-            player.setSpawn(46.5, 0.25, 92, Math.PI / 2);
-            weapons.setEnabled(true);
-          }
-          // Respawn delivered vehicle back at its original city spot
-          car.position.set(car.spawnX, 0, car.spawnZ);
-          car.yaw = car.spawnYaw;
-          car.speed = 0;
-          car.mesh.position.set(car.spawnX, 0, car.spawnZ);
-          car.mesh.rotation.y = car.spawnYaw;
-          showQuickToast(
-            allDoneBonus > 0
-              ? `IMPORT/EXPORT KOMPLETT! · +$${reward + allDoneBonus} (INKL. $5.000 BONUS!)`
-              : `IMPORT/EXPORT · ${car.name} GELIEFERT (+$${reward})`,
-          );
-        } else {
-          showQuickToast(`IMPORT/EXPORT · ${car.name} AKTUELL NICHT AUF DER LISTE`);
-        }
-      } else {
-        tryUsePayNSpray();
-      }
-    } else if (lookedFood && lookedFood.available) {
-      eatLookedFood();
-    } else if (lookedCabinetWeapon) {
-      equipCabinetWeapon();
-    } else if (lookedAtTv) {
-      toggleSafehouseTv();
-    } else if (lookedPet) {
-      interactWithLookedPet();
-    } else if (lookedWallRide) {
-      interactWithLookedWallRide();
-    } else if (world.isNearPetShop(player.position)) {
-      if (petShopOpen) closePetShop();
-      else openPetShop();
-    } else if (world.isNearSafehouseWardrobe(player.position)) {
-      const outfitName = playerAvatar.nextOutfit();
-      audio.playPurchase();
-      persistProgress();
-      showQuickToast(`OUTFIT · ${outfitName}`);
-    } else if (rooftopParty.isNearTributeCash(player.position)) {
-      const bonus = rooftopParty.claimTributeCash();
-      if (bonus > 0) {
-        objectives.cash += bonus;
-        audio.playMissionPassed();
-        persistProgress();
-        showQuickToast(`CREW-UMSCHLAG EINGESAMMELT · +$${bonus}`);
-      }
-    } else if (world.isNearSafehouseRooftopBar(player.position)) {
-      if (!world.isSafehouseRooftopBarOwned()) {
-        const barCost = 1800;
-        if (objectives.cash >= barCost) {
-          objectives.cash -= barCost;
-          world.setSafehouseRooftopBarOwned(true);
-          audio.playMissionPassed();
-          persistProgress();
-          showQuickToast('PENTHOUSE DACH-COCKTAILBAR GEKAUFT! (-$1.800) · [G] FÜR POOLPARTY!');
-        } else {
-          showQuickToast(`DACH-COCKTAILBAR · ZU WENIG CASH (BENÖTIGT $${barCost})`);
-        }
-      } else {
-        const prevHp = playerHp;
-        playerHp = Math.min(playerMaxHp, playerHp + 30);
-        const gained = Math.round(playerHp - prevHp);
-        cocktailScore = Math.min(6.0, cocktailScore + 1.25);
-        const rawLevel = THREE.MathUtils.clamp((cocktailScore - 1.0) / 3.8, 0, 1);
-        audio.playPurchase();
-        const hpNote = gained > 0 ? ` · +${gained} HP` : '';
-        const buzz =
-          rawLevel < 0.32 ? 'LEICHT ANGESCHWIPST 🍹' : rawLevel < 0.7 ? 'BETRUNKEN! 🍹' : 'VOLLRAUSCH! 🍹';
-        if (rooftopParty.isActive()) {
-          playerArmor = Math.min(100, playerArmor + 35);
-          weapons.refillAllAmmo();
-          persistProgress();
-          showQuickToast(`PARTY-COCKTAIL${hpNote} · +35% ARMOR & MUNI VOLL · ${buzz}`);
-        } else {
-          showQuickToast(`DACH-BAR · MIAMI VICE COCKTAIL${hpNote} · ${buzz}`);
-        }
-      }
-    } else if (rooftopParty.getNearbyGuest(player.position)) {
-      const quip = rooftopParty.talkToNearbyGuest(player.position, pets.ownsPet('elvis'));
-      if (quip) {
-        audio.playCheckpoint();
-        showQuickToast(quip);
-      }
-    } else if (world.isNearSafehouseFridge(player.position)) {
-      const prevHp = playerHp;
-      playerHp = Math.min(playerMaxHp, playerHp + 25);
-      const gained = Math.round(playerHp - prevHp);
-      audio.playEatCrunch();
-      showQuickToast(gained > 0 ? `KÜHLSCHRANK-SNACK · +${gained} HP` : 'KÜHLSCHRANK-SNACK · LECKER!');
-    } else if (world.isNearSafehouseLounge(player.position)) {
-      playerHp = playerMaxHp;
-      weapons.refillAllAmmo();
-      if (wanted.stars <= 2) {
-        wanted.reset();
-        npcs.clearPolice();
-      }
-      audio.playPurchase();
-      persistProgress();
-      showQuickToast(`SAFEHOUSE · ${playerMaxHp} HP, MUNITION VOLL & GESPEICHERT`);
-    } else if (world.isNearPdDesk(player.position) && wanted.stars >= 1) {
-      const bribeCost = wanted.stars * 200;
-      if (objectives.cash >= bribeCost) {
-        objectives.cash -= bribeCost;
-        wanted.reset();
-        npcs.clearPolice();
-        heli.clear();
-        audio.playPurchase();
-        persistProgress();
-        showQuickToast(`KAUTION GEZAHLT · -$${bribeCost} · ALLE STERNE GELÖSCHT`);
-        sendPoliceDispatch('Akten in Precinct 06 geschlossen — Fahndung aufgehoben.', true);
-      } else {
-        showQuickToast(`ZU WENIG CASH · KAUTION KOSTET $${bribeCost}`);
-      }
-    } else if (world.isNearPdEvidenceCash(player.position)) {
-      world.takePdEvidenceCash();
-      objectives.cash += 1500;
-      world.triggerPdAlarm();
-      wanted.addHeat(105);
-      audio.playMissionPassed();
-      persistProgress();
-      showQuickToast('ASSERVATEN-RAUB · +$1.500 — 3★ GROẞFAHNDUNG!');
-      sendPoliceDispatch('CODE 3! Syndikat-Geldkoffer aus Precinct 06 gestohlen — Großfahndung!', true);
-    } else if (world.isNearPdKevlar(player.position)) {
-      world.takePdKevlar();
-      playerArmor = 100;
-      world.triggerPdAlarm();
-      wanted.addHeat(55);
-      audio.playPurchase();
-      persistProgress();
-      showQuickToast('ASSERVATENKAMMER · KEVLAR-WESTE (100%) — ALARM AUSGELÖST!');
-      sendPoliceDispatch('Code 2! Einbruch in die Asservatenkammer von Precinct 06!', true);
-    } else if (world.isNearPdArmory(player.position)) {
-      weapons.refillAllAmmo();
-      weapons.switchWeapon(3);
-      world.triggerPdAlarm();
-      wanted.addHeat(55);
-      audio.playPurchase();
-      showQuickToast('WAFFENKAMMER · SHOTGUN & MUNITION GEKLAUT — ALARM!');
-      sendPoliceDispatch('Waffenkammer-Alarm in Precinct 06! Alle Einheiten ausrücken!', true);
-    } else if (world.isNearPdUniform(player.position)) {
-      const outfitName = playerAvatar.setOutfit(4);
-      audio.playPurchase();
-      persistProgress();
-      showQuickToast(`SPIND · ${outfitName} ANGEZOGEN`);
-    } else if (world.isNearIslandVault(player.position)) {
-      world.takeIslandVault();
-      npcs.alertEstateGuards();
-      objectives.cash += 2500;
-      wanted.addHeat(110);
-      audio.playMissionPassed();
-      persistProgress();
-      showQuickToast('STARFISH ESTATE TRESOR · +$2.500 GOLD — 3★ ALARM!');
-      sendPoliceDispatch('CODE 3 auf Starfish Island! Kartell-Anwesen ausgeraubt!', true);
-    } else if (world.isNearYachtLoot(player.position)) {
-      world.takeYachtLoot();
-      npcs.alertEstateGuards();
-      objectives.cash += 1800;
-      wanted.addHeat(85);
-      audio.playMissionPassed();
-      persistProgress();
-      showQuickToast('SUPERYACHT „LADY VICE“ · +$1.800 KAPITÄNS-GOLD!');
-      sendPoliceDispatch('Alarm auf der Superyacht Lady Vice! Küstenwache & Einheiten ausrücken!', true);
-    } else if (world.isNearDinerCounter(player.position)) {
-      const mealCost = 40;
-      if (objectives.cash >= mealCost) {
-        objectives.cash -= mealCost;
-        playerHp = playerMaxHp;
-        audio.playEatCrunch();
-        persistProgress();
-        carryingSnackTimer = 50.0;
-        carryingSnackName = 'CUBAN BURGER';
-        showQuickToast(`STARLIGHT DINER · CUBAN BURGER & SHAKE (${playerMaxHp} HP · -$40)`);
-      } else {
-        showQuickToast(`STARLIGHT DINER · ZU WENIG CASH (BENÖTIGT $${mealCost})`);
-      }
-    } else if (world.isNearBankVault(player.position)) {
-      world.takeBankVault();
-      objectives.cash += 3000;
-      wanted.addHeat(165);
-      audio.playMissionPassed();
-      persistProgress();
-      showQuickToast('BANCO DE VICE TRESOR GEKNACKT · +$3.000 — 4★ GROẞFAHNDUNG!');
-      sendPoliceDispatch('CODE 3! Bewaffneter Banküberfall in der Banco de Vice (Little Havana)!', true);
-    } else if (world.isNearMarinaLoot(player.position)) {
-      world.takeMarinaLoot();
-      objectives.cash += 2000;
-      wanted.addHeat(75);
-      audio.playMissionPassed();
-      persistProgress();
-      showQuickToast('VICE MARINA · SCHMUGGLER-KOFFER GEKLAUT (+$2.000 · ⚠ 2★)');
-      sendPoliceDispatch('Schmuggler-Alarm an der Vice Marina! Küstenwache & Streifen ausrücken!', true);
-    } else if (world.isNearLighthouseSpot(player.position)) {
-      const firstDiscovery = world.claimLighthouseBonus();
-      playerHp = playerMaxHp;
-      if (firstDiscovery) {
-        objectives.cash += 1000;
-        audio.playMissionPassed();
-        persistProgress();
-        showQuickToast(`CAPE VICE LEUCHTTURM ENTDECKT! · +$1.000 & ${playerMaxHp} HP`);
-      } else {
-        audio.playPurchase();
-        showQuickToast(`CAPE VICE AUSSICHT · FRISCHE MEERESLUFT (${playerMaxHp} HP)`);
-      }
-    } else if (world.isNearClubBar(player.position)) {
-      if (objectives.cash >= 50) {
-        objectives.cash -= 50;
-        const prevHp = playerHp;
-        playerHp = Math.min(playerMaxHp, playerHp + 30);
-        const gained = Math.round(playerHp - prevHp);
-        cocktailScore = Math.min(6.0, cocktailScore + 1.0);
-        const rawLevel = THREE.MathUtils.clamp((cocktailScore - 1.0) / 4.5, 0, 1);
-        audio.playPurchase();
-        persistProgress();
-        const hpNote = gained > 0 ? ` · +${gained} HP` : '';
-        if (rawLevel <= 0.01) {
-          showQuickToast(`MIAMI VICE COCKTAIL${hpNote} · ERFRISCHEND!`);
-        } else if (rawLevel < 0.35) {
-          showQuickToast(`MIAMI VICE COCKTAIL${hpNote} · LEICHT ANGESCHWIPST`);
-        } else if (rawLevel < 0.72) {
-          showQuickToast(`MIAMI VICE COCKTAIL${hpNote} · BETRUNKEN!`);
-        } else {
-          showQuickToast(`MIAMI VICE COCKTAIL${hpNote} · VOLLRAUSCH!`);
-        }
-      } else {
-        showQuickToast('ZU WENIG CASH · COCKTAIL KOSTET $50');
-      }
-    }
+  if (e.code === 'KeyF' && player.getIsActive() && !modals.isShopOpen() && wastedTimer <= 0) {
+    handleInteractKeyF(interactionCtx);
     return;
   }
 
   if (e.code === 'KeyB' && wastedTimer <= 0) {
-    if (shopOpen) {
-      closeShop();
-    } else if (petShopOpen) {
-      closePetShop();
+    if (modals.isShopOpen()) {
+      modals.closeShop();
+    } else if (modals.isPetShopOpen()) {
+      modals.closePetShop();
     } else if (player.getIsActive() && !vehicles.isInVehicle() && shop.isPlayerNear(player.position)) {
-      openShop();
+      modals.openShop();
     } else if (player.getIsActive() && !vehicles.isInVehicle() && world.isNearPetShop(player.position)) {
-      openPetShop();
+      modals.openPetShop();
     }
     return;
   }
 
-  if (e.code === 'Escape' && (shopOpen || petShopOpen)) {
-    if (shopOpen) closeShop();
-    if (petShopOpen) closePetShop();
+  if (e.code === 'Escape' && (modals.isShopOpen() || modals.isPetShopOpen())) {
+    modals.closeActiveModal();
     return;
   }
 
-  if (e.code === 'KeyE' && player.getIsActive() && !shopOpen && wastedTimer <= 0) {
+  if (e.code === 'KeyE' && player.getIsActive() && !modals.isShopOpen() && wastedTimer <= 0) {
     tryToggleVehicleOrBoat();
     return;
   }
@@ -2226,7 +1198,7 @@ window.addEventListener('keydown', (e) => {
   if (
     e.code === 'KeyV' &&
     player.getIsActive() &&
-    !shopOpen &&
+    !modals.isShopOpen() &&
     !vehicles.isInVehicle() &&
     !boat.isInBoat() &&
     !superyacht.isInYacht() &&
@@ -2276,7 +1248,7 @@ function startGame(fromGamepad = false): void {
 }
 
 function pauseGame(): void {
-  if (shopOpen || petShopOpen || devOpen || phoneOpen) return;
+  if (modals.isAnyModalOpen()) return;
   player.setActive(false);
   persistProgress();
   overlay.classList.remove('hidden');
@@ -2289,7 +1261,7 @@ playBtn.addEventListener('click', (e) => {
 
 canvas.addEventListener('click', () => {
   audio.unlock();
-  if (player.getIsActive() && !player.getIsLocked() && !shopOpen && !petShopOpen && !devOpen && !phoneOpen) {
+  if (player.getIsActive() && !player.getIsLocked() && !modals.isAnyModalOpen()) {
     requestLockSafely();
   }
 });
@@ -2300,7 +1272,7 @@ document.addEventListener('pointerlockchange', () => {
     pointerLockFallback = false;
     overlay.classList.add('hidden');
     player.setActive(true);
-  } else if (!pointerLockFallback && !shopOpen && !petShopOpen && !devOpen && !phoneOpen) {
+  } else if (!pointerLockFallback && !modals.isAnyModalOpen()) {
     pauseGame();
   }
 });
@@ -2310,7 +1282,7 @@ document.addEventListener('pointerlockerror', () => {
 });
 
 window.addEventListener('keydown', (e) => {
-  if (e.code === 'Escape' && player.getIsActive() && !player.getIsLocked() && !shopOpen && !petShopOpen) {
+  if (e.code === 'Escape' && player.getIsActive() && !player.getIsLocked() && !modals.isShopOpen() && !modals.isPetShopOpen()) {
     pauseGame();
   }
 });
@@ -2413,23 +1385,18 @@ function animate(now: number): void {
   if (pad.connected) {
     // Menu/Start toggles pause or closes any open modal; A resumes from title screen; B closes open modals!
     if (pad.startPressed) {
-      if (shopOpen) closeShop();
-      else if (petShopOpen) closePetShop();
-      else if (phoneOpen) closePhone();
-      else if (devOpen) closeDevPanel();
-      else if (player.getIsActive()) pauseGame();
-      else startGame(true);
-    } else if (pad.bPressed && (shopOpen || petShopOpen || phoneOpen || devOpen)) {
-      if (shopOpen) closeShop();
-      else if (petShopOpen) closePetShop();
-      else if (phoneOpen) closePhone();
-      else if (devOpen) closeDevPanel();
-    } else if (pad.aPressed && !player.getIsActive() && !shopOpen && !petShopOpen && !phoneOpen && !devOpen) {
+      if (!modals.closeActiveModal()) {
+        if (player.getIsActive()) pauseGame();
+        else startGame(true);
+      }
+    } else if (pad.bPressed && modals.isAnyModalOpen()) {
+      modals.closeActiveModal();
+    } else if (pad.aPressed && !player.getIsActive() && !modals.isAnyModalOpen()) {
       startGame(true);
     }
   }
 
-  const isPlaying = player.getIsActive() && !shopOpen && !petShopOpen && !devOpen && !phoneOpen && wastedTimer <= 0;
+  const isPlaying = player.getIsActive() && !modals.isAnyModalOpen() && wastedTimer <= 0;
 
   // Gradually sober up over time; 1st cocktail keeps drunkLevel at 0
   if (cocktailScore > 0) {
@@ -2497,7 +1464,7 @@ function animate(now: number): void {
       }
     }
     if (pad.phonePressed) {
-      openPhone();
+      modals.openPhone();
     }
     if (pad.reloadOrSprayPressed && vehicles.isInVehicle()) tryUsePayNSpray();
     if (pad.prevWeaponPressed && (vehicles.isInVehicle() || boat.isInBoat() || garageRides.isRiding())) {
@@ -2785,18 +1752,6 @@ function animate(now: number): void {
     showQuickToast(storyHud.toastText);
   }
   const kittHud = kittAi.update(dt);
-  if (storyHud.dialogueSpeaker && storyHud.dialogueText) {
-    setText(storySpeakerEl, storyHud.dialogueSpeaker);
-    setText(storyLineEl, storyHud.dialogueText);
-    setClass(storyDialogueBannerEl, 'visible', true);
-  } else if (kittHud.speaker && kittHud.text) {
-    setText(storySpeakerEl, kittHud.speaker);
-    setText(storyLineEl, kittHud.text);
-    setClass(storyDialogueBannerEl, 'visible', true);
-  } else {
-    setClass(storyDialogueBannerEl, 'visible', false);
-  }
-
   const lowriderHud = lowriderBattle.update(dt);
   if (lowriderHud.finishedToast) {
     if (lowriderHud.finishedReward > 0) {
@@ -2807,29 +1762,6 @@ function animate(now: number): void {
       persistProgress();
     }
     showQuickToast(lowriderHud.finishedToast);
-  }
-  setClass(lowriderHudEl, 'visible', lowriderHud.active);
-  if (lowriderHud.active) {
-    setText(lowriderScoreEl, `${lowriderHud.score} PKT`);
-    setText(lowriderProgressEl, `${lowriderHud.progressPct}%`);
-    setText(
-      lowriderFeedbackEl,
-      lowriderHud.feedback || 'IM TAKT HÜPFEN · [W A S D] / [SPACE] · [ESC] ABBRUCH',
-    );
-    setClass(lowriderFeedbackEl, 'perfect', lowriderHud.feedbackKind === 'perfect');
-    setClass(lowriderFeedbackEl, 'good', lowriderHud.feedbackKind === 'good');
-    setClass(lowriderFeedbackEl, 'miss', lowriderHud.feedbackKind === 'miss');
-
-    lowriderNotesEl.innerHTML = '';
-    for (let i = 0; i < lowriderHud.notes.length; i++) {
-      const n = lowriderHud.notes[i];
-      const leftPct = 16 + (n.offsetSec / 1.8) * 82;
-      const el = document.createElement('div');
-      el.className = n.dir === 'hop' ? 'lowrider-note hop' : 'lowrider-note';
-      el.style.left = `${leftPct.toFixed(1)}%`;
-      el.textContent = LOWRIDER_DIR_SYMBOL[n.dir];
-      lowriderNotesEl.appendChild(el);
-    }
   }
   const activePoliceCar = Boolean(vehicles.getActiveVehicle()?.isPolice);
   const vigilanteHud = vigilante.update(dt, player.position, activePoliceCar, npcs);
@@ -3076,15 +2008,9 @@ function animate(now: number): void {
     boat.getBoatMarkers(),
   );
 
-  // --- HUD Updates (Dirty-checked DOM mutations) ---
+  // --- HUD & Visual Timers ---
   damageFlash = Math.max(0, damageFlash - dt * 2.2);
-  setOpacity(damageVignetteEl, damageFlash > 0.004 ? damageFlash.toFixed(2) : '0');
-  if (timeJumpFlash > 0) {
-    timeJumpFlash = Math.max(0, timeJumpFlash - dt * 1.45);
-    setOpacity(timeJumpFlashEl, timeJumpFlash > 0.004 ? (timeJumpFlash * 0.92).toFixed(2) : '0');
-  } else {
-    setOpacity(timeJumpFlashEl, '0');
-  }
+  if (timeJumpFlash > 0) timeJumpFlash = Math.max(0, timeJumpFlash - dt * 1.45);
   if (retrowaveTimer > 0) {
     retrowaveTimer = Math.max(0, retrowaveTimer - dt);
     if (retrowaveTimer <= 0) {
@@ -3093,311 +2019,54 @@ function animate(now: number): void {
       showQuickToast('ZEITSPRUNG BEENDET · ZURÜCK IN PALM CITY ’86');
     }
   }
-  const hpPct = Math.min(100, Math.round((playerHp / playerMaxHp) * 100));
-  setWidth(hpFillEl, `${hpPct}%`);
-  setText(hpTextEl, playerMaxHp > 100 ? `${Math.round(playerHp)}/${playerMaxHp}` : `${Math.round(playerHp)}`);
-
-  const armorPct = Math.round(playerArmor);
-  setWidth(armorFillEl, `${armorPct}%`);
-  setText(armorTextEl, `${armorPct}`);
-
-  setText(starsEl, STAR_STRINGS[wanted.stars] ?? STAR_STRINGS[0]);
-  setClass(starsEl, 'cooling', wanted.isCoolingDown());
-  setClass(starsEl, 'active', wanted.stars > 0);
-  setText(cashEl, formatHudCash(objHud.cash));
-
-  if (storyHud.active) {
-    setText(objTagEl, `★ STORY · KAP. ${storyHud.chapterNumber}/5`);
-    setClass(objTagEl, 'heist', true);
-    setText(objTitleEl, storyHud.title);
-    setText(objDescEl, storyHud.description);
-    setText(objDistEl, `${storyHud.distanceM} m`);
-  } else if (vigilanteHud.active) {
-    setText(objTagEl, '★ VIGILANTE');
-    setClass(objTagEl, 'heist', true);
-    setText(objTitleEl, vigilanteHud.title);
-    setText(objDescEl, vigilanteHud.description);
-    setText(objDistEl, `${vigilanteHud.timerText} · ${vigilanteHud.distanceM} m`);
-  } else if (specialHud.active) {
-    setText(objTagEl, specialHud.tag);
-    setClass(objTagEl, 'heist', true);
-    setText(objTitleEl, specialHud.title);
-    setText(objDescEl, specialHud.description);
-    setText(objDistEl, `${specialHud.timerText} · ${specialHud.distanceM} m`);
-  } else if (heistHud.active) {
-    setText(objTagEl, '★ HEIST');
-    setClass(objTagEl, 'heist', true);
-    setText(objTitleEl, heistHud.title);
-    setText(objDescEl, heistHud.description);
-    setText(objDistEl, `${heistHud.distanceM} m`);
-  } else {
-    setText(objTagEl, 'ZIEL · [J] TELEFON · [H] HEIST');
-    setClass(objTagEl, 'heist', false);
-    setText(objTitleEl, objHud.title);
-    setText(objDescEl, objHud.description);
-    if (objHud.timerText && objHud.distanceM > 0) {
-      setText(objDistEl, `${objHud.timerText} · ${objHud.distanceM} m`);
-    } else if (objHud.timerText) {
-      setText(objDistEl, objHud.timerText);
-    } else {
-      setText(objDistEl, objHud.distanceM > 0 ? `${objHud.distanceM} m` : '');
-    }
-  }
-
   if (quickToastTimer > 0) quickToastTimer = Math.max(0, quickToastTimer - dt);
-  const activeToast = quickToastTimer > 0 ? quickToastText : objHud.toastText;
-  if (activeToast) {
-    setText(toastBannerEl, activeToast);
-    setClass(toastBannerEl, 'visible', true);
-  } else {
-    setClass(toastBannerEl, 'visible', false);
-  }
 
-  setClass(weaponPanelEl, 'hidden', inAnyCraft);
-  setDisplay(crosshairEl, inAnyCraft ? 'none' : 'block');
-  setClass(vehiclePanelEl, 'visible', inAnyCraft);
-
-  let nextPrompt: string | null = null;
-
-  if (heliPlayerHud.inHeli) {
-    setText(vehicleNameEl, `${heliPlayerHud.heliName} · ${heliPlayerHud.altitudeM}m`);
-    setText(vehicleSpeedEl, `${heliPlayerHud.speedKmh}`);
-    setWidth(vehicleHpFillEl, '100%');
-    setClass(vehicleHpFillEl, 'low', false);
-    setText(
-      vehicleCamHintEl,
-      `[SPACE/C] HÖHE · [Q] ${audio.getRadioStation()} · [V] CAM · [E] LANDEN`,
-    );
-  } else if (boatHud.inBoat) {
-    setText(vehicleNameEl, boatHud.boatName);
-    setText(vehicleSpeedEl, `${boatHud.speedKmh}`);
-    setWidth(vehicleHpFillEl, '100%');
-    setClass(vehicleHpFillEl, 'low', false);
-    setText(vehicleCamHintEl, `[Q] ${audio.getRadioStation()} · [E] AUSSTEIGEN`);
-  } else if (yachtHud.inYacht) {
-    setText(vehicleNameEl, yachtHud.yachtName);
-    setText(vehicleSpeedEl, `${yachtHud.speedKmh}`);
-    setWidth(vehicleHpFillEl, '100%');
-    setClass(vehicleHpFillEl, 'low', false);
-    setText(vehicleCamHintEl, `[Q] ${audio.getRadioStation()} · [V] BRÜCKE/CHASE · [E] ANKERN`);
-  } else if (garageRideHud.inRide) {
-    setText(vehicleNameEl, garageRideHud.rideName);
-    setText(vehicleSpeedEl, `${garageRideHud.speedKmh}`);
-    setWidth(vehicleHpFillEl, '100%');
-    setClass(vehicleHpFillEl, 'low', false);
-    const rideHint =
-      garageRideHud.rideId === 'skateboard'
-        ? `[SPACE] OLLIE · [SHIFT] PUSH · [V] CAM · [E] ABSTEIGEN`
-        : `[SPACE] HOP · [SHIFT] SPRINT · [G] KLINGEL · [V] CAM · [E] AB`;
-    setText(vehicleCamHintEl, rideHint);
-    if (garageRideHud.canRehangInGarage) {
-      nextPrompt = `[F] ${garageRideHud.rideName} WIEDER AN GARAGENWAND BEFESTIGEN`;
-    }
-  } else if (driveHud.inVehicle) {
-    setText(vehicleNameEl, driveHud.vehicleName);
-    setText(vehicleSpeedEl, `${driveHud.speedKmh}`);
-    setWidth(vehicleHpFillEl, `${driveHud.hpPct}%`);
-    setClass(vehicleHpFillEl, 'low', driveHud.hpPct < 35);
-    const car = vehicles.getActiveVehicle();
-    if (car?.specialRole === 'firetruck') {
-      const fireToggle = specialMissions.getActiveKind() === 'firefighter' ? 'EINSATZ AUS' : 'FEUERWEHR';
-      setText(
-        vehicleCamHintEl,
-        `[LMB/C] WASSERWERFER · [MAUS/PFEILE] ZIELEN · [G] ${fireToggle} · [V] CAM · [E] AUS`,
-      );
-    } else if (car?.specialRole === 'taxi') {
-      const taxiToggle = specialMissions.getActiveKind() === 'taxi' ? 'TAXI AUS' : 'TAXI-MODUS';
-      setText(
-        vehicleCamHintEl,
-        `[LMB] DRIVE-BY · [G] ${taxiToggle} · [Q] ${audio.getRadioStation()} · [V] CAM · [E] AUS`,
-      );
-    } else if (car?.specialRole === 'ambulance') {
-      const emsToggle = specialMissions.getActiveKind() === 'paramedic' ? 'EMS AUS' : 'RETTUNGSDIENST';
-      setText(
-        vehicleCamHintEl,
-        `[LMB] DRIVE-BY · [G] ${emsToggle} · [Q] ${audio.getRadioStation()} · [V] CAM · [E] AUS`,
-      );
-    } else if (car?.specialRole === 'icecream') {
-      const jingleLbl = car.jingleActive ? 'JINGLE AUS' : '8-BIT JINGLE AN';
-      setText(
-        vehicleCamHintEl,
-        `[G] ${jingleLbl} (COPS ABLENKEN) · [V] CAM · [E] AUS`,
-      );
-    } else if (car?.isDelorean) {
-      const warpLbl =
-        retrowaveTimer > 0
-          ? `⚡ RETROWAVE (${Math.ceil(retrowaveTimer)}s)`
-          : car.timeJumpCooldown && car.timeJumpCooldown > 0
-            ? `FLUX LÄDT (${Math.ceil(car.timeJumpCooldown)}s)`
-            : car.timeJumpReady
-              ? '[G / SHIFT] ⚡ ZEITSPRUNG BEREIT!'
-              : '100% TOPSPEED FÜR ZEITSPRUNG [G]';
-      setText(
-        vehicleCamHintEl,
-        `${warpLbl} · [Q] ${audio.getRadioStation()} · [V] CAM · [E] AUS`,
-      );
-    } else if (car?.isKitt) {
-      const boostLbl =
-        car.turboBoostCooldown > 0
-          ? `TURBO-BOOST (${car.turboBoostCooldown.toFixed(1)}s)`
-          : 'TURBO-BOOST BEREIT!';
-      setText(
-        vehicleCamHintEl,
-        `[SHIFT/G] ${boostLbl} · [Q] ${audio.getRadioStation()} · [V] CAM · [E] AUS`,
-      );
-    } else {
-      const vigHint = car?.isPolice
-        ? ` · [G] ${vigilante.isActive() ? 'VIGILANTE AUS' : 'VIGILANTE'}`
-        : car?.hydraulics
-          ? ` · [G] HYDRAULIK ${car.hydraulicsAutoBounce ? 'AN' : 'AUS'}`
-          : '';
-      setText(vehicleCamHintEl, `[LMB] DRIVE-BY · [Q] ${audio.getRadioStation()}${vigHint} · [V] CAM · [E] AUS`);
-    }
-    if (car && world.isInSafehouseGarage(car.position)) {
-      nextPrompt = '[F] PRIVATE GARAGE · GRATIS REPARATUR (100%)';
-    } else if (car && world.isCarInTuningBay(car.position)) {
-      const hydroPart = car.isBike
-        ? ''
-        : car.hydraulics
-          ? ' · ✓ HYDRAULIK'
-          : ' · [G] LOWRIDER-HYDRAULIK ($500)';
-      nextPrompt = car.tuned
-        ? `[F] VICE CUSTOMS · NEON-FINISH ($400)${hydroPart}`
-        : `[F] VICE CUSTOMS · TURBO & NEON ($600)${hydroPart}`;
-    } else if (car && world.isCarInLowriderArena(car.position) && !lowriderBattle.isActive()) {
-      nextPrompt = car.hydraulics
-        ? '[F] LITTLE HAVANA LOWRIDER BATTLE STARTEN (+$1.200)'
-        : '[LITTLE HAVANA ARENA] ERST LOWRIDER-HYDRAULIK BEI VICE CUSTOMS EINBAUEN ([G] · $500)';
-    } else if (car && world.isCarInExportBay(car.position)) {
-      const exportSpec = world.canDeliverExportVehicle(car.name);
-      nextPrompt = exportSpec
-        ? `[F] IMPORT / EXPORT · ${car.name} ABLIEFERN (+$${exportSpec.reward})`
-        : `[IMPORT / EXPORT] ${car.name} NICHT GESUCHT (SIEHE TAFEL)`;
-    } else if (car && payNSpray.isCarInBay(car.position)) {
-      nextPrompt = `[F] PAY 'N' SPRAY · $${payNSpray.cost} (REPARATUR & STERNE WEG)`;
-    } else if (car && car.isDelorean && car.timeJumpReady) {
-      nextPrompt = '[G] ⚡ 88 MPH ZEITSPRUNG AUSLÖSEN!';
-    }
-  } else {
-    setText(weaponNameEl, wHud.name);
-    setText(ammoCurrentEl, wHud.isMelee ? '∞' : wHud.reloading ? 'RLD' : String(wHud.ammo));
-    setText(ammoMaxEl, wHud.isMelee ? 'MELEE' : `/ ${wHud.magSize}`);
-    setClass(reloadBarEl, 'visible', wHud.reloading);
-    setWidth(reloadFillEl, `${Math.round(wHud.reloadProgress * 100)}%`);
-    for (let i = 0; i < slotEls.length; i++) setClass(slotEls[i], 'active', i === wHud.slotIndex);
-
-    const spreadStr = `${wHud.spreadPx}px`;
-    if (widthCache.get(crosshairEl) !== spreadStr) {
-      widthCache.set(crosshairEl, spreadStr);
-      crosshairEl.style.width = spreadStr;
-      crosshairEl.style.height = spreadStr;
-    }
-    setOpacity(crosshairEl, wHud.ads ? '0.45' : '0.88');
-
-    setOpacity(hitmarkerEl, wHud.hitmarkerAlpha > 0.01 ? wHud.hitmarkerAlpha.toFixed(2) : '0');
-    setClass(hitmarkerEl, 'kill', wHud.hitmarkerKill && wHud.hitmarkerAlpha > 0.05);
-
-    if (lookedWallRide) {
-      nextPrompt =
-        lookedWallRide.action === 'detach'
-          ? `[E / F / LMB] ${lookedWallRide.promptLabel}`
-          : `[F / LMB] ${lookedWallRide.promptLabel}`;
-    } else if (lookedPet) {
-      nextPrompt = `[LMB / F] ${lookedPet.promptLabel}`;
-    } else if (lookedFood) {
-      nextPrompt =
-        lookedFood.alcohol && lookedFood.alcohol > 0
-          ? `[LMB / F] ${lookedFood.name} TRINKEN (+${lookedFood.heal} HP · 🍺)`
-          : `[LMB / F] ${lookedFood.name} NEHMEN & ESSEN (+${lookedFood.heal} HP)`;
-    } else if (lookedCabinetWeapon) {
-      nextPrompt = `[LMB / F] ${lookedCabinetWeapon.name} AUS WAFFENSCHRANK NEHMEN`;
-    } else if (lookedAtTv) {
-      nextPrompt = world.isTvOn()
-        ? '[LMB / F] FERNSEHER AUSSCHALTEN'
-        : '[LMB / F] FERNSEHER ANSCHALTEN · VICE CHANNEL 6';
-    } else if (shop.isPlayerNear(player.position) && !shopOpen) {
-      nextPrompt = '[B] AMMU-NEON SHOP ÖFFNEN ($)';
-    } else if (world.isNearPetShop(player.position) && !petShopOpen) {
-      nextPrompt = '[F / B] HAVANA PETS · SAFEHOUSE-HAUSTIER ADOPTIEREN (🐾)';
-    } else if (world.isNearSafehouseWardrobe(player.position)) {
-      nextPrompt = '[F] KLEIDERSCHRANK · OUTFIT WECHSELN';
-    } else if (partyHud.nearTributeCash) {
-      nextPrompt = '[F] CREW-UMSCHLAG NEHMEN (+$400)';
-    } else if (world.isNearSafehouseRooftopBar(player.position)) {
-      nextPrompt = !world.isSafehouseRooftopBarOwned()
-        ? '[F] PENTHOUSE DACH-COCKTAILBAR KAUFEN · $1.800'
-        : partyHud.active
-          ? '[F] PARTY-COCKTAIL (+HP/+ARMOR/MUNI) · [G] PARTY BEENDEN'
-          : '[F] COCKTAIL MIXEN · [G] ROOFTOP-PARTY SCHMEISSEN';
-    } else if (partyHud.nearbyGuestName) {
-      nextPrompt = `[F] MIT ${partyHud.nearbyGuestName} ANSTOSSEN · [G] PARTY BEENDEN`;
-    } else if (world.isNearSafehouseFridge(player.position)) {
-      nextPrompt = '[F] KÜHLSCHRANK · SNACK ESSEN (+25 HP)';
-    } else if (world.isNearSafehouseLounge(player.position)) {
-      nextPrompt = '[F] SAFEHOUSE · HEILEN, MUNITION VOLL & SPEICHERN';
-    } else if (world.isNearPdDesk(player.position) && wanted.stars >= 1) {
-      nextPrompt = `[F] KAUTION / BESTECHUNG · $${wanted.stars * 200} (STERNE LÖSCHEN)`;
-    } else if (world.isNearPdEvidenceCash(player.position)) {
-      nextPrompt = '[F] SYNDIKAT-GELDKOFFER STEHLEN (+$1.500 · ⚠ 3★ ALARM)';
-    } else if (world.isNearPdKevlar(player.position)) {
-      nextPrompt = '[F] KEVLAR-WESTE STEHLEN (100% ARMOR · ⚠ ALARM)';
-    } else if (world.isNearPdArmory(player.position)) {
-      nextPrompt = '[F] POLIZEI-SHOTGUN & MUNITION STEHLEN (⚠ ALARM)';
-    } else if (world.isNearPdUniform(player.position)) {
-      nextPrompt = '[F] SPIND · VICE PD UNIFORM ANZIEHEN';
-    } else if (world.isNearClubBar(player.position)) {
-      nextPrompt = '[F] MIAMI VICE COCKTAIL TRINKEN · $50';
-    } else if (world.isNearIslandVault(player.position)) {
-      nextPrompt = '[F] STARFISH ESTATE · GOLD-TRESOR STEHLEN (+$2.500 · ⚠ 3★)';
-    } else if (world.isNearYachtLoot(player.position)) {
-      nextPrompt = '[F] SUPERYACHT „LADY VICE“ · KAPITÄNS-GOLD (+$1.800 · ⚠)';
-    } else if (world.isNearDinerCounter(player.position)) {
-      nextPrompt = '[F] STARLIGHT DINER · CUBAN BURGER & MILKSHAKE ($40 · 100% HP)';
-    } else if (world.isNearBankVault(player.position)) {
-      nextPrompt = '[F] BANCO DE VICE · BANK-TRESOR AUSRAUBEN (+$3.000 · ⚠ 4★ ALARM)';
-    } else if (world.isNearMarinaLoot(player.position)) {
-      nextPrompt = '[F] VICE MARINA · SCHMUGGLER-KOFFER STEHLEN (+$2.000 · ⚠ 2★)';
-    } else if (world.isNearLighthouseSpot(player.position)) {
-      nextPrompt = '[F] CAPE VICE LEUCHTTURM · AUSSICHT & ENTDECKER-BONUS';
-    } else if (heistHud.nearStartMarker && !heistHud.active) {
-      nextPrompt = '[H] OCEAN CLUB HEIST STARTEN (+$3.500)';
-    } else if (heliPlayerHud.nearbyHeli) {
-      nextPrompt = '[E] EINSTEIGEN · VICE MAVERICK HELIKOPTER';
-    } else if (boatHud.nearbyBoat) {
-      const climbHint = playerWaterClimbLabel
-        ? playerWaterClimbLabel === 'BOOT'
-          ? ' · [SPACE] AUFS BOOT ZIEHEN'
-          : ' · [SPACE] AUF DEN STEG ZIEHEN'
-        : '';
-      nextPrompt = `[E] EINSTEIGEN · ${boatHud.nearbyBoatName ?? 'BOOT'}${climbHint}`;
-    } else if (yachtHud.nearbyYacht) {
-      nextPrompt = playerWaterClimbLabel
-        ? '[E] STEUERN · SUPERYACHT „LADY VICE“ · [SPACE] AUFS BOOT ZIEHEN'
-        : '[E] STEUERN · SUPERYACHT „LADY VICE“';
-    } else if (playerWaterClimbLabel) {
-      nextPrompt =
-        playerWaterClimbLabel === 'BOOT'
-          ? '[SPACE] AUFS BOOT ZIEHEN'
-          : '[SPACE] AUF DEN STEG ZIEHEN';
-    } else if (garageRideHud.nearbyMountPrompt) {
-      nextPrompt = garageRideHud.nearbyMountPrompt;
-    } else if (driveHud.nearbyVehicleName) {
-      nextPrompt = `[E] EINSTEIGEN · ${driveHud.nearbyVehicleName}`;
-    } else if (playerInCover) {
-      nextPrompt = playerCoverPeeking
-        ? '[DECKUNG · SPÄHEN] [LMB] FEUERN · [Q / X] DECKUNG VERLASSEN'
-        : '[DECKUNG] [A/D] ENTLANG · [RMB] SPÄHEN · [Q / X] VERLASSEN';
-    } else if (playerCanTakeCover) {
-      nextPrompt = '[Q / X] IN DECKUNG GEHEN';
-    }
-  }
-
-  if (nextPrompt) {
-    setText(interactPromptEl, nextPrompt);
-    setClass(interactPromptEl, 'visible', true);
-  } else {
-    setClass(interactPromptEl, 'visible', false);
-  }
+  hud.update({
+    damageFlash,
+    timeJumpFlash,
+    retrowaveTimer,
+    playerPos: player.position,
+    playerHp,
+    playerMaxHp,
+    playerArmor,
+    cash: objHud.cash,
+    wanted,
+    radioStation: audio.getRadioStation(),
+    inAnyCraft,
+    activeCar: vehicles.getActiveVehicle(),
+    activeSpecialKind: specialMissions.getActiveKind(),
+    vigilanteActive: vigilante.isActive(),
+    lowriderBattleActive: lowriderBattle.isActive(),
+    shopOpen: modals.isShopOpen(),
+    petShopOpen: modals.isPetShopOpen(),
+    world,
+    shop,
+    payNSpray,
+    storyHud,
+    kittHud,
+    vigilanteHud,
+    specialHud,
+    heistHud,
+    partyHud,
+    objHud,
+    lowriderHud,
+    activeToast: quickToastTimer > 0 ? quickToastText : objHud.toastText,
+    wHud,
+    driveHud,
+    garageRideHud,
+    boatHud,
+    yachtHud,
+    heliPlayerHud,
+    lookedWallRide,
+    lookedPet,
+    lookedFood,
+    lookedCabinetWeapon,
+    lookedAtTv,
+    playerWaterClimbLabel,
+    playerInCover,
+    playerCoverPeeking,
+    playerCanTakeCover,
+  });
 
   // Apply decaying Camera-Shake & progressive Drunk camera sway/vision effects right before rendering
   if (shakeTrauma > 0.001) {

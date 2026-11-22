@@ -189,6 +189,7 @@ export class Minimap {
     maverickPos?: { x: number; z: number } | null,
     parkedRides?: { x: number; z: number; label: string; color: string }[],
     yachtState?: { x: number; z: number; yaw: number } | null,
+    boatMarkers?: { x: number; z: number; yaw: number }[],
   ): void {
     // Throttle 2D radar redraws to ~30 Hz (saves ~50% 2D canvas CPU work on 60-144Hz monitors!)
     if (elapsed - this.lastRenderElapsed < 0.032) return;
@@ -232,6 +233,24 @@ export class Minimap {
     ctx.lineWidth = 1.2;
     ctx.strokeRect(-6 * scale, -21 * scale, 12 * scale, 42 * scale);
     ctx.restore();
+
+    // Drivable Boats (Stinger Speedboat + 4 Vice Marina Yachts/Sailboats)
+    if (boatMarkers) {
+      for (let i = 0; i < boatMarkers.length; i++) {
+        const bm = boatMarkers[i];
+        ctx.save();
+        ctx.translate((bm.x - playerX) * scale, (bm.z - playerZ) * scale);
+        ctx.rotate(-bm.yaw);
+        ctx.fillStyle = '#36f1e6';
+        ctx.beginPath();
+        ctx.moveTo(0, 4.5);
+        ctx.lineTo(2.4, -3.5);
+        ctx.lineTo(-2.4, -3.5);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
+    }
 
     // Vehicles
     for (const v of vehicles) {

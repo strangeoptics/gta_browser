@@ -3,9 +3,20 @@ import type { AABB } from '../types';
 import type { StuntRamp } from './StuntRamps';
 import { createNeonSignTexture } from './Textures';
 
+export interface MarinaBoatInit {
+  group: THREE.Group;
+  name: string;
+  x: number;
+  z: number;
+  yaw: number;
+  isSailboat: boolean;
+  baseY: number;
+}
+
 export interface NorthPointHandle {
   stuntRamps: StuntRamp[];
   serpentinePoints: { x: number; z: number }[];
+  marinaBoats: MarinaBoatInit[];
   getGroundHeight: (x: number, z: number) => number | null;
   isNearMarinaLoot: (pos: THREE.Vector3) => boolean;
   takeMarinaLoot: () => void;
@@ -526,20 +537,28 @@ export function buildNorthPoint(
   pilingInst.matrixAutoUpdate = false;
   scene.add(pilingInst);
 
-  const mooredYachts: { group: THREE.Group; baseY: number; phase: number }[] = [];
-  const yachtSpecs: [number, number, number, string, string, boolean][] = [
-    [-40.2, -108, 0.06, '#f6f4ef', '#1d6fa5', true],
-    [-12.2, -114, -0.04, '#f8f5f0', '#ff4fa3', false],
-    [-3.8, -107, Math.PI + 0.05, '#203048', '#36f1e6', true],
-    [15.8, -112, -0.05, '#f5efe6', '#d9483b', false],
+  const marinaBoats: MarinaBoatInit[] = [];
+  const yachtSpecs: [string, number, number, number, string, string, boolean][] = [
+    ['MARQUIS SEGELYACHT', -40.2, -108, 0.06, '#f6f4ef', '#1d6fa5', true],
+    ['TROPIC SPORTYACHT', -12.2, -114, -0.04, '#f8f5f0', '#ff4fa3', false],
+    ['OCEAN BREEZE SEGELBOOT', -3.8, -107, Math.PI + 0.05, '#203048', '#36f1e6', true],
+    ['SQUALO KREUZER', 15.8, -112, -0.05, '#f5efe6', '#d9483b', false],
   ];
-  yachtSpecs.forEach(([yx, yz, yYaw, hull, stripe, sail], idx) => {
+  yachtSpecs.forEach(([name, yx, yz, yYaw, hull, stripe, sail]) => {
     const yg = buildMooredYacht(hull, stripe, sail);
     yg.userData.dynamic = true;
     yg.position.set(yx, -0.25, yz);
     yg.rotation.y = yYaw;
     scene.add(yg);
-    mooredYachts.push({ group: yg, baseY: -0.25, phase: idx * 1.45 });
+    marinaBoats.push({
+      group: yg,
+      name,
+      x: yx,
+      z: yz,
+      yaw: yYaw,
+      isSailboat: sail,
+      baseY: -0.25,
+    });
   });
 
   const marinaLootGroup = new THREE.Group();
@@ -1033,6 +1052,7 @@ export function buildNorthPoint(
   return {
     stuntRamps,
     serpentinePoints,
+    marinaBoats,
     getGroundHeight,
 
     isNearMarinaLoot: (pos: THREE.Vector3) =>
@@ -1057,12 +1077,6 @@ export function buildNorthPoint(
       beamPivot.rotation.y = elapsed * 0.52;
 
       if (playerPos && playerPos.z > -20) return;
-
-      for (const y of mooredYachts) {
-        y.group.position.y = y.baseY + Math.sin(elapsed * 1.45 + y.phase) * 0.09;
-        y.group.rotation.z = Math.sin(elapsed * 1.15 + y.phase) * 0.032;
-        y.group.rotation.x = Math.cos(elapsed * 0.9 + y.phase) * 0.018;
-      }
 
       const s = 1 + Math.sin(elapsed * 4.0) * 0.06;
       if (!marinaLootTaken) {

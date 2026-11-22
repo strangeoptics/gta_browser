@@ -23,4 +23,5 @@ export interface PlayerStatus {
   coverNormalX: number;
   coverNormalZ: number;
   canTakeCover: boolean;
+  waterClimbLabel: string | null;
 }

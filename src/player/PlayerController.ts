@@ -25,6 +25,17 @@ export class PlayerController {
   private padSprintToggle = false;
   private swimming = false;
   private swimTimer = 0;
+  private waterClimbing = false;
+  private waterClimbTimer = 0;
+  private readonly waterClimbDuration = 0.36;
+  private readonly climbStart = new THREE.Vector3();
+  private readonly climbEnd = new THREE.Vector3();
+  private cachedWaterClimb: {
+    targetX: number;
+    targetY: number;
+    targetZ: number;
+    label: string;
+  } | null = null;
   private thirdPerson = false;
   private readonly camRaycaster = new THREE.Raycaster();
 
@@ -155,6 +166,9 @@ export class PlayerController {
     this.velocity.set(0, 0, 0);
     this.yaw = yaw;
     this.pitch = 0;
+    this.waterClimbing = false;
+    this.waterClimbTimer = 0;
+    this.cachedWaterClimb = null;
     this.exitCover();
   }
 
@@ -286,6 +300,102 @@ export class PlayerController {
     return best;
   }
 
+  /**
+   * Finds a nearby pier, quay, swim platform, or boat deck that the swimming player
+   * can pull themselves up onto with [SPACE] / Gamepad A.
+   */
+  private findWaterClimbCandidate(colliders: AABB[]): typeof this.cachedWaterClimb {
+    const px = this.position.x;
+    const pz = this.position.z;
+    const maxDist = 1.45;
+    const lookX = -Math.sin(this.yaw);
+    const lookZ = -Math.cos(this.yaw);
+
+    let best: typeof this.cachedWaterClimb = null;
+    let bestScore = Infinity;
+
+    for (let i = 0; i < colliders.length; i++) {
+      const box = colliders[i];
+      if (
+        box.tag === 'npc' ||
+        box.tag === 'bridge-rail' ||
+        box.tag === 'cliff-guardrail'
+      ) {
+        continue;
+      }
+      // Reachable ledge height above ocean surface (-0.20m)
+      if (box.maxY < -0.05 || box.maxY > 1.65) continue;
+      // Ignore thin posts/railings
+      const bw = box.maxX - box.minX;
+      const bd = box.maxZ - box.minZ;
+      if (bw < 0.6 || bd < 0.6) continue;
+
+      if (
+        px < box.minX - maxDist ||
+        px > box.maxX + maxDist ||
+        pz < box.minZ - maxDist ||
+        pz > box.maxZ + maxDist
+      ) {
+        continue;
+      }
+
+      const cx = THREE.MathUtils.clamp(px, box.minX, box.maxX);
+      const cz = THREE.MathUtils.clamp(pz, box.minZ, box.maxZ);
+      const dx = cx - px;
+      const dz = cz - pz;
+      const dist = Math.hypot(dx, dz);
+      if (dist > maxDist) continue;
+
+      // Compute landing point safely inside the pier/boat deck edge
+      const padX = Math.min(0.42, bw * 0.4);
+      const padZ = Math.min(0.42, bd * 0.4);
+      let landX = cx;
+      let landZ = cz;
+      if (dist > 0.01) {
+        landX = cx + (dx / dist) * 0.52;
+        landZ = cz + (dz / dist) * 0.52;
+      }
+      landX = THREE.MathUtils.clamp(landX, box.minX + padX, box.maxX - padX);
+      landZ = THREE.MathUtils.clamp(landZ, box.minZ + padZ, box.maxZ - padZ);
+
+      // Ensure clear standing headroom on top of the ledge
+      let blocked = false;
+      for (let j = 0; j < colliders.length; j++) {
+        const ob = colliders[j];
+        if (ob === box || ob.tag === 'npc') continue;
+        if (
+          landX + 0.28 > ob.minX &&
+          landX - 0.28 < ob.maxX &&
+          landZ + 0.28 > ob.minZ &&
+          landZ - 0.28 < ob.maxZ &&
+          box.maxY + 1.55 > ob.minY &&
+          box.maxY + 0.25 < ob.maxY
+        ) {
+          blocked = true;
+          break;
+        }
+      }
+      if (blocked) continue;
+
+      let facingDot = 0;
+      if (dist > 0.01) {
+        facingDot = (lookX * dx + lookZ * dz) / dist;
+      }
+      const isBoat = box.tag === 'boat' || (box.tag !== undefined && box.tag.startsWith('yacht') && box.tag !== 'yacht-pier');
+      const score = dist - facingDot * 0.45 - (isBoat ? 0.08 : 0);
+      if (score < bestScore) {
+        bestScore = score;
+        best = {
+          targetX: landX,
+          targetY: box.maxY + 0.04,
+          targetZ: landZ,
+          label: isBoat ? 'BOOT' : 'STEG',
+        };
+      }
+    }
+    return best;
+  }
+
   private onKeyDown = (e: KeyboardEvent): void => {
     this.keys.add(e.code);
     if (e.code === 'Space' && this.getIsActive()) {
@@ -388,7 +498,8 @@ export class PlayerController {
         )
       : colliders;
 
-    this.cachedCoverCandidate = !this.inCover && !this.swimming && this.grounded ? this.findCoverCandidate(localBoxes) : null;
+    this.cachedCoverCandidate = !this.inCover && !this.swimming && !this.waterClimbing && this.grounded ? this.findCoverCandidate(localBoxes) : null;
+    this.cachedWaterClimb = this.swimming && !this.waterClimbing ? this.findWaterClimbCandidate(localBoxes) : null;
 
     this.crouching = active && (this.keys.has('KeyC') || this.keys.has('ControlLeft') || padCrouch);
     const wantsSprint =
@@ -517,67 +628,102 @@ export class PlayerController {
       this.velocity.z += (targetVz - this.velocity.z) * blend;
     }
 
-    // Jump (Space or Gamepad A)
-    if (active && this.grounded && wantsJump && !this.crouching && !this.swimming && !this.inCover) {
+    // Jump (Space or Gamepad A) — or pull up onto a nearby pier/boat when swimming!
+    if (active && this.swimming && !this.waterClimbing && wantsJump && this.cachedWaterClimb) {
+      this.waterClimbing = true;
+      this.waterClimbTimer = 0;
+      this.climbStart.copy(this.position);
+      this.climbEnd.set(
+        this.cachedWaterClimb.targetX,
+        this.cachedWaterClimb.targetY,
+        this.cachedWaterClimb.targetZ,
+      );
+      this.velocity.set(0, 0, 0);
+      this.cachedWaterClimb = null;
+    } else if (active && this.grounded && wantsJump && !this.crouching && !this.swimming && !this.inCover && !this.waterClimbing) {
       this.velocity.y = this.jumpSpeed;
       this.grounded = false;
     }
 
-    // Gravity vs. realistic ocean buoyancy when swimming in deep water
-    const WATER_SURFACE_Y = -0.2;
-    const SWIM_FLOAT_Y = WATER_SURFACE_Y - 1.28; // -1.48m -> shoulders & head float right at the ocean surface!
-    if (this.swimming) {
-      // Spring-damped buoyancy pulls the player smoothly to the water surface (even after diving off a pier or cliff!)
-      const depthBelowFloat = SWIM_FLOAT_Y - this.position.y;
-      this.velocity.y += depthBelowFloat * 14.0 * clampedDt;
-      this.velocity.y *= Math.exp(-5.5 * clampedDt);
-    } else {
-      this.velocity.y -= this.gravity * clampedDt;
-    }
+    // Smooth mantle / pull-up from ocean onto pier or boat deck
+    if (this.waterClimbing) {
+      this.waterClimbTimer += clampedDt;
+      const t = Math.min(1, this.waterClimbTimer / this.waterClimbDuration);
+      const hT = t * t * (3 - 2 * t);
+      const vT = Math.min(1, t / 0.65);
+      const vEase = 1 - (1 - vT) * (1 - vT);
+      const vaultArc = Math.sin(t * Math.PI) * 0.16;
 
-    // Integrate tentative position
-    const nextX = THREE.MathUtils.clamp(
-      this.position.x + this.velocity.x * clampedDt,
-      this.worldBounds.minX,
-      this.worldBounds.maxX,
-    );
-    const nextY = this.position.y + this.velocity.y * clampedDt;
-    const nextZ = THREE.MathUtils.clamp(
-      this.position.z + this.velocity.z * clampedDt,
-      this.worldBounds.minZ,
-      this.worldBounds.maxZ,
-    );
+      this.position.set(
+        THREE.MathUtils.lerp(this.climbStart.x, this.climbEnd.x, hT),
+        THREE.MathUtils.lerp(this.climbStart.y, this.climbEnd.y, vEase) + vaultArc,
+        THREE.MathUtils.lerp(this.climbStart.z, this.climbEnd.z, hT),
+      );
+      this.velocity.set(0, 0, 0);
 
-    const activeHeight = this.crouching ? this.crouchHeight : this.standHeight;
-    const baseGroundY = getGroundHeight ? getGroundHeight(nextX, nextZ) : 0;
-    const resolved = resolvePlayerCollisions(
-      nextX,
-      nextY,
-      nextZ,
-      this.velocity.y,
-      this.radius,
-      activeHeight,
-      localBoxes,
-      0.28,
-      baseGroundY,
-    );
-
-    this.position.set(resolved.x, resolved.y, resolved.z);
-    this.velocity.y = resolved.vy;
-    this.grounded = resolved.grounded;
-
-    // Enter swimming mode whenever seabed is deep enough (chest-deep / open ocean) and player is in the water
-    const inDeepWater = baseGroundY < WATER_SURFACE_Y - 0.85 && this.position.y < WATER_SURFACE_Y - 0.2;
-    if (inDeepWater) {
-      this.swimming = true;
-      this.grounded = false;
-      // Gently clamp max submerge depth so diving off the 11m cliff feels great without hitting the floor
-      if (this.position.y < baseGroundY + 0.1) {
-        this.position.y = baseGroundY + 0.1;
-        this.velocity.y = Math.max(0, this.velocity.y);
+      if (t >= 1) {
+        this.waterClimbing = false;
+        this.swimming = false;
+        this.grounded = true;
+        this.position.copy(this.climbEnd);
       }
     } else {
-      this.swimming = false;
+      // Gravity vs. realistic ocean buoyancy when swimming in deep water
+      const WATER_SURFACE_Y = -0.2;
+      const SWIM_FLOAT_Y = WATER_SURFACE_Y - 1.28; // -1.48m -> shoulders & head float right at the ocean surface!
+      if (this.swimming) {
+        // Spring-damped buoyancy pulls the player smoothly to the water surface (even after diving off a pier or cliff!)
+        const depthBelowFloat = SWIM_FLOAT_Y - this.position.y;
+        this.velocity.y += depthBelowFloat * 14.0 * clampedDt;
+        this.velocity.y *= Math.exp(-5.5 * clampedDt);
+      } else {
+        this.velocity.y -= this.gravity * clampedDt;
+      }
+
+      // Integrate tentative position
+      const nextX = THREE.MathUtils.clamp(
+        this.position.x + this.velocity.x * clampedDt,
+        this.worldBounds.minX,
+        this.worldBounds.maxX,
+      );
+      const nextY = this.position.y + this.velocity.y * clampedDt;
+      const nextZ = THREE.MathUtils.clamp(
+        this.position.z + this.velocity.z * clampedDt,
+        this.worldBounds.minZ,
+        this.worldBounds.maxZ,
+      );
+
+      const activeHeight = this.crouching ? this.crouchHeight : this.standHeight;
+      const baseGroundY = getGroundHeight ? getGroundHeight(nextX, nextZ) : 0;
+      const resolved = resolvePlayerCollisions(
+        nextX,
+        nextY,
+        nextZ,
+        this.velocity.y,
+        this.radius,
+        activeHeight,
+        localBoxes,
+        0.28,
+        baseGroundY,
+      );
+
+      this.position.set(resolved.x, resolved.y, resolved.z);
+      this.velocity.y = resolved.vy;
+      this.grounded = resolved.grounded;
+
+      // Enter swimming mode whenever seabed is deep enough (chest-deep / open ocean) and player is in the water
+      const inDeepWater = baseGroundY < WATER_SURFACE_Y - 0.85 && this.position.y < WATER_SURFACE_Y - 0.2;
+      if (inDeepWater) {
+        this.swimming = true;
+        this.grounded = false;
+        // Gently clamp max submerge depth so diving off the 11m cliff feels great without hitting the floor
+        if (this.position.y < baseGroundY + 0.1) {
+          this.position.y = baseGroundY + 0.1;
+          this.velocity.y = Math.max(0, this.velocity.y);
+        }
+      } else {
+        this.swimming = false;
+      }
     }
 
     // Smooth eye height & subtle head-bob (or rhythmic freestyle swim bobbing at water surface!)
@@ -661,6 +807,7 @@ export class PlayerController {
       coverNormalX: this.coverNormalX,
       coverNormalZ: this.coverNormalZ,
       canTakeCover: this.canTakeCover(),
+      waterClimbLabel: this.cachedWaterClimb ? this.cachedWaterClimb.label : null,
     };
   }
 }

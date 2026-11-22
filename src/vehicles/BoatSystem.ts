@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import type { GamepadSnapshot } from '../engine/GamepadInput';
+import type { AABB } from '../types';
+import type { MarinaBoatInit } from '../world/NorthPoint';
 
 interface WakePuff {
   mesh: THREE.Mesh;
@@ -7,30 +9,75 @@ interface WakePuff {
   maxLife: number;
 }
 
+export interface DrivableBoat {
+  id: string;
+  name: string;
+  group: THREE.Group;
+  position: THREE.Vector3;
+  yaw: number;
+  speed: number;
+  baseY: number;
+  deckHeight: number;
+  halfWidth: number;
+  halfLength: number;
+  maxSpeed: number;
+  accel: number;
+  turnRate: number;
+  camDist: number;
+  camHeight: number;
+  wakeOffset: number;
+  phase: number;
+}
+
 export interface BoatHudState {
   inBoat: boolean;
   boatName: string;
   speedKmh: number;
   nearbyBoat: boolean;
+  nearbyBoatName: string | null;
 }
 
+const STATIC_BOAT_OBSTACLES = [
+  // Main City + West District + North Promenade + East Beach + Vice Port Landmass
+  { minX: -180.0, maxX: 105.5, minZ: -99.5, maxZ: 127.0 },
+  // Vice Marina 3 Wooden Piers (x = -36, -8, +20; z = -124..-98)
+  { minX: -38.9, maxX: -33.1, minZ: -125.2, maxZ: -98.0 },
+  { minX: -10.9, maxX: -5.1, minZ: -125.2, maxZ: -98.0 },
+  { minX: 17.1, maxX: 22.9, minZ: -125.2, maxZ: -98.0 },
+  // East Beach Wooden Pier (x = 87..108, z = 6.4..9.6)
+  { minX: 86.0, maxX: 109.2, minZ: 5.2, maxZ: 10.8 },
+  // Starfish Island
+  { minX: 145.5, maxX: 200.5, minZ: -86.5, maxZ: -18.0 },
+  // Starfish Marina Gangway
+  { minX: 169.0, maxX: 175.0, minZ: -20.0, maxZ: -5.5 },
+  // Vice Port Cargo Freighter (x = -21..37, z = 128..142)
+  { minX: -23.0, maxX: 39.0, minZ: 126.5, maxZ: 144.0 },
+];
+
+const MARINA_PIER_XS = [-36, -8, 20];
+
 /**
- * Drivable 80s Miami retro speedboat moored off the golden sand beach (x ~ 110).
- * Allows cruising out across the dusk ocean with wave bobbing, banking turns, and foam wake spray.
+ * Drivable 80s Miami fleet:
+ * - Stinger Speedboat moored off the golden sand beach (x ~ 111, z = 8)
+ * - 4 Vice Marina Sport Yachts & Sailboats moored along the Northern Marina piers
+ * Supports full ocean navigation (North Bay, around Cape Vice Cliff, East Ocean, Starfish Island & South Bay),
+ * walkable deck colliders (so you can climb onto boats from the water or stand on deck), and smart pier/shore disembark.
  */
 export class BoatSystem {
   public readonly position = new THREE.Vector3(111, 0.05, 8);
   public yaw = Math.PI;
   public speed = 0;
+  public readonly boats: DrivableBoat[] = [];
 
   private readonly scene: THREE.Scene;
-  private readonly group: THREE.Group;
   private readonly keys = new Set<string>();
   private readonly wakes: WakePuff[] = [];
   private readonly wakePool: THREE.Mesh[] = [];
-  private readonly wakeGeo = new THREE.BoxGeometry(0.38, 0.14, 0.38);
+  private readonly wakeGeo = new THREE.BoxGeometry(0.42, 0.14, 0.42);
+  private readonly markersScratch: { x: number; z: number; yaw: number }[] = [];
 
-  private active = false;
+  private activeBoat: DrivableBoat | null = null;
+  private lastNearbyBoat: DrivableBoat | null = null;
   private wakeTimer = 0;
   private readonly camPosSmooth = new THREE.Vector3();
   private readonly camLookSmooth = new THREE.Vector3();
@@ -38,35 +85,167 @@ export class BoatSystem {
   private readonly tmpDesiredLook = new THREE.Vector3();
   private camInit = false;
 
-  constructor(scene: THREE.Scene) {
+  constructor(scene: THREE.Scene, marinaBoats: MarinaBoatInit[] = []) {
     this.scene = scene;
-    this.group = this.createBoatMesh();
-    this.group.position.copy(this.position);
-    this.group.rotation.y = this.yaw;
-    this.scene.add(this.group);
+
+    // 1) Original Stinger Speedboat off East Beach Pier
+    const stingerGroup = this.createBoatMesh();
+    stingerGroup.userData.dynamic = true;
+    const stingerPos = new THREE.Vector3(111, 0.06, 8);
+    stingerGroup.position.copy(stingerPos);
+    stingerGroup.rotation.y = Math.PI;
+    this.scene.add(stingerGroup);
+    this.boats.push({
+      id: 'stinger-beach',
+      name: 'STINGER SPEEDBOAT',
+      group: stingerGroup,
+      position: stingerPos,
+      yaw: Math.PI,
+      speed: 0,
+      baseY: 0.06,
+      deckHeight: 0.68,
+      halfWidth: 1.2,
+      halfLength: 3.3,
+      maxSpeed: 22.0,
+      accel: 15.5,
+      turnRate: 1.65,
+      camDist: 10.5,
+      camHeight: 4.2,
+      wakeOffset: 3.1,
+      phase: 0,
+    });
+
+    // 2) Register the 4 Vice Marina Yachts & Sailboats as fully drivable!
+    marinaBoats.forEach((mb, idx) => {
+      const pos = new THREE.Vector3(mb.x, mb.baseY, mb.z);
+      mb.group.position.copy(pos);
+      mb.group.rotation.y = mb.yaw;
+      this.boats.push({
+        id: `marina-${idx}`,
+        name: mb.name,
+        group: mb.group,
+        position: pos,
+        yaw: mb.yaw,
+        speed: 0,
+        baseY: mb.baseY,
+        deckHeight: 0.96,
+        halfWidth: 1.55,
+        halfLength: 4.5,
+        maxSpeed: mb.isSailboat ? 15.5 : 19.5,
+        accel: mb.isSailboat ? 9.5 : 12.8,
+        turnRate: mb.isSailboat ? 1.15 : 1.3,
+        camDist: mb.isSailboat ? 16.0 : 14.2,
+        camHeight: mb.isSailboat ? 6.4 : 5.4,
+        wakeOffset: 4.6,
+        phase: (idx + 1) * 1.45,
+      });
+    });
 
     window.addEventListener('keydown', (e) => this.keys.add(e.code));
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
   }
 
   public isInBoat(): boolean {
-    return this.active;
+    return this.activeBoat !== null;
+  }
+
+  public findNearestBoat(playerPos: THREE.Vector3): DrivableBoat | null {
+    let best: DrivableBoat | null = null;
+    let bestDistSq = Infinity;
+
+    for (let i = 0; i < this.boats.length; i++) {
+      const b = this.boats[i];
+      if (playerPos.y > b.baseY + b.deckHeight + 3.0) continue;
+
+      // Distance to boat's oriented hull footprint (so you can board from bow, stern, pier, or water!)
+      const dx = playerPos.x - b.position.x;
+      const dz = playerPos.z - b.position.z;
+      const cos = Math.cos(-b.yaw);
+      const sin = Math.sin(-b.yaw);
+      const lx = dx * cos + dz * sin;
+      const lz = -dx * sin + dz * cos;
+
+      const cx = THREE.MathUtils.clamp(lx, -b.halfWidth, b.halfWidth);
+      const cz = THREE.MathUtils.clamp(lz, -b.halfLength, b.halfLength);
+      const ex = lx - cx;
+      const ez = lz - cz;
+      const edgeDistSq = ex * ex + ez * ez;
+
+      // Within 3.8m of hull edge (works comfortably from pier walkways and while swimming alongside!)
+      if (edgeDistSq < 3.8 * 3.8 && edgeDistSq < bestDistSq) {
+        bestDistSq = edgeDistSq;
+        best = b;
+      }
+    }
+    return best;
   }
 
   public isPlayerNear(playerPos: THREE.Vector3): boolean {
-    return playerPos.distanceToSquared(this.position) < 42.0; // within ~6.5m from beach edge
+    return this.findNearestBoat(playerPos) !== null;
   }
 
-  public board(): void {
-    this.active = true;
+  public board(playerPos?: THREE.Vector3): boolean {
+    const target = playerPos ? this.findNearestBoat(playerPos) : this.lastNearbyBoat ?? this.boats[0];
+    if (!target) return false;
+    this.activeBoat = target;
     this.camInit = false;
+    this.position.copy(target.position);
+    this.yaw = target.yaw;
+    this.speed = target.speed;
+    return true;
   }
 
   public disembark(): { x: number; y: number; z: number; yaw: number } {
-    this.active = false;
+    const b = this.activeBoat ?? this.boats[0];
+    this.activeBoat = null;
     this.keys.clear();
-    // If moored near Starfish Island or the Superyacht, step right onto the Marina / Yacht gangway!
-    if (this.position.x > 140) {
+
+    const bx = b.position.x;
+    const bz = b.position.z;
+
+    // 1) Near Vice Marina Wooden Piers -> step directly onto the closest pier!
+    if (bz >= -126.5 && bz <= -96.5 && bx >= -46 && bx <= 28) {
+      let nearestPierX = MARINA_PIER_XS[0];
+      let minDist = Math.abs(bx - nearestPierX);
+      for (let i = 1; i < MARINA_PIER_XS.length; i++) {
+        const d = Math.abs(bx - MARINA_PIER_XS[i]);
+        if (d < minDist) {
+          minDist = d;
+          nearestPierX = MARINA_PIER_XS[i];
+        }
+      }
+      if (minDist < 7.2) {
+        return {
+          x: nearestPierX,
+          y: 0.28,
+          z: THREE.MathUtils.clamp(bz, -123.0, -99.0),
+          yaw: 0,
+        };
+      }
+    }
+
+    // 2) Near Vice Marina Promenade Seawall -> step onto the boardwalk!
+    if (bz > -105.0 && bz < -94.0 && bx > -120 && bx < 44) {
+      return {
+        x: THREE.MathUtils.clamp(bx, -118, 42),
+        y: 0.26,
+        z: -96.2,
+        yaw: Math.PI,
+      };
+    }
+
+    // 3) Near East Beach Wooden Pier -> step onto the beach pier!
+    if (bx >= 86 && bx <= 116 && bz >= 2.5 && bz <= 13.5) {
+      return {
+        x: THREE.MathUtils.clamp(bx - 2.6, 88, 106.5),
+        y: 0.6,
+        z: 8.0,
+        yaw: Math.PI / 2,
+      };
+    }
+
+    // 4) Near Starfish Island / Superyacht Marina Gangway
+    if (bx > 140 && bz > -90 && bz < 6) {
       return {
         x: 172,
         y: 1.5,
@@ -74,13 +253,134 @@ export class BoatSystem {
         yaw: 0,
       };
     }
-    // Otherwise place player safely on the dry golden sand beach facing the city
+
+    // 5) Near East Golden Sand Beach
+    if (bx <= 114 && bz >= -66 && bz <= 66) {
+      return {
+        x: Math.min(103, bx - 4.5),
+        y: 0.15,
+        z: THREE.MathUtils.clamp(bz, -62, 62),
+        yaw: Math.PI / 2,
+      };
+    }
+
+    // 6) Open water -> step safely onto the boat's own walkable deck!
     return {
-      x: Math.min(103, this.position.x - 4.5),
-      y: 0.15,
-      z: THREE.MathUtils.clamp(this.position.z, -62, 62),
-      yaw: Math.PI / 2,
+      x: bx,
+      y: b.baseY + b.deckHeight + 0.08,
+      z: bz,
+      yaw: b.yaw + Math.PI,
     };
+  }
+
+  /**
+   * Appends walkable deck AABBs for all non-driven boats so the player can stand on them
+   * and climb onto them from the water with [SPACE].
+   */
+  public appendBoatColliders(out: AABB[]): void {
+    for (let i = 0; i < this.boats.length; i++) {
+      const b = this.boats[i];
+      if (b === this.activeBoat) continue;
+      const cos = Math.abs(Math.cos(b.yaw));
+      const sin = Math.abs(Math.sin(b.yaw));
+      const hx = b.halfWidth * cos + b.halfLength * sin;
+      const hz = b.halfWidth * sin + b.halfLength * cos;
+      out.push({
+        minX: b.position.x - hx,
+        maxX: b.position.x + hx,
+        minY: b.baseY - 0.5,
+        maxY: b.baseY + b.deckHeight,
+        minZ: b.position.z - hz,
+        maxZ: b.position.z + hz,
+        tag: 'boat',
+      });
+    }
+  }
+
+  public getBoatMarkers(): { x: number; z: number; yaw: number }[] {
+    this.markersScratch.length = 0;
+    for (let i = 0; i < this.boats.length; i++) {
+      const b = this.boats[i];
+      this.markersScratch.push({ x: b.position.x, z: b.position.z, yaw: b.yaw });
+    }
+    return this.markersScratch;
+  }
+
+  private resolveBoatObstacles(
+    boat: DrivableBoat,
+    nextX: number,
+    nextZ: number,
+    yachtPos?: { x: number; z: number },
+  ): { x: number; z: number; hit: boolean } {
+    let x = THREE.MathUtils.clamp(nextX, -148.0, 226.0);
+    let z = THREE.MathUtils.clamp(nextZ, -166.0, 156.0);
+    let hit = false;
+
+    for (let i = 0; i < STATIC_BOAT_OBSTACLES.length; i++) {
+      const ob = STATIC_BOAT_OBSTACLES[i];
+      if (x > ob.minX && x < ob.maxX && z > ob.minZ && z < ob.maxZ) {
+        const dL = Math.abs(x - ob.minX);
+        const dR = Math.abs(ob.maxX - x);
+        const dB = Math.abs(z - ob.minZ);
+        const dF = Math.abs(ob.maxZ - z);
+        const m = Math.min(dL, dR, dB, dF);
+        if (m === dL) x = ob.minX;
+        else if (m === dR) x = ob.maxX;
+        else if (m === dB) z = ob.minZ;
+        else z = ob.maxZ;
+        hit = true;
+      }
+    }
+
+    // Cape Vice Sea Cliff & Surf Boulders (center 78, -114, radius 30.5m)
+    const cliffDx = x - 78.0;
+    const cliffDz = z - -114.0;
+    const cliffDistSq = cliffDx * cliffDx + cliffDz * cliffDz;
+    const cliffMinR = 30.5;
+    if (cliffDistSq < cliffMinR * cliffMinR && cliffDistSq > 0.001) {
+      const dist = Math.sqrt(cliffDistSq);
+      x = 78.0 + (cliffDx / dist) * cliffMinR;
+      z = -114.0 + (cliffDz / dist) * cliffMinR;
+      hit = true;
+    }
+
+    // Avoid clipping into the movable 44m Superyacht "LADY VICE"
+    if (yachtPos) {
+      const yMinX = yachtPos.x - 8.5;
+      const yMaxX = yachtPos.x + 8.5;
+      const yMinZ = yachtPos.z - 23.0;
+      const yMaxZ = yachtPos.z + 23.0;
+      if (x > yMinX && x < yMaxX && z > yMinZ && z < yMaxZ) {
+        const dL = Math.abs(x - yMinX);
+        const dR = Math.abs(yMaxX - x);
+        const dB = Math.abs(z - yMinZ);
+        const dF = Math.abs(yMaxZ - z);
+        const m = Math.min(dL, dR, dB, dF);
+        if (m === dL) x = yMinX;
+        else if (m === dR) x = yMaxX;
+        else if (m === dB) z = yMinZ;
+        else z = yMaxZ;
+        hit = true;
+      }
+    }
+
+    // Soft separation from other drivable boats
+    for (let i = 0; i < this.boats.length; i++) {
+      const other = this.boats[i];
+      if (other === boat) continue;
+      const dx = x - other.position.x;
+      const dz = z - other.position.z;
+      const minSep = boat.halfWidth + other.halfWidth + 0.8;
+      const dSq = dx * dx + dz * dz;
+      if (dSq < minSep * minSep && dSq > 0.0001) {
+        const d = Math.sqrt(dSq);
+        x = other.position.x + (dx / d) * minSep;
+        z = other.position.z + (dz / d) * minSep;
+        hit = true;
+      }
+    }
+
+    return { x, z, hit };
   }
 
   public update(
@@ -90,96 +390,95 @@ export class BoatSystem {
     playerPos: THREE.Vector3,
     camera: THREE.PerspectiveCamera,
     pad?: GamepadSnapshot,
+    yachtPos?: { x: number; z: number },
   ): BoatHudState {
     const clampedDt = Math.min(dt, 0.05);
 
-    if (this.active && isPlaying) {
-      const kbThrottle = (this.keys.has('KeyW') ? 1 : 0) - (this.keys.has('KeyS') ? 1 : 0);
-      const kbSteer = (this.keys.has('KeyA') ? 1 : 0) - (this.keys.has('KeyD') ? 1 : 0);
-      const padThrottle = pad?.connected ? pad.rt - pad.lt : 0;
-      const padSteer = pad?.connected ? -pad.moveX : 0;
-      const throttle = THREE.MathUtils.clamp(kbThrottle + padThrottle, -1, 1);
-      const steer = THREE.MathUtils.clamp(kbSteer + padSteer, -1, 1);
+    for (let i = 0; i < this.boats.length; i++) {
+      const b = this.boats[i];
+      const isDriven = b === this.activeBoat;
 
-      if (throttle > 0.05) this.speed += 15.5 * throttle * clampedDt;
-      else if (throttle < -0.05) this.speed += 14.0 * throttle * clampedDt;
-      else this.speed *= Math.exp(-1.6 * clampedDt);
+      if (isDriven && isPlaying) {
+        const kbThrottle = (this.keys.has('KeyW') ? 1 : 0) - (this.keys.has('KeyS') ? 1 : 0);
+        const kbSteer = (this.keys.has('KeyA') ? 1 : 0) - (this.keys.has('KeyD') ? 1 : 0);
+        const padThrottle = pad?.connected ? pad.rt - pad.lt : 0;
+        const padSteer = pad?.connected ? -pad.moveX : 0;
+        const throttle = THREE.MathUtils.clamp(kbThrottle + padThrottle, -1, 1);
+        const steer = THREE.MathUtils.clamp(kbSteer + padSteer, -1, 1);
 
-      this.speed = THREE.MathUtils.clamp(this.speed, -6.5, 22.0);
-      const steerFactor = Math.min(1, Math.abs(this.speed) / 3.5 + 0.25);
-      this.yaw += steer * 1.65 * steerFactor * (this.speed >= -0.2 ? 1 : -1) * clampedDt;
+        if (throttle > 0.05) b.speed += b.accel * throttle * clampedDt;
+        else if (throttle < -0.05) b.speed += (b.accel * 0.9) * throttle * clampedDt;
+        else b.speed *= Math.exp(-1.55 * clampedDt);
 
-      // Bank & pitch dynamically with turns and throttle
-      const targetRoll = -steer * 0.22 * Math.min(1, Math.abs(this.speed) / 14);
-      const targetPitch = -Math.max(0, this.speed) * 0.008;
-      this.group.rotation.z += (targetRoll - this.group.rotation.z) * (1 - Math.exp(-6 * clampedDt));
-      this.group.rotation.x += (targetPitch - this.group.rotation.x) * (1 - Math.exp(-6 * clampedDt));
-    } else {
-      this.speed *= Math.exp(-2.2 * clampedDt);
-      this.group.rotation.z += (Math.sin(elapsed * 1.5) * 0.04 - this.group.rotation.z) * (1 - Math.exp(-5 * clampedDt));
-      this.group.rotation.x += (Math.cos(elapsed * 1.2) * 0.03 - this.group.rotation.x) * (1 - Math.exp(-5 * clampedDt));
-    }
+        b.speed = THREE.MathUtils.clamp(b.speed, -6.5, b.maxSpeed);
+        const steerFactor = Math.min(1, Math.abs(b.speed) / 3.5 + 0.25);
+        b.yaw += steer * b.turnRate * steerFactor * (b.speed >= -0.2 ? 1 : -1) * clampedDt;
 
-    // Move across the ocean (keep off the dry beach x < 107.5, and push cleanly around Starfish Island & Superyacht!)
-    const fwdX = Math.sin(this.yaw);
-    const fwdZ = Math.cos(this.yaw);
-    let nextX = THREE.MathUtils.clamp(this.position.x + fwdX * this.speed * clampedDt, 108.0, 232.0);
-    let nextZ = THREE.MathUtils.clamp(this.position.z + fwdZ * this.speed * clampedDt, -130.0, 130.0);
-
-    const boatObstacles = [
-      { minX: 145.5, maxX: 200.5, minZ: -86.5, maxZ: -18.0 }, // Starfish Island
-      { minX: 163.5, maxX: 180.5, minZ: -19.0, maxZ: 38.0 },  // Marina gangway & 42m Superyacht hull
-    ];
-    for (const ob of boatObstacles) {
-      if (nextX > ob.minX && nextX < ob.maxX && nextZ > ob.minZ && nextZ < ob.maxZ) {
-        const dL = Math.abs(nextX - ob.minX);
-        const dR = Math.abs(ob.maxX - nextX);
-        const dB = Math.abs(nextZ - ob.minZ);
-        const dF = Math.abs(ob.maxZ - nextZ);
-        const m = Math.min(dL, dR, dB, dF);
-        if (m === dL) nextX = ob.minX;
-        else if (m === dR) nextX = ob.maxX;
-        else if (m === dB) nextZ = ob.minZ;
-        else nextZ = ob.maxZ;
-        this.speed *= 0.4;
+        // Bank & pitch dynamically with turns and throttle
+        const targetRoll = -steer * 0.18 * Math.min(1, Math.abs(b.speed) / 14);
+        const targetPitch = -Math.max(0, b.speed) * 0.007;
+        b.group.rotation.z += (targetRoll - b.group.rotation.z) * (1 - Math.exp(-6 * clampedDt));
+        b.group.rotation.x += (targetPitch - b.group.rotation.x) * (1 - Math.exp(-6 * clampedDt));
+      } else {
+        b.speed *= Math.exp(-2.2 * clampedDt);
+        const idleRoll = Math.sin(elapsed * 1.25 + b.phase) * 0.034;
+        const idlePitch = Math.cos(elapsed * 0.95 + b.phase) * 0.022;
+        b.group.rotation.z += (idleRoll - b.group.rotation.z) * (1 - Math.exp(-5 * clampedDt));
+        b.group.rotation.x += (idlePitch - b.group.rotation.x) * (1 - Math.exp(-5 * clampedDt));
       }
-    }
-    this.position.x = nextX;
-    this.position.z = nextZ;
-    const waveY = Math.sin(this.position.x * 0.18 + elapsed * 1.5) * 0.14;
-    this.position.y = 0.06 + waveY;
 
-    this.group.position.copy(this.position);
-    this.group.rotation.y = this.yaw;
+      const fwdX = Math.sin(b.yaw);
+      const fwdZ = Math.cos(b.yaw);
 
-    // Emit foaming white-cyan wake spray behind the stern when moving (pooled!)
-    if (Math.abs(this.speed) > 3.5) {
-      this.wakeTimer -= clampedDt;
-      if (this.wakeTimer <= 0) {
-        this.wakeTimer = 0.045;
-        let puff = this.wakePool.pop();
-        if (puff) {
-          (puff.material as THREE.MeshBasicMaterial).opacity = 0.75;
-          puff.scale.set(1, 1, 1);
-          puff.visible = true;
-        } else {
-          const mat = new THREE.MeshBasicMaterial({
-            color: '#d8ffff',
-            transparent: true,
-            opacity: 0.75,
-          });
-          puff = new THREE.Mesh(this.wakeGeo, mat);
-          this.scene.add(puff);
-        }
-        puff.position.set(
-          this.position.x - fwdX * 3.1 + (Math.random() - 0.5) * 0.9,
-          0.02,
-          this.position.z - fwdZ * 3.1 + (Math.random() - 0.5) * 0.9,
+      if (Math.abs(b.speed) > 0.04) {
+        const res = this.resolveBoatObstacles(
+          b,
+          b.position.x + fwdX * b.speed * clampedDt,
+          b.position.z + fwdZ * b.speed * clampedDt,
+          yachtPos,
         );
-        this.wakes.push({ mesh: puff, life: 0.9, maxLife: 0.9 });
+        b.position.x = res.x;
+        b.position.z = res.z;
+        if (res.hit) b.speed *= 0.4;
+      }
+
+      const waveAmp = b.id === 'stinger-beach' ? 0.12 : 0.09;
+      const waveY = Math.sin(b.position.x * 0.16 + elapsed * 1.45 + b.phase) * waveAmp;
+      b.position.y = b.baseY + waveY;
+
+      b.group.position.copy(b.position);
+      b.group.rotation.y = b.yaw;
+
+      // Emit foaming white-cyan wake spray behind stern when moving (pooled!)
+      if (isDriven && Math.abs(b.speed) > 3.2) {
+        this.wakeTimer -= clampedDt;
+        if (this.wakeTimer <= 0) {
+          this.wakeTimer = 0.045;
+          let puff = this.wakePool.pop();
+          if (puff) {
+            (puff.material as THREE.MeshBasicMaterial).opacity = 0.75;
+            puff.scale.set(1, 1, 1);
+            puff.visible = true;
+          } else {
+            const mat = new THREE.MeshBasicMaterial({
+              color: '#d8ffff',
+              transparent: true,
+              opacity: 0.75,
+            });
+            puff = new THREE.Mesh(this.wakeGeo, mat);
+            this.scene.add(puff);
+          }
+          puff.position.set(
+            b.position.x - fwdX * b.wakeOffset + (Math.random() - 0.5) * 1.1,
+            0.02,
+            b.position.z - fwdZ * b.wakeOffset + (Math.random() - 0.5) * 1.1,
+          );
+          this.wakes.push({ mesh: puff, life: 0.95, maxLife: 0.95 });
+        }
       }
     }
 
+    // Update wake spray particles
     for (let i = this.wakes.length - 1; i >= 0; i--) {
       const w = this.wakes[i];
       w.life -= clampedDt;
@@ -196,16 +495,24 @@ export class BoatSystem {
       }
     }
 
-    if (this.active) {
+    // Sync public position/yaw/speed & chase camera for the active boat
+    const active = this.activeBoat;
+    if (active) {
+      this.position.copy(active.position);
+      this.yaw = active.yaw;
+      this.speed = active.speed;
+
+      const fwdX = Math.sin(active.yaw);
+      const fwdZ = Math.cos(active.yaw);
       const desiredPos = this.tmpDesiredPos.set(
-        this.position.x - fwdX * 10.5,
-        this.position.y + 4.2,
-        this.position.z - fwdZ * 10.5,
+        active.position.x - fwdX * active.camDist,
+        active.position.y + active.camHeight,
+        active.position.z - fwdZ * active.camDist,
       );
       const desiredLook = this.tmpDesiredLook.set(
-        this.position.x + fwdX * 9.0,
-        this.position.y + 1.0,
-        this.position.z + fwdZ * 9.0,
+        active.position.x + fwdX * 9.0,
+        active.position.y + 1.2,
+        active.position.z + fwdZ * 9.0,
       );
       if (!this.camInit) {
         this.camPosSmooth.copy(desiredPos);
@@ -218,13 +525,20 @@ export class BoatSystem {
       }
       camera.position.copy(this.camPosSmooth);
       camera.lookAt(this.camLookSmooth);
+    } else {
+      this.position.copy(this.boats[0].position);
+      this.yaw = this.boats[0].yaw;
+      this.speed = this.boats[0].speed;
     }
 
+    this.lastNearbyBoat = active ? null : this.findNearestBoat(playerPos);
+
     return {
-      inBoat: this.active,
-      boatName: 'STINGER SPEEDBOAT',
-      speedKmh: Math.round(Math.abs(this.speed) * 3.6),
-      nearbyBoat: !this.active && this.isPlayerNear(playerPos),
+      inBoat: active !== null,
+      boatName: active ? active.name : 'STINGER SPEEDBOAT',
+      speedKmh: active ? Math.round(Math.abs(active.speed) * 3.6) : 0,
+      nearbyBoat: this.lastNearbyBoat !== null,
+      nearbyBoatName: this.lastNearbyBoat ? this.lastNearbyBoat.name : null,
     };
   }
 

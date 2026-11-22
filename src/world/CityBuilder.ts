@@ -27,7 +27,7 @@ import { buildStuntRamps, type StuntRamp } from './StuntRamps';
 import { buildTrafficLights } from './TrafficLights';
 import { buildVicePort, type ImportExportSpec } from './VicePort';
 import { buildWestDistrict } from './WestDistrict';
-import { buildNorthPoint } from './NorthPoint';
+import { buildNorthPoint, type MarinaBoatInit } from './NorthPoint';
 
 export interface MiamiWorld {
   colliders: AABB[];
@@ -42,6 +42,7 @@ export interface MiamiWorld {
   layout: CityLayout;
   maverickSpawn: THREE.Vector3;
   yacht: SuperyachtHandle;
+  marinaBoats: MarinaBoatInit[];
   isNearIslandVault: (pos: THREE.Vector3) => boolean;
   isNearYachtLoot: (pos: THREE.Vector3) => boolean;
   takeIslandVault: () => void;
@@ -942,6 +943,7 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
     layout,
     maverickSpawn: starfish.helipadSpawn,
     yacht: starfish.yacht,
+    marinaBoats: northPoint.marinaBoats,
     isNearIslandVault: (pos: THREE.Vector3) => starfish.isNearIslandVault(pos),
     isNearYachtLoot: (pos: THREE.Vector3) => starfish.isNearYachtLoot(pos),
     takeIslandVault: () => starfish.takeIslandVault(),

@@ -196,7 +196,7 @@ const decals = new DecalSystem(scene);
 const roadblocks = new RoadblockSystem(scene);
 const weapons = new WeaponSystem(scene, camera);
 const vehicles = new VehicleSystem(scene);
-const boat = new BoatSystem(scene);
+const boat = new BoatSystem(scene, world.marinaBoats);
 const maverick = new PlayerHelicopterSystem(scene, world.maverickSpawn);
 const garageRides = new GarageRidesSystem(scene);
 const superyacht = new SuperyachtSystem(scene, world.yacht);
@@ -1254,7 +1254,7 @@ function tryToggleVehicleOrBoat(): void {
     weapons.setEnabled(false);
     showQuickToast('VICE MAVERICK · [SPACE] STEIGEN · [C] SINKEN · [WASD] FLIEGEN');
   } else if (boat.isPlayerNear(player.position)) {
-    boat.board();
+    boat.board(player.position);
     weapons.setEnabled(false);
   } else if (superyacht.isPlayerNear(player.position)) {
     superyacht.board();
@@ -2091,12 +2091,14 @@ function animate(now: number): void {
   let playerCoverNormalX = 0;
   let playerCoverNormalZ = 1;
   let playerCanTakeCover = false;
+  let playerWaterClimbLabel: string | null = null;
   let headingYaw = player.getYaw();
   const rbColliders = roadblocks.getActiveColliders();
 
   if (!inAnyCraft) {
     playerDynColliders.length = 0;
     vehicles.appendVehicleColliders(playerDynColliders);
+    boat.appendBoatColliders(playerDynColliders);
     npcs.appendNpcColliders(playerDynColliders);
     for (let i = 0; i < rbColliders.length; i++) playerDynColliders.push(rbColliders[i]);
     const status = player.update(
@@ -2118,6 +2120,7 @@ function animate(now: number): void {
     playerCoverNormalX = status.coverNormalX;
     playerCoverNormalZ = status.coverNormalZ;
     playerCanTakeCover = status.canTakeCover;
+    playerWaterClimbLabel = status.waterClimbLabel;
   } else if (inVehicle) {
     player.exitCover();
     const car = vehicles.getActiveVehicle();
@@ -2187,7 +2190,7 @@ function animate(now: number): void {
       destructibles.handleVehicleImpact(gr.position, gr.yaw, Math.abs(gr.speed));
     }
   }
-  const boatHud = boat.update(dt, elapsed, isPlaying, player.position, camera, pad);
+  const boatHud = boat.update(dt, elapsed, isPlaying, player.position, camera, pad, superyacht.position);
   const yachtHud = superyacht.update(dt, elapsed, isPlaying, player.position, camera, pad);
   const heliPlayerHud = maverick.update(
     dt,
@@ -2550,6 +2553,7 @@ function animate(now: number): void {
     maverick.position,
     garageRides.getParkedMarkers(),
     yachtRadarState,
+    boat.getBoatMarkers(),
   );
 
   // --- HUD Updates (Dirty-checked DOM mutations) ---
@@ -2635,7 +2639,7 @@ function animate(now: number): void {
     setText(vehicleSpeedEl, `${boatHud.speedKmh}`);
     setWidth(vehicleHpFillEl, '100%');
     setClass(vehicleHpFillEl, 'low', false);
-    setText(vehicleCamHintEl, `[Q] ${audio.getRadioStation()} · [E] AN LAND`);
+    setText(vehicleCamHintEl, `[Q] ${audio.getRadioStation()} · [E] AUSSTEIGEN`);
   } else if (yachtHud.inYacht) {
     setText(vehicleNameEl, yachtHud.yachtName);
     setText(vehicleSpeedEl, `${yachtHud.speedKmh}`);
@@ -2777,9 +2781,21 @@ function animate(now: number): void {
     } else if (heliPlayerHud.nearbyHeli) {
       nextPrompt = '[E] EINSTEIGEN · VICE MAVERICK HELIKOPTER';
     } else if (boatHud.nearbyBoat) {
-      nextPrompt = '[E] EINSTEIGEN · STINGER SPEEDBOAT';
+      const climbHint = playerWaterClimbLabel
+        ? playerWaterClimbLabel === 'BOOT'
+          ? ' · [SPACE] AUFS BOOT ZIEHEN'
+          : ' · [SPACE] AUF DEN STEG ZIEHEN'
+        : '';
+      nextPrompt = `[E] EINSTEIGEN · ${boatHud.nearbyBoatName ?? 'BOOT'}${climbHint}`;
     } else if (yachtHud.nearbyYacht) {
-      nextPrompt = '[E] STEUERN · SUPERYACHT „LADY VICE“';
+      nextPrompt = playerWaterClimbLabel
+        ? '[E] STEUERN · SUPERYACHT „LADY VICE“ · [SPACE] AUFS BOOT ZIEHEN'
+        : '[E] STEUERN · SUPERYACHT „LADY VICE“';
+    } else if (playerWaterClimbLabel) {
+      nextPrompt =
+        playerWaterClimbLabel === 'BOOT'
+          ? '[SPACE] AUFS BOOT ZIEHEN'
+          : '[SPACE] AUF DEN STEG ZIEHEN';
     } else if (garageRideHud.nearbyMountPrompt) {
       nextPrompt = garageRideHud.nearbyMountPrompt;
     } else if (driveHud.nearbyVehicleName) {

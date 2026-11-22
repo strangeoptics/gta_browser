@@ -360,7 +360,6 @@ export function buildNorthPoint(
     metalness: 0.8,
   });
   const cyanNeon = new THREE.MeshStandardMaterial({ color: '#36f1e6', emissive: '#36f1e6', emissiveIntensity: 2.2 });
-  const pinkNeon = new THREE.MeshStandardMaterial({ color: '#ff4fa3', emissive: '#ff4fa3', emissiveIntensity: 2.2 });
   const amberNeon = new THREE.MeshStandardMaterial({ color: '#ff9f43', emissive: '#ff9f43', emissiveIntensity: 2.2 });
   const warmWindowMat = new THREE.MeshStandardMaterial({ color: '#ffe6b3', emissive: '#ffba5a', emissiveIntensity: 1.5 });
   const goldMat = new THREE.MeshStandardMaterial({ color: '#f2c14e', roughness: 0.22, metalness: 0.88 });
@@ -940,8 +939,6 @@ export function buildNorthPoint(
       dirZ: Math.cos(yaw),
     });
   };
-  buildStuntRamp(26, 0, -83, Math.PI / 2, pinkNeon);
-  buildStuntRamp(-84, 0, -83, -Math.PI / 2, amberNeon);
   // Epic Cliff-Jump Stunt Ramp perched on the 11m Lighthouse Plateau launching southwest over the bay!
   buildStuntRamp(68, PLATEAU_Y, -104, -2.55, cyanNeon);
 

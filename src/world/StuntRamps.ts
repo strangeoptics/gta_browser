@@ -18,8 +18,6 @@ export function buildStuntRamps(scene: THREE.Scene): StuntRamp[] {
   const specs: { x: number; z: number; yaw: number; width: number; length: number; height: number; color: string }[] = [
     // 1) Beach Launch Ramp (jumps from boardwalk edge toward the sloping surf!)
     { x: 99, z: 22, yaw: Math.PI / 2, width: 4.8, length: 6.8, height: 1.75, color: '#36f1e6' },
-    // 2) Downtown Avenue Southbound Jump
-    { x: -27, z: 6, yaw: 0, width: 4.8, length: 7.2, height: 1.85, color: '#ffd15c' },
   ];
 
   const baseMat = new THREE.MeshStandardMaterial({ color: '#2b2038', roughness: 0.45, metalness: 0.45 });

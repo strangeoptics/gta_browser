@@ -715,11 +715,10 @@ export function buildVicePort(
   scene.add(exportBoard);
 
   // ===========================================================================
-  // 8) TWO PORT STUNT RAMPS (Quay Jump & Container Yard Jump!)
+  // 8) PORT STUNT RAMP (Quay Jump)
   // ===========================================================================
   const portStuntRamps: StuntRamp[] = [
     { x: -24, z: 108, dirX: 0, dirZ: 1, width: 4.8, length: 9.0, height: 2.8 },
-    { x: 32, z: 102, dirX: -1, dirZ: 0, width: 4.8, length: 9.0, height: 2.6 },
   ];
   for (const r of portStuntRamps) {
     const g = new THREE.Group();

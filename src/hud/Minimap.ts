@@ -41,12 +41,18 @@ export class Minimap {
     // Northern Bay Ocean (z = -260..-117)
     sctx.fillRect(wx(-200), wz(-260), 330 * scale, 143 * scale);
 
-    // North Point Coastal Highway (z = -110..-95, x = -145..+95) & Cape Vice Lighthouse Peninsula
+    // North Point Coastal Highway (z = -110..-95, x = -145..+95) & Sunset Drive-In Cinema (NW)
     sctx.fillStyle = 'rgba(255, 255, 255, 0.14)';
     sctx.fillRect(wx(-145), wz(-110), 240 * scale, 15 * scale);
-    // Vice Marina Wooden Piers (x = -36, -8, +20; z = -145..-119)
+    // Sunset Drive-In '86 Lot (x = -144..-74, z = -152..-106)
+    sctx.fillStyle = 'rgba(66, 56, 86, 0.58)';
+    sctx.strokeStyle = 'rgba(255, 79, 163, 0.55)';
+    sctx.lineWidth = 1.2;
+    sctx.fillRect(wx(-144), wz(-152), 70 * scale, 46 * scale);
+    sctx.strokeRect(wx(-144), wz(-152), 70 * scale, 46 * scale);
+    // Vice Marina Wooden Piers (all 5 piers: x = -64, -50, -36, -8, +20; z = -145..-119)
     sctx.fillStyle = 'rgba(180, 142, 102, 0.65)';
-    for (const px of [-36, -8, 20]) {
+    for (const px of [-64, -50, -36, -8, 20]) {
       sctx.fillRect(wx(px - 1.8), wz(-145), 3.6 * scale, 26 * scale);
     }
     // Cape Vice 11m Sea Cliff Plateau (center 78, -135, r = 16.5) & Winding Serpentine Road
@@ -232,6 +238,10 @@ export class Minimap {
     sctx.fillText('☠', wx(183), wz(117));
     sctx.fillStyle = '#36f1e6';
     sctx.fillText('P3', wx(0), wz(54));
+    sctx.fillStyle = '#ff4fa3';
+    sctx.fillText('🎬', wx(-109), wz(-130));
+    sctx.fillStyle = '#36f1e6';
+    sctx.fillText('⛽', wx(-114), wz(75));
 
     this.staticCanvas = c;
     return c;

@@ -19,6 +19,7 @@ import {
 } from './Textures';
 import { SpatialGrid } from '../engine/SpatialGrid';
 import { buildBeachHighlights } from './BeachProps';
+import { buildDistrictExpansions } from './DistrictExpansions';
 import { buildNeonClub } from './NeonClub';
 import { buildPalmParking, type ParkingRushEvent, type ParkingRushHudState } from './PalmParking';
 import { buildPoliceStation } from './PoliceStation';
@@ -919,6 +920,16 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
   // 6g) Palm Parking '86 — Grand 39.6x39.6m 4-Story Art-Deco Neon Parking Garage on 1.5x Block (0, 54)
   const palmParking = buildPalmParking(scene, colliders, worldMeshes, palmPositions);
 
+  // 6h) High-Detail 1.5x District Expansions: Vice Port West/East, Vice Gas '86, Plaza Calle Ocho, Sunset Drive-In & Vice Yacht Club
+  const districtExpansions = buildDistrictExpansions(
+    scene,
+    colliders,
+    worldMeshes,
+    roadMat,
+    sidewalkMat,
+    palmPositions,
+  );
+
   const palms = buildPalmTrees(scene, palmPositions);
 
   // 6h) Vice Port Industrial Container Docks (shifted 0 X, +21 Z) + Wide 188m East/West Port Apron Extensions!
@@ -1273,13 +1284,18 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
     isTvOn: () => safehouse.isTvOn(),
     isNearClubBar: (pos: THREE.Vector3) => neonClub.isNearBar(unscaleLandmarkPos(pos, 40, 0, 54, 0)),
     getClubProximity: (pos: THREE.Vector3) => neonClub.getProximity(unscaleLandmarkPos(pos, 40, 0, 54, 0)),
-    getGroundHeight: (x: number, z: number, currentY?: number) =>
-      palmParking.getGroundHeight(x, z, currentY) ??
-      northPoint.getGroundHeight(x, z + 21) ??
-      starfish.getGroundHeight(x - 21, z + 21) ??
-      viceAirfield.getGroundHeight(x + 21, z - 21) ??
-      smugglersCay.getGroundHeight(x - 21, z - 21) ??
-      getBeachHeight(x, z),
+    getGroundHeight: (x: number, z: number, currentY?: number) => {
+      // Sunset Drive-In reclaimed NW lot (x = -145..-73, z = -153..-105) stays dry at y = 0.0!
+      if (x >= -145 && x <= -73 && z >= -153 && z <= -105) return 0;
+      return (
+        palmParking.getGroundHeight(x, z, currentY) ??
+        northPoint.getGroundHeight(x, z + 21) ??
+        starfish.getGroundHeight(x - 21, z + 21) ??
+        viceAirfield.getGroundHeight(x + 21, z - 21) ??
+        smugglersCay.getGroundHeight(x - 21, z - 21) ??
+        getBeachHeight(x, z)
+      );
+    },
     appendAnimalHitboxes: (out: THREE.Object3D[]) => {
       beachHighlights.appendShootableHitboxes(out);
       smugglersCay.appendShootableHitboxes(out);
@@ -1303,6 +1319,7 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
       viceAirfield.update(elapsed, playerPos ? makeOffsetPos(playerPos, -21, 21) : undefined);
       smugglersCay.update(elapsed, playerPos ? makeOffsetPos(playerPos, 21, 21) : undefined);
       vicePort.update(elapsed, playerPos ? makeOffsetPos(playerPos, 0, 21) : undefined);
+      districtExpansions.update(elapsed, playerPos);
       neonClub.update(elapsed, playerPos ? unscaleLandmarkPos(playerPos, 40, 0, 54, 0) : undefined);
       safehouse.update(
         elapsed,

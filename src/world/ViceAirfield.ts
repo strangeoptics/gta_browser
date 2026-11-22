@@ -760,54 +760,56 @@ export function buildViceAirfield(
   const goldGlowMat = new THREE.MeshStandardMaterial({ color: '#ffd15c', emissive: '#ffaa22', emissiveIntensity: 1.9 });
 
   // ===========================================================================
-  // 1) RECLAIMED COASTAL AIRFIELD TARMAC PENINSULA (x = -125..-68, z = 66..138)
+  // 1) RECLAIMED COASTAL AIRFIELD TARMAC PENINSULA (Expanded 86m x 106m: x = -154..-68, z = 66..172)
   // ===========================================================================
-  const tarmacSlab = new THREE.Mesh(new THREE.BoxGeometry(57.5, 1.5, 72.5), tarmacMat);
-  tarmacSlab.position.set(-96.25, -0.75, 102.25);
+  const tarmacSlab = new THREE.Mesh(new THREE.BoxGeometry(86.5, 1.5, 106.5), tarmacMat);
+  tarmacSlab.position.set(-110.75, -0.75, 119.25);
   tarmacSlab.receiveShadow = true;
   scene.add(tarmacSlab);
   worldMeshes.push(tarmacSlab);
 
-  // Heavy coastal seawalls along South (z=138), West (x=-125), and Southeast jetty lip (x=-68, z=126..138)
-  addVisual(new THREE.BoxGeometry(58, 1.6, 1.0), seawallMat, -96.25, -0.72, 138.2);
-  addVisual(new THREE.BoxGeometry(1.0, 1.6, 72.5), seawallMat, -124.8, -0.72, 102.25);
-  addVisual(new THREE.BoxGeometry(1.0, 1.6, 13.0), seawallMat, -67.8, -0.72, 132.0);
+  // Heavy coastal seawalls along South (z=172), West (x=-154), and Southeast jetty lip (x=-68, z=126..172)
+  addVisual(new THREE.BoxGeometry(87, 1.6, 1.0), seawallMat, -110.75, -0.72, 172.2);
+  addVisual(new THREE.BoxGeometry(1.0, 1.6, 106.5), seawallMat, -153.8, -0.72, 119.25);
+  addVisual(new THREE.BoxGeometry(1.0, 1.6, 47.0), seawallMat, -67.8, -0.72, 149.0);
 
   // Yellow/Black hazard edge along South seawall
-  const southHazard = new THREE.Mesh(new THREE.PlaneGeometry(56.5, 0.85), hazardMat);
+  const southHazard = new THREE.Mesh(new THREE.PlaneGeometry(85.5, 0.9), hazardMat);
   southHazard.rotation.x = -Math.PI / 2;
-  southHazard.position.set(-96.25, 0.015, 137.4);
+  southHazard.position.set(-110.75, 0.015, 171.4);
   scene.add(southHazard);
 
   // ===========================================================================
-  // 2) RUNWAY 18 / 36 (x = -119..-105, z = 70..136) + TAXIWAY + PAPI + LIGHTS
+  // 2) GRAND 100m RUNWAY 18 / 36 (x = -146..-130, z = 70..170) + TAXIWAY A + PAPI + LIGHTS
   // ===========================================================================
-  const rwyX = -112.0;
-  const rwyZ = 103.0;
-  const runwayMesh = new THREE.Mesh(new THREE.PlaneGeometry(14.0, 66.0), runwayMat);
+  const rwyX = -138.0;
+  const rwyZ = 120.0;
+  const runwayMesh = new THREE.Mesh(new THREE.PlaneGeometry(16.0, 100.0), runwayMat);
   runwayMesh.rotation.x = -Math.PI / 2;
   runwayMesh.position.set(rwyX, 0.018, rwyZ);
   runwayMesh.receiveShadow = true;
   scene.add(runwayMesh);
   worldMeshes.push(runwayMesh);
 
-  // Yellow Taxiway centerline (parallel to runway at x = -100, with 3 cross-connectors to runway)
+  // Yellow Taxiway A centerline (parallel to runway at x = -116, with 4 cross-connectors to runway + Hangar 06 & 07 spurs!)
   const drawTaxiLine = (w: number, d: number, x: number, z: number) => {
     const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), taxiYellowMat);
     m.rotation.x = -Math.PI / 2;
     m.position.set(x, 0.016, z);
     scene.add(m);
   };
-  drawTaxiLine(0.32, 58, -100.0, 102.0);
-  drawTaxiLine(6.2, 0.32, -102.9, 76.0);
-  drawTaxiLine(6.2, 0.32, -102.9, 103.0);
-  drawTaxiLine(6.2, 0.32, -102.9, 129.0);
-  // Connector into Hangar 06
-  drawTaxiLine(12.5, 0.32, -93.8, 112.5);
-  // Hold-short double dashed bars at x = -104.2
-  for (const hz of [76.0, 103.0, 129.0]) {
-    drawTaxiLine(0.24, 3.6, -104.1, hz);
-    drawTaxiLine(0.24, 3.6, -103.6, hz);
+  drawTaxiLine(0.36, 92, -116.0, 120.0);
+  drawTaxiLine(14.2, 0.36, -123.0, 76.0);
+  drawTaxiLine(14.2, 0.36, -123.0, 108.0);
+  drawTaxiLine(14.2, 0.36, -123.0, 138.0);
+  drawTaxiLine(14.2, 0.36, -123.0, 164.0);
+  // Connectors into Hangar 06 & Hangar 07
+  drawTaxiLine(28.0, 0.34, -102.0, 112.5);
+  drawTaxiLine(28.0, 0.34, -102.0, 134.5);
+  // Hold-short double dashed bars at x = -129.0
+  for (const hz of [76.0, 108.0, 138.0, 164.0]) {
+    drawTaxiLine(0.26, 4.0, -129.0, hz);
+    drawTaxiLine(0.26, 4.0, -128.4, hz);
   }
 
   // Instanced Runway Edge Lights (white), Threshold Lights (green/red) & Taxiway Lights (blue)
@@ -816,11 +818,11 @@ export function buildViceAirfield(
   const stalkGeo = new THREE.CylinderGeometry(0.04, 0.05, 0.35, 6);
 
   const whiteEdgeCoords: [number, number][] = [];
-  for (let z = 74; z <= 132; z += 5.8) {
-    whiteEdgeCoords.push([-119.4, z], [-104.6, z]);
+  for (let z = 74; z <= 166; z += 7.6) {
+    whiteEdgeCoords.push([-146.5, z], [-129.5, z]);
   }
   const whiteBulbInst = new THREE.InstancedMesh(bulbGeo, rwyWhiteBulbMat, whiteEdgeCoords.length);
-  const stalkInst = new THREE.InstancedMesh(stalkGeo, steelDarkMat, whiteEdgeCoords.length + 14);
+  const stalkInst = new THREE.InstancedMesh(stalkGeo, steelDarkMat, whiteEdgeCoords.length + 18);
   whiteEdgeCoords.forEach(([lx, lz], i) => {
     dummy.position.set(lx, 0.36, lz);
     dummy.rotation.set(0, 0, 0);
@@ -836,11 +838,11 @@ export function buildViceAirfield(
 
   // Taxiway Blue Edge Lights
   const blueCoords: [number, number][] = [];
-  for (let z = 78; z <= 126; z += 8) {
-    blueCoords.push([-96.2, z]);
+  for (let z = 80; z <= 160; z += 10) {
+    blueCoords.push([-111.5, z]);
   }
-  for (const bx of [-103.2, -101.0]) {
-    blueCoords.push([bx, 73.8], [bx, 100.8], [bx, 126.8]);
+  for (const bx of [-126.0, -120.0]) {
+    blueCoords.push([bx, 73.8], [bx, 105.8], [bx, 135.8], [bx, 161.8]);
   }
   const blueBulbInst = new THREE.InstancedMesh(bulbGeo, taxiBlueBulbMat, blueCoords.length);
   blueCoords.forEach(([lx, lz], i) => {
@@ -848,7 +850,7 @@ export function buildViceAirfield(
     dummy.scale.set(0.85, 0.85, 0.85);
     dummy.updateMatrix();
     blueBulbInst.setMatrixAt(i, dummy.matrix);
-    if (i < 14) {
+    if (i < 18) {
       dummy.position.set(lx, 0.15, lz);
       dummy.scale.set(1, 1, 1);
       dummy.updateMatrix();
@@ -860,36 +862,36 @@ export function buildViceAirfield(
   scene.add(blueBulbInst);
   scene.add(stalkInst);
 
-  // Green North Threshold Bar (z=70.1) & Red South End Bar (z=135.9)
-  for (let i = 0; i < 6; i++) {
-    const tx = -117.5 + i * 2.2;
+  // Green North Threshold Bar (z=70.1) & Red South End Bar (z=169.9)
+  for (let i = 0; i < 7; i++) {
+    const tx = -144.6 + i * 2.2;
     addVisual(bulbGeo, rwyGreenBulbMat, tx, 0.22, 70.1);
-    addVisual(bulbGeo, rwyRedBulbMat, tx, 0.22, 135.9);
+    addVisual(bulbGeo, rwyRedBulbMat, tx, 0.22, 169.9);
   }
 
-  // PAPI (Precision Approach Path Indicator) 4-light unit beside Touchdown Zone (x = -121.5, z = 82)
+  // PAPI (Precision Approach Path Indicator) 4-light unit beside Touchdown Zone (x = -149.2, z = 84)
   for (let i = 0; i < 4; i++) {
-    const px = -122.6 + i * 0.65;
-    addVisual(new THREE.BoxGeometry(0.45, 0.36, 0.55), steelDarkMat, px, 0.28, 82.0);
+    const px = -150.4 + i * 0.65;
+    addVisual(new THREE.BoxGeometry(0.45, 0.36, 0.55), steelDarkMat, px, 0.28, 84.0);
     addVisual(
       new THREE.SphereGeometry(0.14, 8, 8),
       i < 2 ? rwyRedBulbMat : rwyWhiteBulbMat,
       px,
       0.34,
-      81.72,
+      83.72,
     );
   }
 
-  // Sequenced Approach "Rabbit" Strobe Lights along South Seawall & North Approach
+  // Sequenced Approach "Rabbit" Strobe Lights along South Seawall
   const rabbitStrobes: { mesh: THREE.Mesh; mat: THREE.MeshStandardMaterial; idx: number }[] = [];
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 6; i++) {
     const smat = new THREE.MeshStandardMaterial({
       color: '#ffffff',
       emissive: '#36f1e6',
       emissiveIntensity: 0.4,
     });
-    const m = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.14, 0.22), smat);
-    m.position.set(rwyX, 0.16, 136.6 - i * 2.1);
+    const m = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.14, 0.22), smat);
+    m.position.set(rwyX, 0.16, 170.6 - i * 2.2);
     m.userData.dynamic = true;
     scene.add(m);
     rabbitStrobes.push({ mesh: m, mat: smat, idx: i });
@@ -956,8 +958,8 @@ export function buildViceAirfield(
       cz,
     );
   };
-  // West perimeter fence
-  addFenceSegment(-124.0, 67.0, -124.0, 137.0);
+  // West perimeter fence along expanded x = -153.2
+  addFenceSegment(-153.2, 67.0, -153.2, 171.0);
   // East divider between Airfield & Vice Port (open drive-through gap at z = 82..94!)
   addFenceSegment(-68.2, 67.0, -68.2, 82.0);
   addFenceSegment(-68.2, 94.0, -68.2, 126.0);
@@ -1575,18 +1577,140 @@ export function buildViceAirfield(
   });
 
   // ===========================================================================
-  // 8) AVGAS 100LL FUEL DEPOT, FUEL TANKER TRUCK & SECONDARY HELIPAD (H)
+  // 6b) SECOND WALK-IN / DRIVE-IN "HANGAR 07 · CARGO" (x = -88..-71, z = 126..143)
   // ===========================================================================
-  // Concrete containment bund at SE airfield corner (x = -76..-70, z = 125..134)
-  addBox(6.8, 0.55, 9.2, -73.4, 0.28, 129.5, seawallMat, true, 'airfield-fuel');
-  for (const tz of [127.4, 131.6]) {
+  const h7Z = 134.5;
+  addBox(hW, hWallH, 0.45, hX, hWallH / 2, h7Z - hD / 2, hangarWallMat, true, 'airfield-hangar');
+  addBox(hW, hWallH, 0.45, hX, hWallH / 2, h7Z + hD / 2, hangarWallMat, true, 'airfield-hangar');
+  addBox(0.45, hWallH, hD, hX + hW / 2, hWallH / 2, h7Z, hangarWallMat, true, 'airfield-hangar');
+  addBox(0.45, hWallH, 2.3, hX - hW / 2, hWallH / 2, h7Z - hD / 2 + 1.15, steelDarkMat, true, 'airfield-hangar');
+  addBox(0.45, hWallH, 2.3, hX - hW / 2, hWallH / 2, h7Z + hD / 2 - 1.15, steelDarkMat, true, 'airfield-hangar');
+  addVisual(new THREE.BoxGeometry(0.6, 1.1, hD), steelDarkMat, hX - hW / 2, hWallH + 0.3, h7Z);
+
+  for (let i = 0; i < archSegments; i++) {
+    const a0 = (i / archSegments) * Math.PI;
+    const a1 = ((i + 1) / archSegments) * Math.PI;
+    const midA = (a0 + a1) / 2;
+    const radiusZ = hD / 2;
+    const archH = 2.8;
+    const segZ = h7Z - Math.cos(midA) * radiusZ;
+    const segY = hWallH + Math.sin(midA) * archH;
+    const segLen = Math.hypot(
+      (Math.cos(a1) - Math.cos(a0)) * radiusZ,
+      (Math.sin(a1) - Math.sin(a0)) * archH,
+    );
+    const tilt = Math.atan2(
+      (Math.sin(a1) - Math.sin(a0)) * archH,
+      (Math.cos(a0) - Math.cos(a1)) * radiusZ,
+    );
+    const panel = new THREE.Mesh(new THREE.BoxGeometry(hW + 0.6, 0.24, segLen + 0.18), hangarWallMat);
+    panel.position.set(hX, segY, segZ);
+    panel.rotation.x = tilt;
+    panel.castShadow = true;
+    panel.receiveShadow = true;
+    scene.add(panel);
+    worldMeshes.push(panel);
+  }
+
+  const hangar7SignTex = createNeonSignTexture('HANGAR 07 · CARGO', '#36f1e6');
+  const hangar7SignMat = new THREE.MeshStandardMaterial({
+    map: hangar7SignTex,
+    emissive: '#ffffff',
+    emissiveMap: hangar7SignTex,
+    emissiveIntensity: 1.7,
+  });
+  const hangar7Sign = new THREE.Mesh(new THREE.BoxGeometry(0.18, 1.35, 8.6), hangar7SignMat);
+  hangar7Sign.position.set(hX - hW / 2 - 0.35, hWallH + 0.55, h7Z);
+  scene.add(hangar7Sign);
+
+  for (const tx of [-85.0, -79.5, -74.0]) {
+    addVisual(new THREE.BoxGeometry(0.24, 0.24, hD - 0.6), steelDarkMat, tx, hWallH + 0.1, h7Z);
+    for (const lz of [h7Z - 4.2, h7Z + 4.2]) {
+      addVisual(new THREE.SphereGeometry(0.18, 8, 8), floodBulbMat, tx, hWallH - 0.25, lz);
+    }
+  }
+  drawTaxiLine(13.5, 0.22, hX - 0.8, h7Z - 6.6);
+  drawTaxiLine(13.5, 0.22, hX - 0.8, h7Z + 6.6);
+  // Cargo freight stacks inside Hangar 07
+  addBox(2.4, 1.5, 2.2, -73.5, 0.75, h7Z - 4.8, crateWoodMat, true, 'airfield-prop');
+  addBox(2.0, 1.2, 2.0, -73.5, 0.6, h7Z + 4.8, crateWoodMat, true, 'airfield-prop');
+  addBox(1.8, 1.0, 1.8, -73.5, 2.0, h7Z - 4.8, crateWoodMat, true, 'airfield-prop');
+
+  // 3rd Detailed 80s Aircraft: "VICE SKYHAWK '86" High-Wing Coastal Prop Plane on South Apron (x = -98, z = 134.5)
+  const skyhawk = new THREE.Group();
+  skyhawk.position.set(-98.0, 0, h7Z);
+  skyhawk.rotation.y = -Math.PI / 2;
+  const shBody = new THREE.Mesh(new THREE.BoxGeometry(1.15, 1.15, 4.6), aircraftWhiteMat);
+  shBody.position.set(0, 1.28, 0.3);
+  shBody.castShadow = true;
+  skyhawk.add(shBody);
+  const shTail = new THREE.Mesh(new THREE.ConeGeometry(0.58, 3.2, 8), aircraftWhiteMat);
+  shTail.rotation.x = -Math.PI / 2;
+  shTail.position.set(0, 1.32, -3.5);
+  skyhawk.add(shTail);
+  const shStripe = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.16, 4.5), aviationRedMat);
+  shStripe.position.set(0, 1.15, 0.3);
+  skyhawk.add(shStripe);
+  const shWing = new THREE.Mesh(new THREE.BoxGeometry(10.4, 0.16, 1.45), aircraftWhiteMat);
+  shWing.position.set(0, 2.0, 0.6);
+  shWing.castShadow = true;
+  skyhawk.add(shWing);
+  for (const side of [-1, 1]) {
+    const strut = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 2.2, 6), steelDarkMat);
+    strut.position.set(side * 1.6, 1.35, 0.6);
+    strut.rotation.z = side * 0.85;
+    skyhawk.add(strut);
+  }
+  const shFin = new THREE.Mesh(new THREE.BoxGeometry(0.14, 1.8, 1.25), aviationRedMat);
+  shFin.position.set(0, 2.15, -4.4);
+  shFin.rotation.x = -0.25;
+  skyhawk.add(shFin);
+  const shHStab = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.1, 0.72), aircraftWhiteMat);
+  shHStab.position.set(0, 1.45, -4.6);
+  skyhawk.add(shHStab);
+  const shWindshield = new THREE.Mesh(new THREE.BoxGeometry(1.06, 0.55, 0.9), aircraftGlassMat);
+  shWindshield.position.set(0, 1.56, 1.65);
+  shWindshield.rotation.x = 0.35;
+  skyhawk.add(shWindshield);
+  for (const [gx, gz] of [
+    [0, 2.35],
+    [-1.1, 0.2],
+    [1.1, 0.2],
+  ]) {
+    const wh = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.26, 0.18, 10), steelDarkMat);
+    wh.rotation.z = Math.PI / 2;
+    wh.position.set(gx, 0.26, gz);
+    skyhawk.add(wh);
+  }
+  const shProp = new THREE.Group();
+  shProp.position.set(0, 1.26, 2.68);
+  shProp.userData.dynamic = true;
+  const shBlade = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.55, 0.04), steelDarkMat);
+  shProp.add(shBlade);
+  skyhawk.add(shProp);
+  scene.add(skyhawk);
+  kingAir.propellers.push(shProp);
+  colliders.push({
+    minX: -101.5,
+    maxX: -94.0,
+    minY: 0,
+    maxY: 2.5,
+    minZ: h7Z - 1.2,
+    maxZ: h7Z + 1.2,
+    tag: 'airfield-aircraft',
+  });
+
+  // ===========================================================================
+  // 8) AVGAS 100LL FUEL DEPOT, FUEL TANKER TRUCK & SECONDARY HELIPAD (H) (South Apron z = 152..166)
+  // ===========================================================================
+  addBox(6.8, 0.55, 9.2, -73.4, 0.28, 157.5, seawallMat, true, 'airfield-fuel');
+  for (const tz of [155.4, 159.6]) {
     const tank = new THREE.Mesh(new THREE.CylinderGeometry(1.35, 1.35, 5.4, 16), avgasTankMat);
     tank.rotation.z = Math.PI / 2;
     tank.position.set(-73.4, 1.95, tz);
     tank.castShadow = true;
     scene.add(tank);
     worldMeshes.push(tank);
-    // Steel tank cradle legs
     for (const lx of [-75.2, -71.6]) {
       addVisual(new THREE.BoxGeometry(0.35, 1.2, 2.2), steelDarkMat, lx, 0.9, tz);
     }
@@ -1596,14 +1720,14 @@ export function buildViceAirfield(
     maxX: -70.0,
     minY: 0,
     maxY: 3.6,
-    minZ: 124.8,
-    maxZ: 134.2,
+    minZ: 152.8,
+    maxZ: 162.2,
     tag: 'airfield-fuel',
   });
 
-  // Parked AVGAS Fuel Tanker Truck at x = -81.8, z = 129.5
+  // Parked AVGAS Fuel Tanker Truck at x = -82.5, z = 157.5
   const truckGroup = new THREE.Group();
-  truckGroup.position.set(-81.8, 0, 129.5);
+  truckGroup.position.set(-82.5, 0, 157.5);
   const cab = new THREE.Mesh(new THREE.BoxGeometry(2.1, 1.85, 2.0), aviationRedMat);
   cab.position.set(0, 1.25, -2.35);
   cab.castShadow = true;
@@ -1629,29 +1753,29 @@ export function buildViceAirfield(
   }
   scene.add(truckGroup);
   colliders.push({
-    minX: -83.1,
-    maxX: -80.5,
+    minX: -83.8,
+    maxX: -81.2,
     minY: 0,
     maxY: 2.7,
-    minZ: 126.0,
-    maxZ: 133.0,
+    minZ: 154.0,
+    maxZ: 161.0,
     tag: 'airfield-prop',
   });
 
-  // Secondary Airport Helipad (H) at x = -93.0, z = 129.5 (ideal landing spot for Vice Maverick!)
+  // Secondary Airport Helipad (H) at x = -98.0, z = 158.0 (wide clear approach over South Bay!)
   const heliPadMesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(10.5, 10.5),
+    new THREE.PlaneGeometry(11.5, 11.5),
     new THREE.MeshStandardMaterial({ map: createHelipadTexture(), roughness: 0.48 }),
   );
   heliPadMesh.rotation.x = -Math.PI / 2;
-  heliPadMesh.position.set(-93.0, 0.02, 129.5);
+  heliPadMesh.position.set(-98.0, 0.02, 158.0);
   heliPadMesh.receiveShadow = true;
   scene.add(heliPadMesh);
   for (const [hx, hz] of [
-    [-98.2, 124.3],
-    [-87.8, 124.3],
-    [-98.2, 134.7],
-    [-87.8, 134.7],
+    [-103.6, 152.4],
+    [-92.4, 152.4],
+    [-103.6, 163.6],
+    [-92.4, 163.6],
   ]) {
     addVisual(bulbGeo, rwyGreenBulbMat, hx, 0.2, hz);
   }
@@ -1750,22 +1874,25 @@ export function buildViceAirfield(
     scene.add(box);
     addVisual(new THREE.BoxGeometry(0.08, 0.25, 0.08), steelDarkMat, x, 0.12, z);
   };
-  addAirportSign('18-36', '#d62828', '#ffffff', -103.4, 78.2, Math.PI / 2);
-  addAirportSign('A · TERM 1', '#f2be32', '#14151a', -97.6, 78.2, Math.PI / 2);
-  addAirportSign('HANGAR 06', '#f2be32', '#14151a', -97.6, 108.5, Math.PI / 2);
-  addAirportSign('18-36', '#d62828', '#ffffff', -103.4, 126.5, Math.PI / 2);
-  // Runway Distance-Remaining Signs along West side of Runway 18/36
-  addAirportSign('3', '#14151a', '#ffffff', -121.2, 88.0, Math.PI / 2, 0.9, 0.9);
-  addAirportSign('2', '#14151a', '#ffffff', -121.2, 103.0, Math.PI / 2, 0.9, 0.9);
-  addAirportSign('1', '#14151a', '#ffffff', -121.2, 118.0, Math.PI / 2, 0.9, 0.9);
+  addAirportSign('18-36', '#d62828', '#ffffff', -127.8, 78.2, Math.PI / 2);
+  addAirportSign('A · TERM 1', '#f2be32', '#14151a', -112.5, 78.2, Math.PI / 2);
+  addAirportSign('HANGAR 06', '#f2be32', '#14151a', -112.5, 108.5, Math.PI / 2);
+  addAirportSign('HANGAR 07', '#f2be32', '#14151a', -112.5, 132.5, Math.PI / 2);
+  addAirportSign('18-36', '#d62828', '#ffffff', -127.8, 161.5, Math.PI / 2);
+  // Runway Distance-Remaining Signs along West side of 100m Runway 18/36
+  addAirportSign('4', '#14151a', '#ffffff', -149.2, 90.0, Math.PI / 2, 0.9, 0.9);
+  addAirportSign('3', '#14151a', '#ffffff', -149.2, 110.0, Math.PI / 2, 0.9, 0.9);
+  addAirportSign('2', '#14151a', '#ffffff', -149.2, 130.0, Math.PI / 2, 0.9, 0.9);
+  addAirportSign('1', '#14151a', '#ffffff', -149.2, 150.0, Math.PI / 2, 0.9, 0.9);
 
-  // 4 High-Mast Apron Floodlight Towers (sodium bulbs + soft volumetric haze cones, 0 extra PointLights!)
+  // 5 High-Mast Apron Floodlight Towers (sodium bulbs + soft volumetric haze cones, 0 extra PointLights!)
   const floodConeGeo = new THREE.ConeGeometry(5.5, 11.5, 12, 1, true);
   for (const [fx, fz, aimYaw] of [
     [-69.6, 70.2, -2.35],
     [-69.6, 101.8, -1.65],
     [-69.6, 123.5, -1.85],
-    [-101.2, 136.2, 0.35],
+    [-69.6, 146.5, -1.85],
+    [-116.0, 170.0, 0.35],
   ]) {
     addVisual(new THREE.CylinderGeometry(0.14, 0.24, 12.2, 8), steelGalvMat, fx, 6.1, fz, true);
     const head = new THREE.Group();
@@ -1787,9 +1914,9 @@ export function buildViceAirfield(
   }
 
   return {
-    // Keep entire reclaimed airfield peninsula at y = 0.0 (overrides southern ocean -6.0m depth for z = 126..138!)
+    // Keep entire expanded 86m x 106m airfield peninsula at y = 0.0 (overrides southern ocean -6.0m depth!)
     getGroundHeight: (x: number, z: number) => {
-      if (x >= -125.5 && x <= -67.5 && z >= 65.5 && z <= 138.5) {
+      if (x >= -154.5 && x <= -67.5 && z >= 65.5 && z <= 172.5) {
         return 0;
       }
       return null;
@@ -1798,9 +1925,11 @@ export function buildViceAirfield(
     isInsideInterior: (pos: THREE.Vector3) => {
       const inTerminal =
         pos.x > -85.8 && pos.x < -70.2 && pos.z > 71.2 && pos.z < 82.8 && pos.y < 5.2;
-      const inHangar =
+      const inHangar6 =
         pos.x > -87.8 && pos.x < -71.2 && pos.z > 104.2 && pos.z < 120.8 && pos.y < 8.5;
-      return inTerminal || inHangar;
+      const inHangar7 =
+        pos.x > -87.8 && pos.x < -71.2 && pos.z > 126.2 && pos.z < 142.8 && pos.y < 8.5;
+      return inTerminal || inHangar6 || inHangar7;
     },
 
     isNearAirfieldLoot: (pos: THREE.Vector3) =>

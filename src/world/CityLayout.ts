@@ -34,10 +34,10 @@ export const BLOCK_SIZE = 42;
 export const SIDEWALK_WIDTH = 3.2;
 
 export const DEFAULT_PLAYABLE_BOUNDS = {
-  minX: -146,
+  minX: -176,
   maxX: 250,
   minZ: -190,
-  maxZ: 180,
+  maxZ: 196,
 } as const;
 
 /**
@@ -243,10 +243,10 @@ export function generateCityLayout(): CityLayout {
     blockSize: BLOCK_SIZE,
     sidewalkWidth: SIDEWALK_WIDTH,
     playableBounds: {
-      minX: -146, // extends west through Little Havana, Vice Airfield Runway 18/36 & West Havana Blvd
+      minX: -176, // extends west across Little Havana & expanded 86x106m Vice International Airfield
       maxX: 250, // extends across Causeway Bridge, Starfish Island, Smuggler's Cay & open east ocean
       minZ: -190, // extends north through North Point, Vice Marina Bay & Cape Vice Cliff
-      maxZ: 180, // extends south through Vice Port Docks, Vice Airfield & south bay
+      maxZ: 196, // extends south through Vice Port Docks, 100m Airfield Runway & south bay
     },
     buildings,
   };

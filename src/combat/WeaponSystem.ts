@@ -286,6 +286,15 @@ export class WeaponSystem {
     this.switchWeapon(4);
   }
 
+  public setLauncherUnlocked(unlocked: boolean): void {
+    this.launcherUnlocked = unlocked;
+    if (unlocked) {
+      this.ammo[4] = WEAPONS[4].magSize;
+    } else if (this.slotIndex === 4) {
+      this.switchWeapon(1);
+    }
+  }
+
   public isLauncherUnlocked(): boolean {
     return this.launcherUnlocked;
   }

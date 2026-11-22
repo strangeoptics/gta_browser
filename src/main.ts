@@ -36,10 +36,16 @@ import { TouchControls } from './engine/TouchControls';
 import type { AABB } from './types';
 import {
   clearProgress,
+  createProfile,
+  deleteProfile,
+  getActiveProfile,
+  listProfiles,
   loadProgress,
   loadSettings,
+  renameProfile,
   saveProgress,
   saveSettings,
+  setActiveProfile,
   type GameSettings,
 } from './engine/Storage';
 
@@ -142,7 +148,15 @@ const phoneTabBtns = Array.from(document.querySelectorAll<HTMLButtonElement>('.p
 const phoneMissionListEl = document.getElementById('phone-mission-list') as HTMLDivElement;
 const phoneCloseBtn = document.getElementById('phone-close') as HTMLButtonElement;
 
-// Pause Settings & Saved Stats UI
+// Pause Settings, Multi-Player Profiles & Saved Stats UI
+const profileSelectEl = document.getElementById('profile-select') as HTMLSelectElement;
+const profileNewBtn = document.getElementById('profile-new-btn') as HTMLButtonElement;
+const profileRenameBtn = document.getElementById('profile-rename-btn') as HTMLButtonElement;
+const profileDeleteBtn = document.getElementById('profile-delete-btn') as HTMLButtonElement;
+const profileFormEl = document.getElementById('profile-form') as HTMLDivElement;
+const profileNameInput = document.getElementById('profile-name-input') as HTMLInputElement;
+const profileSaveBtn = document.getElementById('profile-save-btn') as HTMLButtonElement;
+const profileCancelBtn = document.getElementById('profile-cancel-btn') as HTMLButtonElement;
 const statCashEl = document.getElementById('stat-cash') as HTMLElement;
 const statMissionsEl = document.getElementById('stat-missions') as HTMLElement;
 const resetSaveBtn = document.getElementById('reset-save-btn') as HTMLButtonElement;
@@ -387,18 +401,74 @@ function eatLookedFood(): boolean {
   return true;
 }
 
-objectives.cash = savedProgress.cash;
-objectives.completedCount = savedProgress.completedMissions;
-objectives.setCompletedIds(savedProgress.completedMissionIds ?? []);
-story.setCompletedChapters(savedProgress.storyChapter ?? 0);
-specialMissions.setParamedicProgress(savedProgress.paramedicRescues ?? 0, Boolean(savedProgress.maxHpUnlocked));
-playerAvatar.setOutfit(savedProgress.outfitIndex);
-pets.setOwnedPets((savedProgress.ownedPets ?? []) as PetId[]);
-world.setSafehouseRooftopBarOwned(Boolean(savedProgress.rooftopBarOwned));
-if (savedProgress.launcherUnlocked) {
-  weapons.unlockLauncher();
+function refreshProfileSelector(): void {
+  const profiles = listProfiles();
+  const active = getActiveProfile();
+  profileSelectEl.innerHTML = '';
+  for (const p of profiles) {
+    const opt = document.createElement('option');
+    opt.value = p.id;
+    const ch = p.progress.storyChapter ?? 0;
+    opt.textContent = `${p.name} · $${p.progress.cash.toLocaleString('en-US')} · Kap. ${ch}/5`;
+    opt.selected = p.id === active.id;
+    profileSelectEl.appendChild(opt);
+  }
+  profileDeleteBtn.disabled = profiles.length <= 1;
+}
+
+function applyActiveProfileToWorld(respawnPlayer: boolean): void {
+  const active = getActiveProfile();
+  const prog = loadProgress();
+  const nextSettings = loadSettings();
+
+  if (respawnPlayer) {
+    if (vehicles.isInVehicle()) vehicles.exitVehicle();
+    if (boat.isInBoat()) boat.disembark();
+    if (superyacht.isInYacht()) superyacht.disembark();
+    if (maverick.isInHeli()) maverick.exit(EMPTY_AABBS, world.getGroundHeight, world.playerGrid);
+    if (garageRides.isRiding()) garageRides.dismountRide(world.layout.playableBounds);
+    weapons.setEnabled(true);
+    wanted.reset();
+    lastWantedStars = 0;
+    bustProgress = 0;
+    cocktailScore = 0;
+    npcs.clearPolice();
+    npcs.calmAllLawAndGuards();
+    heli.clear();
+    world.clearPdAlarm();
+    if (heist.isActive()) heist.failHeist(npcs);
+    if (vigilante.isActive()) vigilante.stop(npcs);
+    if (specialMissions.isActive()) specialMissions.stop();
+    story.cancelChapter(npcs);
+    player.setSpawn(60, 0.2, 24, 0.12);
+    camera.fov = 75;
+    camera.updateProjectionMatrix();
+  }
+
+  objectives.cash = prog.cash;
+  objectives.completedCount = prog.completedMissions;
+  lastCompletedCount = prog.completedMissions;
+  objectives.setCompletedIds(prog.completedMissionIds ?? []);
+  story.setCompletedChapters(prog.storyChapter ?? 0);
+  specialMissions.setParamedicProgress(prog.paramedicRescues ?? 0, Boolean(prog.maxHpUnlocked));
+  playerMaxHp = prog.maxHpUnlocked ? 150 : 100;
+  playerHp = playerMaxHp;
+  playerArmor = prog.armor;
+  playerAvatar.setOutfit(prog.outfitIndex);
+  pets.setOwnedPets((prog.ownedPets ?? []) as PetId[]);
+  world.setSafehouseRooftopBarOwned(Boolean(prog.rooftopBarOwned));
+
+  weapons.setLauncherUnlocked(Boolean(prog.launcherUnlocked));
+  weapons.refillAllAmmo();
   weapons.switchWeapon(1);
-  slotEls[4].classList.remove('locked');
+  slotEls[4].classList.toggle('locked', !prog.launcherUnlocked);
+
+  applySettings(nextSettings);
+  persistProgress();
+  refreshProfileSelector();
+  if (respawnPlayer) {
+    showQuickToast(`SPIELER GEWECHSELT · ${active.name.toUpperCase()}`);
+  }
 }
 
 function persistProgress(): void {
@@ -419,6 +489,7 @@ function persistProgress(): void {
   });
   statCashEl.textContent = `$${objectives.cash.toLocaleString('en-US')}`;
   statMissionsEl.textContent = String(objectives.completedCount);
+  refreshProfileSelector();
 }
 
 function renderFrame(): void {
@@ -456,8 +527,68 @@ function applySettings(next: GameSettings): void {
   saveSettings(settings);
 }
 
-applySettings(settings);
-persistProgress();
+applyActiveProfileToWorld(false);
+
+// Multi-Player Profile Controls
+let profileFormMode: 'new' | 'rename' | null = null;
+function openProfileForm(mode: 'new' | 'rename'): void {
+  profileFormMode = mode;
+  profileFormEl.classList.add('visible');
+  profileNameInput.value = mode === 'rename' ? getActiveProfile().name : '';
+  profileNameInput.placeholder = mode === 'rename' ? 'Neuer Name…' : `Spieler ${listProfiles().length + 1}`;
+  profileNameInput.focus();
+  profileNameInput.select();
+}
+
+function closeProfileForm(): void {
+  profileFormMode = null;
+  profileFormEl.classList.remove('visible');
+}
+
+function submitProfileForm(): void {
+  if (!profileFormMode) return;
+  const rawName = profileNameInput.value;
+  if (profileFormMode === 'new') {
+    createProfile(rawName);
+    closeProfileForm();
+    applyActiveProfileToWorld(true);
+  } else {
+    const active = getActiveProfile();
+    renameProfile(active.id, rawName);
+    closeProfileForm();
+    refreshProfileSelector();
+    showQuickToast(`SPIELER UMBENANNT · ${getActiveProfile().name.toUpperCase()}`);
+  }
+}
+
+profileSelectEl.addEventListener('change', () => {
+  closeProfileForm();
+  if (setActiveProfile(profileSelectEl.value)) {
+    applyActiveProfileToWorld(true);
+  }
+});
+profileNewBtn.addEventListener('click', () => openProfileForm('new'));
+profileRenameBtn.addEventListener('click', () => openProfileForm('rename'));
+profileCancelBtn.addEventListener('click', () => closeProfileForm());
+profileSaveBtn.addEventListener('click', () => submitProfileForm());
+profileNameInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    submitProfileForm();
+  } else if (e.key === 'Escape') {
+    e.preventDefault();
+    closeProfileForm();
+  }
+});
+profileDeleteBtn.addEventListener('click', () => {
+  if (listProfiles().length <= 1) return;
+  const active = getActiveProfile();
+  if (deleteProfile(active.id)) {
+    closeProfileForm();
+    applyActiveProfileToWorld(true);
+    showQuickToast(`PROFIL „${active.name.toUpperCase()}“ GELÖSCHT`);
+  }
+});
 
 optSensInput.addEventListener('input', () => {
   applySettings({ ...settings, mouseSensitivity: parseFloat(optSensInput.value) });
@@ -476,20 +607,8 @@ optPerfInput.addEventListener('change', () => {
 });
 resetSaveBtn.addEventListener('click', () => {
   clearProgress();
-  objectives.cash = 300;
-  objectives.completedCount = 0;
-  lastCompletedCount = 0;
-  playerArmor = 0;
-  pets.setOwnedPets([]);
-  world.setSafehouseRooftopBarOwned(false);
-  objectives.setCompletedIds([]);
-  story.setCompletedChapters(0);
-  story.cancelChapter(npcs);
-  specialMissions.setParamedicProgress(0, false);
-  specialMissions.stop();
-  playerMaxHp = 100;
-  playerHp = 100;
-  persistProgress();
+  applyActiveProfileToWorld(true);
+  showQuickToast(`SPEICHERSTAND VON „${getActiveProfile().name.toUpperCase()}“ ZURÜCKGESETZT`);
 });
 
 function triggerBusted(): void {
@@ -1364,6 +1483,13 @@ window.addEventListener('mousemove', (e) => {
 
 // Enter / Exit Vehicle on [E], Shop on [B], Radio on [Q], Photo Mode on [P], Mute Audio on [M]
 window.addEventListener('keydown', (e) => {
+  if (
+    e.target instanceof HTMLInputElement ||
+    e.target instanceof HTMLTextAreaElement ||
+    e.target instanceof HTMLSelectElement
+  ) {
+    return;
+  }
   photoKeys.add(e.code);
 
   // Developer Panel shortcut: [Alt+D] or [F2] anytime, or [D] while Pause overlay is open!

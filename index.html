@@ -247,6 +247,22 @@
           <p class="subtitle">Miami Coastal District · Golden Hour Post-Rain FPS &amp; Driving</p>
           <button id="play-btn" type="button">KLICKEN ZUM STARTEN</button>
 
+          <!-- Multi-Player Profile Selector & Independent Save Slots -->
+          <div class="profile-panel">
+            <div class="profile-row">
+              <span class="profile-label">SPIELER</span>
+              <select id="profile-select" title="Spieler-Profil &amp; Speicherstand wählen"></select>
+              <button id="profile-new-btn" class="profile-icon-btn profile-new" type="button" title="Neuen Spieler anlegen">+ NEU</button>
+              <button id="profile-rename-btn" class="profile-icon-btn" type="button" title="Spieler umbenennen">✎</button>
+              <button id="profile-delete-btn" class="profile-icon-btn profile-del" type="button" title="Spieler löschen">🗑</button>
+            </div>
+            <div id="profile-form" class="profile-form">
+              <input id="profile-name-input" type="text" maxlength="22" placeholder="Spielername…" />
+              <button id="profile-save-btn" class="profile-icon-btn profile-new" type="button">OK</button>
+              <button id="profile-cancel-btn" class="profile-icon-btn" type="button">✕</button>
+            </div>
+          </div>
+
           <!-- Saved Progress Summary -->
           <div class="stats-bar">
             <span>CASH: <strong id="stat-cash">$300</strong></span>

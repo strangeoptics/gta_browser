@@ -151,6 +151,15 @@ export class AudioEngine {
     return this.muted;
   }
 
+  private autoDisconnect(source: AudioScheduledSourceNode, ...nodes: AudioNode[]): void {
+    source.onended = () => {
+      source.disconnect();
+      for (let i = 0; i < nodes.length; i++) {
+        nodes[i].disconnect();
+      }
+    };
+  }
+
   public playShot(weaponId: string): void {
     if (!this.ctx || !this.masterGain || !this.noiseBuffer || this.muted) return;
     const now = this.ctx.currentTime;
@@ -214,11 +223,13 @@ export class AudioEngine {
     noise.connect(filter);
     filter.connect(nGain);
     nGain.connect(this.masterGain);
+    this.autoDisconnect(noise, filter, nGain);
     noise.start(now);
     noise.stop(now + 0.32);
 
     osc.connect(oGain);
     oGain.connect(this.masterGain);
+    this.autoDisconnect(osc, oGain);
     osc.start(now);
     osc.stop(now + 0.26);
   }
@@ -235,6 +246,7 @@ export class AudioEngine {
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
     osc.connect(gain);
     gain.connect(this.masterGain);
+    this.autoDisconnect(osc, gain);
     osc.start(now);
     osc.stop(now + 0.18);
   }
@@ -253,6 +265,7 @@ export class AudioEngine {
       gain.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
       osc.connect(gain);
       gain.connect(this.masterGain!);
+      this.autoDisconnect(osc, gain);
       osc.start(t);
       osc.stop(t + 0.36);
     });
@@ -274,6 +287,7 @@ export class AudioEngine {
     osc.connect(filter);
     filter.connect(gain);
     gain.connect(this.masterGain);
+    this.autoDisconnect(osc, filter, gain);
     osc.start(now);
     osc.stop(now + 1.25);
   }
@@ -292,6 +306,7 @@ export class AudioEngine {
     oGain.gain.exponentialRampToValueAtTime(0.001, now + 0.72);
     osc.connect(oGain);
     oGain.connect(this.masterGain);
+    this.autoDisconnect(osc, oGain);
     osc.start(now);
     osc.stop(now + 0.75);
 
@@ -308,6 +323,7 @@ export class AudioEngine {
     noise.connect(filter);
     filter.connect(nGain);
     nGain.connect(this.masterGain);
+    this.autoDisconnect(noise, filter, nGain);
     noise.start(now);
     noise.stop(now + 0.95);
   }
@@ -780,6 +796,7 @@ export class AudioEngine {
       src.connect(bp);
       bp.connect(gain);
       gain.connect(this.masterGain);
+      this.autoDisconnect(src, bp, gain);
       src.start(t);
       src.stop(t + 0.036);
     }
@@ -796,6 +813,7 @@ export class AudioEngine {
     gain.gain.exponentialRampToValueAtTime(0.0008, now + 0.016);
     osc.connect(gain);
     gain.connect(this.masterGain);
+    this.autoDisconnect(osc, gain);
     osc.start(now);
     osc.stop(now + 0.02);
   }
@@ -815,6 +833,7 @@ export class AudioEngine {
     src.connect(filter);
     filter.connect(gain);
     gain.connect(this.masterGain);
+    this.autoDisconnect(src, filter, gain);
     src.start(now);
     src.stop(now + 0.06);
   }
@@ -841,6 +860,7 @@ export class AudioEngine {
     osc.connect(filter);
     filter.connect(gain);
     gain.connect(this.masterGain);
+    this.autoDisconnect(osc, filter, gain);
     osc.start(now);
     osc.stop(now + duration + 0.02);
   }
@@ -857,6 +877,7 @@ export class AudioEngine {
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
     osc.connect(gain);
     gain.connect(this.masterGain);
+    this.autoDisconnect(osc, gain);
     osc.start(now);
     osc.stop(now + 0.22);
   }
@@ -875,6 +896,7 @@ export class AudioEngine {
     src.connect(filter);
     filter.connect(gain);
     gain.connect(this.masterGain);
+    this.autoDisconnect(src, filter, gain);
     src.start(now);
     src.stop(now + 0.06);
   }
@@ -894,6 +916,7 @@ export class AudioEngine {
     src.connect(filter);
     filter.connect(gain);
     gain.connect(this.masterGain);
+    this.autoDisconnect(src, filter, gain);
     src.start(now);
     src.stop(now + 0.15);
   }

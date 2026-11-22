@@ -22,8 +22,11 @@ interface RoadblockSite {
  * Each roadblock places a crosswise Vice PD Cruiser (solid obstacle) flanked by
  * smashable neon barricades & traffic cones you can plow through at full speed!
  */
+const EMPTY_AABBS: AABB[] = [];
+
 export class RoadblockSystem {
   private readonly sites: RoadblockSite[] = [];
+  private readonly activeColliders: AABB[] = [];
   private active = false;
 
   public onBarricadeSmashed?: () => void;
@@ -32,11 +35,20 @@ export class RoadblockSystem {
     // 2 strategic roadblock locations: Ocean Drive (-30) & Central Avenue (20, 0)
     this.createSite(scene, 60, -30);
     this.createSite(scene, 20, 0);
+    for (const s of this.sites) {
+      this.activeColliders.push(s.cruiserBox);
+    }
+  }
+
+  public appendActiveColliders(out: AABB[]): void {
+    if (!this.active) return;
+    for (let i = 0; i < this.activeColliders.length; i++) {
+      out.push(this.activeColliders[i]);
+    }
   }
 
   public getActiveColliders(): AABB[] {
-    if (!this.active) return [];
-    return this.sites.map((s) => s.cruiserBox);
+    return this.active ? this.activeColliders : EMPTY_AABBS;
   }
 
   public handleVehicleImpact(vPos: THREE.Vector3, vYaw: number, speed: number): void {

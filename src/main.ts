@@ -33,6 +33,7 @@ import { Minimap } from './hud/Minimap';
 import { AudioEngine } from './audio/AudioEngine';
 import { GamepadInput } from './engine/GamepadInput';
 import { TouchControls } from './engine/TouchControls';
+import type { AABB } from './types';
 import {
   clearProgress,
   loadProgress,
@@ -42,9 +43,12 @@ import {
   type GameSettings,
 } from './engine/Storage';
 
+const EMPTY_AABBS: AABB[] = [];
+
 const canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
 const overlay = document.getElementById('overlay') as HTMLDivElement;
 const playBtn = document.getElementById('play-btn') as HTMLButtonElement;
+const gpStatusEl = document.getElementById('gamepad-status');
 
 // HUD elements
 const crosshairEl = document.getElementById('crosshair') as HTMLDivElement;
@@ -150,9 +154,10 @@ const optMusicInput = document.getElementById('opt-music') as HTMLInputElement;
 const optMusicValEl = document.getElementById('opt-music-val') as HTMLSpanElement;
 const optPerfInput = document.getElementById('opt-perf') as HTMLInputElement;
 
-// Renderer
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+// Renderer (antialias: false on default backbuffer because EffectComposer uses a 4x MSAA HalfFloat target!)
+const initialDpr = Math.min(window.devicePixelRatio, 2);
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
+renderer.setPixelRatio(initialDpr);
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -163,8 +168,17 @@ renderer.toneMappingExposure = 1.06;
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.08, 420);
 
-// Post-Processing (Half-Resolution Neon & Sunset Bloom -> ~55% lower GPU fillrate cost!)
-const composer = new EffectComposer(renderer);
+// Post-Processing (4x MSAA HalfFloat RenderTarget + Half-Resolution Neon & Sunset Bloom)
+const composerTarget = new THREE.WebGLRenderTarget(
+  Math.max(1, Math.floor(window.innerWidth * initialDpr)),
+  Math.max(1, Math.floor(window.innerHeight * initialDpr)),
+  {
+    type: THREE.HalfFloatType,
+    samples: 4,
+  },
+);
+const composer = new EffectComposer(renderer, composerTarget);
+composer.setPixelRatio(initialDpr);
 composer.addPass(new RenderPass(scene, camera));
 const bloomPass = new UnrealBloomPass(
   new THREE.Vector2(Math.max(1, Math.floor(window.innerWidth / 2)), Math.max(1, Math.floor(window.innerHeight / 2))),
@@ -257,6 +271,9 @@ let photoMode = false;
 let photoYaw = 0;
 let photoPitch = 0;
 const photoKeys = new Set<string>();
+const photoEulerScratch = new THREE.Euler(0, 0, 0, 'YXZ');
+const photoFwdScratch = new THREE.Vector3();
+const photoRightScratch = new THREE.Vector3();
 const foodRaycaster = new THREE.Raycaster();
 const camOriginScratch = new THREE.Vector3();
 const camDirScratch = new THREE.Vector3();
@@ -281,6 +298,42 @@ function setWidth(el: HTMLElement, w: string): void {
     widthCache.set(el, w);
     el.style.width = w;
   }
+}
+const opacityCache = new WeakMap<HTMLElement, string>();
+function setOpacity(el: HTMLElement, op: string): void {
+  if (opacityCache.get(el) !== op) {
+    opacityCache.set(el, op);
+    el.style.opacity = op;
+  }
+}
+const displayCache = new WeakMap<HTMLElement, string>();
+function setDisplay(el: HTMLElement, disp: string): void {
+  if (displayCache.get(el) !== disp) {
+    displayCache.set(el, disp);
+    el.style.display = disp;
+  }
+}
+const classCache = new WeakMap<Element, Map<string, boolean>>();
+function setClass(el: Element, cls: string, enabled: boolean): void {
+  let map = classCache.get(el);
+  if (!map) {
+    map = new Map<string, boolean>();
+    classCache.set(el, map);
+  }
+  if (map.get(cls) !== enabled) {
+    map.set(cls, enabled);
+    el.classList.toggle(cls, enabled);
+  }
+}
+const STAR_STRINGS = ['☆☆☆☆☆', '★☆☆☆☆', '★★☆☆☆', '★★★☆☆', '★★★★☆', '★★★★★'];
+let cachedCashValue = -1;
+let cachedCashText = '$0';
+function formatHudCash(cash: number): string {
+  if (cash !== cachedCashValue) {
+    cachedCashValue = cash;
+    cachedCashText = `$${cash.toLocaleString('en-US')}`;
+  }
+  return cachedCashText;
 }
 
 function toggleSafehouseTv(): void {
@@ -367,15 +420,29 @@ function persistProgress(): void {
   statMissionsEl.textContent = String(objectives.completedCount);
 }
 
+function renderFrame(): void {
+  if (settings.performanceMode) {
+    renderer.render(scene, camera);
+  } else {
+    composer.render();
+  }
+}
+
 function applySettings(next: GameSettings): void {
   settings = next;
   player.setSensitivityMultiplier(settings.mouseSensitivity);
   player.setInvertY(settings.invertMouseY);
   audio.setSfxVolume(settings.sfxVolume);
   audio.setMusicVolume(settings.musicVolume);
+  const dpr = settings.performanceMode ? 1 : Math.min(window.devicePixelRatio, 2);
   renderer.shadowMap.enabled = !settings.performanceMode;
-  renderer.setPixelRatio(settings.performanceMode ? 1 : Math.min(window.devicePixelRatio, 2));
+  renderer.setPixelRatio(dpr);
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setPixelRatio(dpr);
+  composer.setSize(window.innerWidth, window.innerHeight);
   bloomPass.enabled = !settings.performanceMode;
+  bloomPass.setSize(Math.max(1, Math.floor(window.innerWidth / 2)), Math.max(1, Math.floor(window.innerHeight / 2)));
+  document.body.classList.toggle('perf-mode', settings.performanceMode);
 
   optSensInput.value = String(settings.mouseSensitivity);
   optSensValEl.textContent = `${settings.mouseSensitivity.toFixed(1)}×`;
@@ -449,7 +516,7 @@ function triggerBusted(): void {
     weapons.setEnabled(true);
   }
   if (maverick.isInHeli()) {
-    maverick.exit(world.colliders, world.getGroundHeight);
+    maverick.exit(EMPTY_AABBS, world.getGroundHeight, world.playerGrid);
     weapons.setEnabled(true);
   }
   if (garageRides.isRiding()) {
@@ -1142,8 +1209,8 @@ function interactWithLookedWallRide(): boolean {
 
 function tryToggleVehicleOrBoat(): void {
   if (maverick.isInHeli()) {
-    if (maverick.canExit(world.colliders, world.getGroundHeight)) {
-      const land = maverick.exit(world.colliders, world.getGroundHeight);
+    if (maverick.canExit(EMPTY_AABBS, world.getGroundHeight, world.playerGrid)) {
+      const land = maverick.exit(EMPTY_AABBS, world.getGroundHeight, world.playerGrid);
       player.setSpawn(land.x, land.y, land.z, land.yaw);
       camera.fov = 75;
       camera.updateProjectionMatrix();
@@ -1316,9 +1383,9 @@ window.addEventListener('keydown', (e) => {
     hudEl.classList.toggle('photo-hidden', photoMode);
     photoBarEl.classList.toggle('visible', photoMode);
     if (photoMode) {
-      const euler = new THREE.Euler().setFromQuaternion(camera.quaternion, 'YXZ');
-      photoYaw = euler.y;
-      photoPitch = euler.x;
+      photoEulerScratch.setFromQuaternion(camera.quaternion, 'YXZ');
+      photoYaw = photoEulerScratch.y;
+      photoPitch = photoEulerScratch.x;
       weapons.setViewmodelVisible(false);
     } else {
       weapons.setViewmodelVisible(
@@ -1335,7 +1402,7 @@ window.addEventListener('keydown', (e) => {
 
   if (e.code === 'KeyK' && photoMode) {
     // Capture clean PNG screenshot directly from WebGL canvas
-    composer.render();
+    renderFrame();
     const link = document.createElement('a');
     link.download = `vice-dusk-${Date.now()}.png`;
     link.href = canvas.toDataURL('image/png');
@@ -1848,10 +1915,22 @@ window.addEventListener('keydown', (e) => {
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
+  const dpr = settings.performanceMode ? 1 : Math.min(window.devicePixelRatio, 2);
+  renderer.setPixelRatio(dpr);
   renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setPixelRatio(dpr);
   composer.setSize(window.innerWidth, window.innerHeight);
   bloomPass.setSize(Math.max(1, Math.floor(window.innerWidth / 2)), Math.max(1, Math.floor(window.innerHeight / 2)));
 });
+
+// Pre-allocated per-frame scratch buffers (zero GC pressure in 60-144Hz main loop!)
+const playerDynColliders: AABB[] = [];
+const garageRideDynColliders: AABB[] = [];
+const npcDynColliders: AABB[] = [];
+const shootableHitboxes: THREE.Object3D[] = [];
+const interactMeshesScratch: THREE.Object3D[] = [];
+const yachtRadarState = { x: 0, z: 0, yaw: 0 };
+const playerCoverScratch = { inCover: true, peeking: false, normalX: 0, normalZ: 1 };
 
 // Main Loop
 let lastTime = performance.now();
@@ -1866,19 +1945,21 @@ function animate(now: number): void {
   // Photo Mode: freeze simulation and let user free-fly the camera!
   if (photoMode) {
     const flySpd = (photoKeys.has('ShiftLeft') ? 22 : 10) * dt;
-    const fwd = new THREE.Vector3(0, 0, -1).applyEuler(new THREE.Euler(photoPitch, photoYaw, 0, 'YXZ'));
-    const right = new THREE.Vector3(1, 0, 0).applyEuler(new THREE.Euler(0, photoYaw, 0, 'YXZ'));
-    if (photoKeys.has('KeyW')) camera.position.addScaledVector(fwd, flySpd);
-    if (photoKeys.has('KeyS')) camera.position.addScaledVector(fwd, -flySpd);
-    if (photoKeys.has('KeyD')) camera.position.addScaledVector(right, flySpd);
-    if (photoKeys.has('KeyA')) camera.position.addScaledVector(right, -flySpd);
+    photoEulerScratch.set(photoPitch, photoYaw, 0, 'YXZ');
+    photoFwdScratch.set(0, 0, -1).applyEuler(photoEulerScratch);
+    photoEulerScratch.set(0, photoYaw, 0, 'YXZ');
+    photoRightScratch.set(1, 0, 0).applyEuler(photoEulerScratch);
+    if (photoKeys.has('KeyW')) camera.position.addScaledVector(photoFwdScratch, flySpd);
+    if (photoKeys.has('KeyS')) camera.position.addScaledVector(photoFwdScratch, -flySpd);
+    if (photoKeys.has('KeyD')) camera.position.addScaledVector(photoRightScratch, flySpd);
+    if (photoKeys.has('KeyA')) camera.position.addScaledVector(photoRightScratch, -flySpd);
     if (photoKeys.has('KeyE') || photoKeys.has('Space')) camera.position.y += flySpd;
     if (photoKeys.has('KeyQ') || photoKeys.has('KeyC')) camera.position.y = Math.max(0.4, camera.position.y - flySpd);
     camera.rotation.order = 'YXZ';
     camera.rotation.y = photoYaw;
     camera.rotation.x = photoPitch;
     camera.rotation.z = 0;
-    composer.render();
+    renderFrame();
     return;
   }
 
@@ -1913,7 +1994,6 @@ function animate(now: number): void {
   }
 
   const rawPad = gamepad.poll();
-  const gpStatusEl = document.getElementById('gamepad-status');
   if (gpStatusEl && gpStatusEl.textContent !== rawPad.diagnostic) {
     gpStatusEl.textContent = rawPad.diagnostic;
     gpStatusEl.style.color = rawPad.connected ? '#6bf7c8' : '#ffb86c';
@@ -2015,20 +2095,19 @@ function animate(now: number): void {
   const rbColliders = roadblocks.getActiveColliders();
 
   if (!inAnyCraft) {
-    const allColliders = [
-      ...world.colliders,
-      ...vehicles.getVehicleColliders(),
-      ...npcs.getNpcColliders(),
-      ...rbColliders,
-    ];
+    playerDynColliders.length = 0;
+    vehicles.appendVehicleColliders(playerDynColliders);
+    npcs.appendNpcColliders(playerDynColliders);
+    for (let i = 0; i < rbColliders.length; i++) playerDynColliders.push(rbColliders[i]);
     const status = player.update(
       dt,
-      allColliders,
+      playerDynColliders,
       pad,
       world.getGroundHeight,
       world.cameraMeshes,
       weapons.isAdsActive(),
       drunkLevel,
+      world.playerGrid,
     );
     playerSpeed = status.speed;
     playerGrounded = status.grounded;
@@ -2067,8 +2146,6 @@ function animate(now: number): void {
     headingYaw = maverick.yaw + Math.PI;
   }
 
-  const vehicleWorldColliders =
-    rbColliders.length > 0 ? [...world.solidVehicleColliders, ...rbColliders] : world.solidVehicleColliders;
   const driveHud = vehicles.update(
     dt,
     elapsed,
@@ -2076,31 +2153,33 @@ function animate(now: number): void {
     player.position,
     wanted.stars,
     camera,
-    vehicleWorldColliders,
+    rbColliders,
     world.layout.playableBounds,
     pad,
     world.stuntRamps,
     world.shouldTrafficStop,
     drunkLevel,
     world.getGroundHeight,
+    world.vehicleGrid,
   );
-  const garageRideColliders = [
-    ...world.colliders,
-    ...vehicles.getVehicleColliders(),
-    ...rbColliders,
-  ];
+  garageRideDynColliders.length = 0;
+  if (inGarageRide) {
+    vehicles.appendVehicleColliders(garageRideDynColliders);
+    for (let i = 0; i < rbColliders.length; i++) garageRideDynColliders.push(rbColliders[i]);
+  }
   const garageRideHud = garageRides.update(
     dt,
     elapsed,
     isPlaying,
     player.position,
     camera,
-    garageRideColliders,
+    garageRideDynColliders,
     world.layout.playableBounds,
     pad,
     world.stuntRamps,
     drunkLevel,
     world.getGroundHeight,
+    world.playerGrid,
   );
   if (inGarageRide) {
     const gr = garageRides.getActiveRide();
@@ -2115,12 +2194,21 @@ function animate(now: number): void {
     isPlaying,
     player.position,
     camera,
-    world.colliders,
+    EMPTY_AABBS,
     world.getGroundHeight,
     pad,
+    world.playerGrid,
   );
 
-  world.update(elapsed, dt, player.position, objectives.cash, wanted.stars);
+  world.update(
+    elapsed,
+    dt,
+    player.position,
+    objectives.cash,
+    wanted.stars,
+    player.getYaw(),
+    settings.performanceMode,
+  );
   const inSafehouse = world.isInsideSafehouse(player.position);
   pets.update(dt, elapsed, player.position, inSafehouse);
   wildlife.update(dt, elapsed, player.position, playerSwimming && !inAnyCraft);
@@ -2161,24 +2249,27 @@ function animate(now: number): void {
   }
   lastWantedStars = wanted.stars;
   const indoors =
+    inSafehouse ||
     world.isInsideClub(player.position) ||
-    world.isInsideSafehouse(player.position) ||
     world.isInsidePoliceStation(player.position) ||
     world.isInsideWestInterior(player.position);
-  const playerCoverState = playerInCover
-    ? {
-        inCover: true,
-        peeking: playerCoverPeeking,
-        normalX: playerCoverNormalX,
-        normalZ: playerCoverNormalZ,
-      }
-    : undefined;
+  let playerCoverState: typeof playerCoverScratch | undefined;
+  if (playerInCover) {
+    playerCoverScratch.peeking = playerCoverPeeking;
+    playerCoverScratch.normalX = playerCoverNormalX;
+    playerCoverScratch.normalZ = playerCoverNormalZ;
+    playerCoverState = playerCoverScratch;
+  }
+  npcDynColliders.length = 0;
+  vehicles.appendVehicleColliders(npcDynColliders);
+  for (let i = 0; i < rbColliders.length; i++) npcDynColliders.push(rbColliders[i]);
   npcs.update(
     dt,
     player.position,
     wanted.stars,
-    [...world.solidNpcColliders, ...vehicles.getVehicleColliders(), ...rbColliders],
+    npcDynColliders,
     playerCoverState,
+    world.npcGrid,
   );
 
   // GTA-style close-range arrest ("BUSTED") when cornered by Vice PD at 2+ stars (never while flying in the Maverick!)
@@ -2216,9 +2307,9 @@ function animate(now: number): void {
   if (storyHud.dialogueSpeaker && storyHud.dialogueText) {
     setText(storySpeakerEl, storyHud.dialogueSpeaker);
     setText(storyLineEl, storyHud.dialogueText);
-    storyDialogueBannerEl.classList.add('visible');
+    setClass(storyDialogueBannerEl, 'visible', true);
   } else {
-    storyDialogueBannerEl.classList.remove('visible');
+    setClass(storyDialogueBannerEl, 'visible', false);
   }
   const activePoliceCar = Boolean(vehicles.getActiveVehicle()?.isPolice);
   const vigilanteHud = vigilante.update(dt, player.position, activePoliceCar, npcs);
@@ -2245,8 +2336,9 @@ function animate(now: number): void {
     driveHud.drifting,
     vehicles.vehicles,
     npcs,
-    world.solidNpcColliders,
+    npcDynColliders,
     pad,
+    world.npcGrid,
   );
   if (specialHud.waterSplashEvent) {
     audio.playWaterCannonPulse();
@@ -2322,12 +2414,12 @@ function animate(now: number): void {
     specialHud.kind === 'firefighter' || specialHud.kind === 'paramedic',
   );
 
-  const shootables = [
-    ...npcs.getShootableTargets(),
-    ...vehicles.getShootableTargets(),
-    ...destructibles.getShootableTargets(),
-    ...heli.getShootableTargets(),
-  ];
+  shootableHitboxes.length = 0;
+  npcs.appendShootableHitboxes(shootableHitboxes);
+  vehicles.appendShootableHitboxes(shootableHitboxes);
+  destructibles.appendShootableHitboxes(shootableHitboxes);
+  heli.appendShootableHitboxes(shootableHitboxes);
+
   // Crosshair raycast for Safehouse food items, gun cabinet weapons, CRT TV & Safehouse Pets -> switches weapon to open Hand!
   if (handHoldTimer > 0) handHoldTimer = Math.max(0, handHoldTimer - dt);
   lookedFood = null;
@@ -2348,10 +2440,9 @@ function animate(now: number): void {
     if (onSafehouseLot) {
       const wallRides = garageRides.getWallInteractables();
       if (wallRides.length > 0) {
-        const wallHits = foodRaycaster.intersectObjects(
-          wallRides.map((w) => w.hitbox),
-          false,
-        );
+        interactMeshesScratch.length = 0;
+        for (let i = 0; i < wallRides.length; i++) interactMeshesScratch.push(wallRides[i].hitbox);
+        const wallHits = foodRaycaster.intersectObjects(interactMeshesScratch, false);
         if (wallHits.length > 0) {
           lookedWallRide = wallRides.find((w) => w.hitbox === wallHits[0].object) ?? null;
         }
@@ -2359,10 +2450,9 @@ function animate(now: number): void {
 
       const petTargets = pets.getInteractables();
       if (!lookedWallRide && petTargets.length > 0) {
-        const petHits = foodRaycaster.intersectObjects(
-          petTargets.map((p) => p.hitbox),
-          false,
-        );
+        interactMeshesScratch.length = 0;
+        for (let i = 0; i < petTargets.length; i++) interactMeshesScratch.push(petTargets[i].hitbox);
+        const petHits = foodRaycaster.intersectObjects(interactMeshesScratch, false);
         if (petHits.length > 0) {
           lookedPet = petTargets.find((p) => p.hitbox === petHits[0].object) ?? null;
         }
@@ -2371,10 +2461,9 @@ function animate(now: number): void {
 
     const foods = world.getFoodItems();
     if (!lookedWallRide && !lookedPet && foods.length > 0) {
-      const foodHits = foodRaycaster.intersectObjects(
-        foods.map((f) => f.mesh),
-        true,
-      );
+      interactMeshesScratch.length = 0;
+      for (let i = 0; i < foods.length; i++) interactMeshesScratch.push(foods[i].mesh);
+      const foodHits = foodRaycaster.intersectObjects(interactMeshesScratch, true);
       if (foodHits.length > 0) {
         const hitObj = foodHits[0].object;
         lookedFood = foods.find((f) => f.mesh === hitObj || f.mesh.children.includes(hitObj)) ?? null;
@@ -2383,10 +2472,9 @@ function animate(now: number): void {
 
     if (!lookedWallRide && !lookedFood) {
       const cabWeapons = world.getCabinetWeapons();
-      const cabHits = foodRaycaster.intersectObjects(
-        cabWeapons.map((w) => w.mesh),
-        true,
-      );
+      interactMeshesScratch.length = 0;
+      for (let i = 0; i < cabWeapons.length; i++) interactMeshesScratch.push(cabWeapons[i].mesh);
+      const cabHits = foodRaycaster.intersectObjects(interactMeshesScratch, true);
       if (cabHits.length > 0) {
         let obj: THREE.Object3D | null = cabHits[0].object;
         while (obj) {
@@ -2416,7 +2504,7 @@ function animate(now: number): void {
       handHoldTimer > 0,
   );
 
-  const wHud = weapons.update(dt, isPlaying && !inAnyCraft && !playerSwimming, playerSpeed, world.worldMeshes, shootables, pad, drunkLevel);
+  const wHud = weapons.update(dt, isPlaying && !inAnyCraft && !playerSwimming, playerSpeed, world.worldMeshes, shootableHitboxes, pad, drunkLevel);
   weapons.setViewmodelVisible(!inAnyCraft && !player.isThirdPerson() && !playerSwimming);
   const showMirrorAvatar = inSafehouse && !inAnyCraft && !player.isThirdPerson();
   playerAvatar.setMirrorOnlyMode(showMirrorAvatar);
@@ -2436,15 +2524,18 @@ function animate(now: number): void {
   if (inVehicle) {
     const car = vehicles.getActiveVehicle();
     if (car && car.specialRole !== 'firetruck') {
-      weapons.updateDriveBy(dt, isPlaying, car.position, world.worldMeshes, shootables, pad);
+      weapons.updateDriveBy(dt, isPlaying, car.position, world.worldMeshes, shootableHitboxes, pad);
     }
   } else if (inGarageRide) {
     const gr = garageRides.getActiveRide();
     if (gr) {
-      weapons.updateDriveBy(dt, isPlaying, gr.position, world.worldMeshes, shootables, pad);
+      weapons.updateDriveBy(dt, isPlaying, gr.position, world.worldMeshes, shootableHitboxes, pad);
     }
   }
 
+  yachtRadarState.x = superyacht.position.x;
+  yachtRadarState.z = superyacht.position.z;
+  yachtRadarState.yaw = superyacht.yaw;
   minimap.render(
     player.position.x,
     player.position.z,
@@ -2458,12 +2549,12 @@ function animate(now: number): void {
     storyHud.targetPos ?? vigilanteHud.targetPos ?? specialHud.targetPos ?? heistHud.targetPos,
     maverick.position,
     garageRides.getParkedMarkers(),
-    { x: superyacht.position.x, z: superyacht.position.z, yaw: superyacht.yaw },
+    yachtRadarState,
   );
 
   // --- HUD Updates (Dirty-checked DOM mutations) ---
   damageFlash = Math.max(0, damageFlash - dt * 2.2);
-  damageVignetteEl.style.opacity = damageFlash > 0.004 ? damageFlash.toFixed(2) : '0';
+  setOpacity(damageVignetteEl, damageFlash > 0.004 ? damageFlash.toFixed(2) : '0');
   const hpPct = Math.min(100, Math.round((playerHp / playerMaxHp) * 100));
   setWidth(hpFillEl, `${hpPct}%`);
   setText(hpTextEl, playerMaxHp > 100 ? `${Math.round(playerHp)}/${playerMaxHp}` : `${Math.round(playerHp)}`);
@@ -2472,39 +2563,38 @@ function animate(now: number): void {
   setWidth(armorFillEl, `${armorPct}%`);
   setText(armorTextEl, `${armorPct}`);
 
-  const starStr = '★'.repeat(wanted.stars) + '☆'.repeat(5 - wanted.stars);
-  setText(starsEl, starStr);
-  starsEl.classList.toggle('cooling', wanted.isCoolingDown());
-  starsEl.classList.toggle('active', wanted.stars > 0);
-  setText(cashEl, `$${objHud.cash.toLocaleString('en-US')}`);
+  setText(starsEl, STAR_STRINGS[wanted.stars] ?? STAR_STRINGS[0]);
+  setClass(starsEl, 'cooling', wanted.isCoolingDown());
+  setClass(starsEl, 'active', wanted.stars > 0);
+  setText(cashEl, formatHudCash(objHud.cash));
 
   if (storyHud.active) {
     setText(objTagEl, `★ STORY · KAP. ${storyHud.chapterNumber}/5`);
-    objTagEl.classList.add('heist');
+    setClass(objTagEl, 'heist', true);
     setText(objTitleEl, storyHud.title);
     setText(objDescEl, storyHud.description);
     setText(objDistEl, `${storyHud.distanceM} m`);
   } else if (vigilanteHud.active) {
     setText(objTagEl, '★ VIGILANTE');
-    objTagEl.classList.add('heist');
+    setClass(objTagEl, 'heist', true);
     setText(objTitleEl, vigilanteHud.title);
     setText(objDescEl, vigilanteHud.description);
     setText(objDistEl, `${vigilanteHud.timerText} · ${vigilanteHud.distanceM} m`);
   } else if (specialHud.active) {
     setText(objTagEl, specialHud.tag);
-    objTagEl.classList.add('heist');
+    setClass(objTagEl, 'heist', true);
     setText(objTitleEl, specialHud.title);
     setText(objDescEl, specialHud.description);
     setText(objDistEl, `${specialHud.timerText} · ${specialHud.distanceM} m`);
   } else if (heistHud.active) {
     setText(objTagEl, '★ HEIST');
-    objTagEl.classList.add('heist');
+    setClass(objTagEl, 'heist', true);
     setText(objTitleEl, heistHud.title);
     setText(objDescEl, heistHud.description);
     setText(objDistEl, `${heistHud.distanceM} m`);
   } else {
     setText(objTagEl, 'ZIEL · [J] TELEFON · [H] HEIST');
-    objTagEl.classList.remove('heist');
+    setClass(objTagEl, 'heist', false);
     setText(objTitleEl, objHud.title);
     setText(objDescEl, objHud.description);
     if (objHud.timerText && objHud.distanceM > 0) {
@@ -2520,14 +2610,14 @@ function animate(now: number): void {
   const activeToast = quickToastTimer > 0 ? quickToastText : objHud.toastText;
   if (activeToast) {
     setText(toastBannerEl, activeToast);
-    toastBannerEl.classList.add('visible');
+    setClass(toastBannerEl, 'visible', true);
   } else {
-    toastBannerEl.classList.remove('visible');
+    setClass(toastBannerEl, 'visible', false);
   }
 
-  weaponPanelEl.classList.toggle('hidden', inAnyCraft);
-  crosshairEl.style.display = inAnyCraft ? 'none' : 'block';
-  vehiclePanelEl.classList.toggle('visible', inAnyCraft);
+  setClass(weaponPanelEl, 'hidden', inAnyCraft);
+  setDisplay(crosshairEl, inAnyCraft ? 'none' : 'block');
+  setClass(vehiclePanelEl, 'visible', inAnyCraft);
 
   let nextPrompt: string | null = null;
 
@@ -2535,7 +2625,7 @@ function animate(now: number): void {
     setText(vehicleNameEl, `${heliPlayerHud.heliName} · ${heliPlayerHud.altitudeM}m`);
     setText(vehicleSpeedEl, `${heliPlayerHud.speedKmh}`);
     setWidth(vehicleHpFillEl, '100%');
-    vehicleHpFillEl.classList.remove('low');
+    setClass(vehicleHpFillEl, 'low', false);
     setText(
       vehicleCamHintEl,
       `[SPACE/C] HÖHE · [Q] ${audio.getRadioStation()} · [V] CAM · [E] LANDEN`,
@@ -2544,19 +2634,19 @@ function animate(now: number): void {
     setText(vehicleNameEl, boatHud.boatName);
     setText(vehicleSpeedEl, `${boatHud.speedKmh}`);
     setWidth(vehicleHpFillEl, '100%');
-    vehicleHpFillEl.classList.remove('low');
+    setClass(vehicleHpFillEl, 'low', false);
     setText(vehicleCamHintEl, `[Q] ${audio.getRadioStation()} · [E] AN LAND`);
   } else if (yachtHud.inYacht) {
     setText(vehicleNameEl, yachtHud.yachtName);
     setText(vehicleSpeedEl, `${yachtHud.speedKmh}`);
     setWidth(vehicleHpFillEl, '100%');
-    vehicleHpFillEl.classList.remove('low');
+    setClass(vehicleHpFillEl, 'low', false);
     setText(vehicleCamHintEl, `[Q] ${audio.getRadioStation()} · [V] BRÜCKE/CHASE · [E] ANKERN`);
   } else if (garageRideHud.inRide) {
     setText(vehicleNameEl, garageRideHud.rideName);
     setText(vehicleSpeedEl, `${garageRideHud.speedKmh}`);
     setWidth(vehicleHpFillEl, '100%');
-    vehicleHpFillEl.classList.remove('low');
+    setClass(vehicleHpFillEl, 'low', false);
     const rideHint =
       garageRideHud.rideId === 'skateboard'
         ? `[SPACE] OLLIE · [SHIFT] PUSH · [V] CAM · [E] ABSTEIGEN`
@@ -2569,7 +2659,7 @@ function animate(now: number): void {
     setText(vehicleNameEl, driveHud.vehicleName);
     setText(vehicleSpeedEl, `${driveHud.speedKmh}`);
     setWidth(vehicleHpFillEl, `${driveHud.hpPct}%`);
-    vehicleHpFillEl.classList.toggle('low', driveHud.hpPct < 35);
+    setClass(vehicleHpFillEl, 'low', driveHud.hpPct < 35);
     const car = vehicles.getActiveVehicle();
     if (car?.specialRole === 'firetruck') {
       const fireToggle = specialMissions.getActiveKind() === 'firefighter' ? 'EINSATZ AUS' : 'FEUERWEHR';
@@ -2611,19 +2701,20 @@ function animate(now: number): void {
     setText(weaponNameEl, wHud.name);
     setText(ammoCurrentEl, wHud.isMelee ? '∞' : wHud.reloading ? 'RLD' : String(wHud.ammo));
     setText(ammoMaxEl, wHud.isMelee ? 'MELEE' : `/ ${wHud.magSize}`);
-    reloadBarEl.classList.toggle('visible', wHud.reloading);
+    setClass(reloadBarEl, 'visible', wHud.reloading);
     setWidth(reloadFillEl, `${Math.round(wHud.reloadProgress * 100)}%`);
-    slotEls.forEach((el, idx) => el.classList.toggle('active', idx === wHud.slotIndex));
+    for (let i = 0; i < slotEls.length; i++) setClass(slotEls[i], 'active', i === wHud.slotIndex);
 
     const spreadStr = `${wHud.spreadPx}px`;
-    if (crosshairEl.style.width !== spreadStr) {
+    if (widthCache.get(crosshairEl) !== spreadStr) {
+      widthCache.set(crosshairEl, spreadStr);
       crosshairEl.style.width = spreadStr;
       crosshairEl.style.height = spreadStr;
     }
-    crosshairEl.style.opacity = wHud.ads ? '0.45' : '0.88';
+    setOpacity(crosshairEl, wHud.ads ? '0.45' : '0.88');
 
-    hitmarkerEl.style.opacity = wHud.hitmarkerAlpha > 0.01 ? wHud.hitmarkerAlpha.toFixed(2) : '0';
-    hitmarkerEl.classList.toggle('kill', wHud.hitmarkerKill && wHud.hitmarkerAlpha > 0.05);
+    setOpacity(hitmarkerEl, wHud.hitmarkerAlpha > 0.01 ? wHud.hitmarkerAlpha.toFixed(2) : '0');
+    setClass(hitmarkerEl, 'kill', wHud.hitmarkerKill && wHud.hitmarkerAlpha > 0.05);
 
     if (lookedWallRide) {
       nextPrompt =
@@ -2704,9 +2795,9 @@ function animate(now: number): void {
 
   if (nextPrompt) {
     setText(interactPromptEl, nextPrompt);
-    interactPromptEl.classList.add('visible');
+    setClass(interactPromptEl, 'visible', true);
   } else {
-    interactPromptEl.classList.remove('visible');
+    setClass(interactPromptEl, 'visible', false);
   }
 
   // Apply decaying Camera-Shake & progressive Drunk camera sway/vision effects right before rendering
@@ -2728,7 +2819,7 @@ function animate(now: number): void {
     bloomPass.radius = 0.48;
   }
 
-  composer.render();
+  renderFrame();
 }
 
 requestAnimationFrame(animate);

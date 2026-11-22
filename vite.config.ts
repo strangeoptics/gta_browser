@@ -17,6 +17,9 @@ export default defineConfig({
           if (id.includes('node_modules/three')) {
             return 'three-core';
           }
+          if (id.includes('/src/world/') || id.includes('\\src\\world\\')) {
+            return 'world';
+          }
           return undefined;
         },
       },

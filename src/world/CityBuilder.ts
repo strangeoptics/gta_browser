@@ -12,10 +12,12 @@ import {
 import {
   createArtDecoFacadeTexture,
   createBeachSandTextures,
+  createBuildingBoxGeometry,
   createNeonSignTexture,
   createSidewalkTexture,
   createWetAsphaltTextures,
 } from './Textures';
+import { SpatialGrid } from '../engine/SpatialGrid';
 import { buildBeachHighlights } from './BeachProps';
 import { buildNeonClub } from './NeonClub';
 import { buildPoliceStation } from './PoliceStation';
@@ -31,6 +33,9 @@ export interface MiamiWorld {
   colliders: AABB[];
   solidVehicleColliders: AABB[];
   solidNpcColliders: AABB[];
+  playerGrid: SpatialGrid;
+  vehicleGrid: SpatialGrid;
+  npcGrid: SpatialGrid;
   worldMeshes: THREE.Object3D[];
   cameraMeshes: THREE.Object3D[];
   stuntRamps: StuntRamp[];
@@ -86,7 +91,15 @@ export interface MiamiWorld {
   getGroundHeight: (x: number, z: number) => number;
   shouldTrafficStop: (x: number, z: number, yaw: number) => boolean;
   onThunder?: () => void;
-  update: (elapsed: number, dt: number, playerPos?: THREE.Vector3, cash?: number, wantedStars?: number) => void;
+  update: (
+    elapsed: number,
+    dt: number,
+    playerPos?: THREE.Vector3,
+    cash?: number,
+    wantedStars?: number,
+    cameraYaw?: number,
+    performanceMode?: boolean,
+  ) => void;
 }
 
 /**
@@ -181,18 +194,26 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
   const hemiLight = new THREE.HemisphereLight('#b582db', '#2c1b3b', 0.9);
   scene.add(hemiLight);
 
+  const sunOffset = sunDir.clone().multiplyScalar(110);
+  const shadowHalf = 75;
+  const shadowTexel = (shadowHalf * 2) / 2048;
   const sunLight = new THREE.DirectionalLight('#ff9854', 2.4);
-  sunLight.position.copy(sunDir).multiplyScalar(110);
+  sunLight.position.copy(sunOffset);
   sunLight.castShadow = true;
   sunLight.shadow.mapSize.set(2048, 2048);
   sunLight.shadow.camera.near = 10;
   sunLight.shadow.camera.far = 260;
-  sunLight.shadow.camera.left = -95;
-  sunLight.shadow.camera.right = 95;
-  sunLight.shadow.camera.top = 95;
-  sunLight.shadow.camera.bottom = -95;
+  sunLight.shadow.camera.left = -shadowHalf;
+  sunLight.shadow.camera.right = shadowHalf;
+  sunLight.shadow.camera.top = shadowHalf;
+  sunLight.shadow.camera.bottom = -shadowHalf;
   sunLight.shadow.bias = -0.0005;
+  sunLight.userData.dynamic = true;
+  sunLight.target.userData.dynamic = true;
   scene.add(sunLight);
+  scene.add(sunLight.target);
+  let lastSunX = 0;
+  let lastSunZ = 0;
 
   // ---------------------------------------------------------------------------
   // 3) Wet Post-Rain Asphalt Base & Street Markings
@@ -382,8 +403,21 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
       metalness: 0.08,
     });
 
-    const materials = [wallMat, wallMat, roofMat, roofMat, wallMat, wallMat];
-    addStaticBox(b.w, b.h, b.d, b.x, 0.18 + b.h / 2, b.z, materials, true, 'building');
+    const bMesh = new THREE.Mesh(createBuildingBoxGeometry(b.w, b.h, b.d), [wallMat, roofMat]);
+    bMesh.position.set(b.x, 0.18 + b.h / 2, b.z);
+    bMesh.castShadow = true;
+    bMesh.receiveShadow = true;
+    scene.add(bMesh);
+    worldMeshes.push(bMesh);
+    colliders.push({
+      minX: b.x - b.w / 2,
+      maxX: b.x + b.w / 2,
+      minY: 0.18,
+      maxY: 0.18 + b.h,
+      minZ: b.z - b.d / 2,
+      maxZ: b.z + b.d / 2,
+      tag: 'building',
+    });
 
     // Art-Deco stepped crown & parapet trim
     if (b.hasCrown) {
@@ -465,14 +499,32 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
     const stepH = 0.24; // cleanly below PlayerController maxStepHeight (0.28m)
     const stepRun = 0.36;
     const steps = Math.ceil(targetHeight / stepH);
+    const stairGeos: THREE.BufferGeometry[] = [];
     for (let s = 0; s < steps; s++) {
       const topY = 0.18 + (s + 1) * stepH;
       const sx = startX + dirX * s * stepRun;
       const sz = startZ + dirZ * s * stepRun;
       const w = dirX !== 0 ? stepRun + 0.06 : width;
       const d = dirZ !== 0 ? stepRun + 0.06 : width;
-      addStaticBox(w, topY, d, sx, topY / 2, sz, stairMat, true, 'stairs');
+      const sg = new THREE.BoxGeometry(w, topY, d);
+      sg.translate(sx, topY / 2, sz);
+      stairGeos.push(sg);
+      colliders.push({
+        minX: sx - w / 2,
+        maxX: sx + w / 2,
+        minY: 0,
+        maxY: topY,
+        minZ: sz - d / 2,
+        maxZ: sz + d / 2,
+        tag: 'stairs',
+      });
     }
+    const mergedStairs = new THREE.Mesh(mergeGeometries(stairGeos), stairMat);
+    mergedStairs.castShadow = true;
+    mergedStairs.receiveShadow = true;
+    scene.add(mergedStairs);
+    worldMeshes.push(mergedStairs);
+    for (const sg of stairGeos) sg.dispose();
     // Glowing neon handrail along the outer edge of the stairway
     const totalLen = steps * stepRun;
     const midX = startX + dirX * (totalLen * 0.5);
@@ -707,7 +759,7 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
   const stuntRamps = [...buildStuntRamps(scene), ...vicePort.stuntRamps, ...northPoint.stuntRamps];
 
   // ---------------------------------------------------------------------------
-  // 8) Subtle Post-Rain Mist / Lingering Drizzle Motes
+  // 8) Subtle Post-Rain Mist / Lingering Drizzle Motes (GPU Vertex Animation -> 0 CPU/Upload!)
   // ---------------------------------------------------------------------------
   const mistCount = 240;
   const mistPositions = new Float32Array(mistCount * 3);
@@ -718,6 +770,7 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
   }
   const mistGeo = new THREE.BufferGeometry();
   mistGeo.setAttribute('position', new THREE.BufferAttribute(mistPositions, 3));
+  const mistUniforms = { uTime: { value: 0 } };
   const mistMat = new THREE.PointsMaterial({
     color: '#ffd6e8',
     size: 0.14,
@@ -725,33 +778,62 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
     opacity: 0.28,
     depthWrite: false,
   });
+  mistMat.onBeforeCompile = (shader) => {
+    shader.uniforms.uTime = mistUniforms.uTime;
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nuniform float uTime;')
+      .replace(
+        '#include <begin_vertex>',
+        `#include <begin_vertex>
+        transformed.y = 0.2 + mod(transformed.y - 0.2 - uTime * 0.35, 13.8);`,
+      );
+  };
   const mistPoints = new THREE.Points(mistGeo, mistMat);
+  mistPoints.frustumCulled = false;
   scene.add(mistPoints);
 
   // ---------------------------------------------------------------------------
-  // 9) Optional Tropical Rain Shower (3D rain streaks + distant lightning flash)
+  // 9) Optional Tropical Rain Shower (GPU Vertex Streak Animation -> 0 CPU/Upload!)
   // ---------------------------------------------------------------------------
   const rainCount = 420;
-  const rainPositions = new Float32Array(rainCount * 6); // 2 vertices per streak
+  const rainPositions = new Float32Array(rainCount * 6); // 2 vertices per streak (relative Y: 0 and -0.95)
+  const rainSeedY = new Float32Array(rainCount * 2);
   for (let i = 0; i < rainCount; i++) {
     const rx = (Math.random() - 0.5) * 90;
     const ry = Math.random() * 24;
     const rz = (Math.random() - 0.5) * 90;
     rainPositions[i * 6] = rx;
-    rainPositions[i * 6 + 1] = ry;
+    rainPositions[i * 6 + 1] = 0;
     rainPositions[i * 6 + 2] = rz;
     rainPositions[i * 6 + 3] = rx - 0.18;
-    rainPositions[i * 6 + 4] = ry - 0.95;
+    rainPositions[i * 6 + 4] = -0.95;
     rainPositions[i * 6 + 5] = rz;
+    rainSeedY[i * 2] = ry;
+    rainSeedY[i * 2 + 1] = ry;
   }
   const rainGeo = new THREE.BufferGeometry();
   rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPositions, 3));
+  rainGeo.setAttribute('aSeedY', new THREE.BufferAttribute(rainSeedY, 1));
+  const rainUniforms = { uTime: { value: 0 } };
   const rainMat = new THREE.LineBasicMaterial({
     color: '#bde9ff',
     transparent: true,
     opacity: 0.42,
   });
+  rainMat.onBeforeCompile = (shader) => {
+    shader.uniforms.uTime = rainUniforms.uTime;
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nuniform float uTime;\nattribute float aSeedY;')
+      .replace(
+        '#include <begin_vertex>',
+        `#include <begin_vertex>
+        float dropY = 0.2 + mod(aSeedY - uTime * 26.0, 23.8);
+        transformed.y = dropY + position.y;`,
+      );
+  };
   const rainLines = new THREE.LineSegments(rainGeo, rainMat);
+  rainLines.frustumCulled = false;
+  rainLines.userData.dynamic = true;
   rainLines.visible = false;
   scene.add(rainLines);
 
@@ -809,9 +891,9 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
     return p.name;
   };
 
-  // Pre-filter large structural meshes (>= 2.2m) for 3rd-person camera wall-clip raycasts (skips tiny stairs & props)
+  // Pre-filter large structural meshes (>= 2.2m) for 3rd-person camera wall-clip raycasts (skips tiny stairs, props & InstancedMeshes)
   const cameraMeshes = worldMeshes.filter((obj) => {
-    if (!(obj instanceof THREE.Mesh)) return false;
+    if (!(obj instanceof THREE.Mesh) || obj instanceof THREE.InstancedMesh) return false;
     obj.geometry.computeBoundingBox();
     const bb = obj.geometry.boundingBox;
     if (!bb) return true;
@@ -819,11 +901,18 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
     return maxDim >= 2.2;
   });
 
-  // Freeze matrices on static world meshes so Three.js doesn't recompute them every frame
-  for (const obj of worldMeshes) {
+  // Freeze matrices on ALL static world objects in the scene (skipping any dynamic subtree!)
+  const freezeStaticSubtree = (obj: THREE.Object3D): void => {
+    if (obj.userData.dynamic) return;
     obj.updateMatrix();
-    obj.updateMatrixWorld(true);
     obj.matrixAutoUpdate = false;
+    for (let i = 0; i < obj.children.length; i++) {
+      freezeStaticSubtree(obj.children[i]);
+    }
+  };
+  scene.updateMatrixWorld(true);
+  for (let i = 0; i < scene.children.length; i++) {
+    freezeStaticSubtree(scene.children[i]);
   }
 
   // Pre-filter static world colliders once at startup (exclude ground-level overhead lintels & roofs, but keep elevated Cape Vice Cliff structures!)
@@ -833,10 +922,20 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
   );
   const solidNpcColliders = colliders.filter((c) => c.maxY > 0.45 && c.minY < 1.85);
 
+  // Uniform 2D Spatial Hash Grids (CELL_SIZE = 16m) for O(1) player, vehicle & NPC collision queries
+  const playerGrid = new SpatialGrid(colliders);
+  const vehicleGrid = new SpatialGrid(solidVehicleColliders);
+  const npcGrid = new SpatialGrid(solidNpcColliders);
+
+  const combinedFoodItems: FoodItem[] = [];
+
   const worldHandle: MiamiWorld = {
     colliders,
     solidVehicleColliders,
     solidNpcColliders,
+    playerGrid,
+    vehicleGrid,
+    npcGrid,
     worldMeshes,
     cameraMeshes,
     stuntRamps,
@@ -889,7 +988,14 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
     isNearSafehouseRooftopBar: (pos: THREE.Vector3) => safehouse.isNearRooftopBar(pos),
     isSafehouseRooftopBarOwned: () => safehouse.isRooftopBarOwned(),
     setSafehouseRooftopBarOwned: (owned: boolean) => safehouse.setRooftopBarOwned(owned),
-    getFoodItems: () => [...safehouse.getFoodItems(), ...policeStation.getDonuts()],
+    getFoodItems: () => {
+      combinedFoodItems.length = 0;
+      const sf = safehouse.getFoodItems();
+      for (let i = 0; i < sf.length; i++) combinedFoodItems.push(sf[i]);
+      const dn = policeStation.getDonuts();
+      for (let i = 0; i < dn.length; i++) combinedFoodItems.push(dn[i]);
+      return combinedFoodItems;
+    },
     consumeFood: (item: FoodItem) => {
       safehouse.consumeFood(item);
       policeStation.consumeDonut(item);
@@ -903,46 +1009,48 @@ export function buildMiamiCity(scene: THREE.Scene, renderer: THREE.WebGLRenderer
     getGroundHeight: (x: number, z: number) =>
       northPoint.getGroundHeight(x, z) ?? starfish.getGroundHeight(x, z) ?? getBeachHeight(x, z),
     shouldTrafficStop: (x: number, z: number, yaw: number) => trafficLights.shouldAiStop(x, z, yaw),
-    update: (elapsed: number, dt: number, playerPos?: THREE.Vector3, cash = 0, wantedStars = 0) => {
+    update: (
+      elapsed: number,
+      dt: number,
+      playerPos?: THREE.Vector3,
+      cash = 0,
+      wantedStars = 0,
+      cameraYaw?: number,
+      performanceMode = false,
+    ) => {
       oceanUniforms.uTime.value = elapsed;
-      beachHighlights.update(elapsed);
-      starfish.update(elapsed, dt);
-      westDistrict.update(elapsed);
-      northPoint.update(elapsed);
-      vicePort.update(elapsed);
+      mistUniforms.uTime.value = elapsed;
+      beachHighlights.update(elapsed, playerPos);
+      starfish.update(elapsed, dt, playerPos);
+      westDistrict.update(elapsed, playerPos);
+      northPoint.update(elapsed, playerPos);
+      vicePort.update(elapsed, playerPos);
       neonClub.update(elapsed, playerPos);
-      safehouse.update(elapsed, dt, playerPos, cash, wantedStars);
+      safehouse.update(elapsed, dt, playerPos, cash, wantedStars, cameraYaw, performanceMode);
       policeStation.update(elapsed, dt, playerPos, cash, wantedStars);
       trafficLights.update(elapsed);
       palms.update(elapsed, rainActive ? 2.1 : 1.0);
 
-      // Move fixed pool of 4 always-visible streetlamp PointLights to the 4 closest lamps
-      // (NEVER toggle light.visible -> keeps WebGL NUM_POINT_LIGHTS 100% constant, zero shader recompiles!)
       if (playerPos) {
         streetLights.updateNearest(playerPos.x, playerPos.z);
-      }
 
-      const posAttr = mistGeo.getAttribute('position') as THREE.BufferAttribute;
-      for (let i = 0; i < mistCount; i++) {
-        let y = posAttr.getY(i) - dt * 0.35;
-        if (y < 0.2) y = 14;
-        posAttr.setY(i, y);
+        // Follow player with texel-snapped DirectionalLight shadow frustum (covers all expansion districts!)
+        const sx = Math.round(playerPos.x / shadowTexel) * shadowTexel;
+        const sz = Math.round(playerPos.z / shadowTexel) * shadowTexel;
+        if (sx !== lastSunX || sz !== lastSunZ) {
+          lastSunX = sx;
+          lastSunZ = sz;
+          sunLight.target.position.set(sx, 0, sz);
+          sunLight.position.set(sx + sunOffset.x, sunOffset.y, sz + sunOffset.z);
+        }
       }
-      posAttr.needsUpdate = true;
 
       // Tropical rain shower streaks + occasional distant lightning
       if (rainActive) {
+        rainUniforms.uTime.value = elapsed;
         if (playerPos) {
           rainLines.position.set(playerPos.x, 0, playerPos.z);
         }
-        const rAttr = rainGeo.getAttribute('position') as THREE.BufferAttribute;
-        for (let i = 0; i < rainCount; i++) {
-          let y0 = rAttr.getY(i * 2) - dt * 26;
-          if (y0 < 0.2) y0 = 24;
-          rAttr.setY(i * 2, y0);
-          rAttr.setY(i * 2 + 1, y0 - 0.95);
-        }
-        rAttr.needsUpdate = true;
 
         lightningTimer -= dt;
         if (lightningTimer <= 0) {
@@ -1020,7 +1128,48 @@ function buildPalmTrees(
   frondBase.dispose();
   frondParts.forEach((g) => g.dispose());
 
+  const palmUniforms = {
+    uTime: { value: 0 },
+    uBreeze: { value: 1.0 },
+  };
+  frondMat.onBeforeCompile = (shader) => {
+    shader.uniforms.uTime = palmUniforms.uTime;
+    shader.uniforms.uBreeze = palmUniforms.uBreeze;
+    shader.vertexShader = shader.vertexShader
+      .replace(
+        '#include <common>',
+        '#include <common>\nuniform float uTime;\nuniform float uBreeze;\nattribute float aPalmPhase;',
+      )
+      .replace(
+        '#include <beginnormal_vertex>',
+        `#include <beginnormal_vertex>
+        float palmRxN = cos(uTime * 1.1 * uBreeze + aPalmPhase * 0.7) * 0.03 * uBreeze;
+        float palmRzN = sin(uTime * 1.4 * uBreeze + aPalmPhase * 0.9) * 0.045 * uBreeze;
+        objectNormal = normalize(vec3(
+          objectNormal.x - objectNormal.y * palmRzN,
+          objectNormal.y + objectNormal.x * palmRzN - objectNormal.z * palmRxN,
+          objectNormal.z + objectNormal.y * palmRxN
+        ));`,
+      )
+      .replace(
+        '#include <begin_vertex>',
+        `#include <begin_vertex>
+        float palmRx = cos(uTime * 1.1 * uBreeze + aPalmPhase * 0.7) * 0.03 * uBreeze;
+        float palmRz = sin(uTime * 1.4 * uBreeze + aPalmPhase * 0.9) * 0.045 * uBreeze;
+        vec3 swayed = vec3(
+          transformed.x - transformed.y * palmRz,
+          transformed.y + transformed.x * palmRz - transformed.z * palmRx,
+          transformed.z + transformed.y * palmRx
+        );
+        transformed = swayed;`,
+      );
+  };
+
   const count = placements.length;
+  const palmPhases = new Float32Array(count);
+  for (let i = 0; i < count; i++) palmPhases[i] = i;
+  mergedCrownGeo.setAttribute('aPalmPhase', new THREE.InstancedBufferAttribute(palmPhases, 1));
+
   const trunkInst = new THREE.InstancedMesh(mergedTrunkGeo, trunkMat, count);
   trunkInst.castShadow = true;
   trunkInst.receiveShadow = true;
@@ -1029,8 +1178,9 @@ function buildPalmTrees(
   crownInst.castShadow = true;
 
   const crownOffsetLocal = new THREE.Vector3(curX + 0.12, curY + 0.1, 0);
-  const crownWorldBases: THREE.Vector3[] = [];
   const dummy = new THREE.Object3D();
+  const yAxis = new THREE.Vector3(0, 1, 0);
+  const cw = new THREE.Vector3();
 
   placements.forEach((p, idx) => {
     const baseY = p.y ?? 0.18;
@@ -1040,11 +1190,10 @@ function buildPalmTrees(
     dummy.updateMatrix();
     trunkInst.setMatrixAt(idx, dummy.matrix);
 
-    const cw = crownOffsetLocal.clone().multiplyScalar(p.scale).applyAxisAngle(new THREE.Vector3(0, 1, 0), p.rot);
+    cw.copy(crownOffsetLocal).multiplyScalar(p.scale).applyAxisAngle(yAxis, p.rot);
     cw.x += p.x;
     cw.y += baseY;
     cw.z += p.z;
-    crownWorldBases.push(cw);
 
     dummy.position.copy(cw);
     dummy.updateMatrix();
@@ -1055,25 +1204,15 @@ function buildPalmTrees(
   crownInst.instanceMatrix.needsUpdate = true;
   trunkInst.matrixAutoUpdate = false;
   crownInst.matrixAutoUpdate = false;
+  trunkInst.computeBoundingSphere();
+  crownInst.computeBoundingSphere();
   scene.add(trunkInst);
   scene.add(crownInst);
 
   return {
     update: (elapsed: number, breeze: number) => {
-      for (let i = 0; i < count; i++) {
-        const p = placements[i];
-        const cw = crownWorldBases[i];
-        dummy.position.copy(cw);
-        dummy.rotation.set(
-          Math.cos(elapsed * 1.1 * breeze + i * 0.7) * 0.03 * breeze,
-          p.rot,
-          Math.sin(elapsed * 1.4 * breeze + i * 0.9) * 0.045 * breeze,
-        );
-        dummy.scale.setScalar(p.scale);
-        dummy.updateMatrix();
-        crownInst.setMatrixAt(i, dummy.matrix);
-      }
-      crownInst.instanceMatrix.needsUpdate = true;
+      palmUniforms.uTime.value = elapsed;
+      palmUniforms.uBreeze.value = breeze;
     },
   };
 }
@@ -1156,6 +1295,7 @@ function buildStreetlights(scene: THREE.Scene): { updateNearest: (px: number, pz
   for (let i = 0; i < poolSize; i++) {
     const pt = new THREE.PointLight('#ff9e4a', 24, 26, 1.7);
     pt.position.set(litCoords[i].x, litCoords[i].y, litCoords[i].z);
+    pt.userData.dynamic = true;
     scene.add(pt);
     lightPool.push(pt);
   }

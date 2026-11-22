@@ -1,4 +1,73 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+
+interface CachedMotoWheelGeos {
+  tireGeo: THREE.BufferGeometry;
+  rimGeo: THREE.BufferGeometry;
+  stripesGeo: THREE.BufferGeometry;
+  chromeGeo: THREE.BufferGeometry;
+  sprocketGeo?: THREE.BufferGeometry;
+}
+
+const cachedMotoWheels = new Map<boolean, CachedMotoWheelGeos>();
+
+function getMotoWheelGeos(isRear: boolean): CachedMotoWheelGeos {
+  const existing = cachedMotoWheels.get(isRear);
+  if (existing) return existing;
+
+  const tireMajor = isRear ? 0.265 : 0.26;
+  const tireTube = isRear ? 0.098 : 0.078;
+
+  const tireGeo = new THREE.TorusGeometry(tireMajor, tireTube, 14, 28);
+  tireGeo.rotateY(Math.PI / 2);
+
+  const rimGeo = new THREE.TorusGeometry(0.195, 0.022, 8, 24);
+  rimGeo.rotateY(Math.PI / 2);
+
+  const stripeParts: THREE.BufferGeometry[] = [];
+  for (const sx of [-1, 1]) {
+    const st = new THREE.TorusGeometry(0.205, 0.006, 6, 24);
+    st.rotateY(Math.PI / 2);
+    st.translate(sx * (tireTube * 0.58), 0, 0);
+    stripeParts.push(st);
+  }
+  const stripesGeo = mergeGeometries(stripeParts, false)!;
+  for (const g of stripeParts) g.dispose();
+
+  const chromeParts: THREE.BufferGeometry[] = [];
+  const hub = new THREE.CylinderGeometry(0.055, 0.055, tireTube * 1.9, 12);
+  hub.rotateZ(Math.PI / 2);
+  chromeParts.push(hub);
+
+  for (let i = 0; i < 5; i++) {
+    const angle = (i / 5) * Math.PI * 2;
+    const spoke = new THREE.BoxGeometry(0.032, 0.185, 0.028);
+    spoke.rotateX(angle);
+    spoke.translate(0, Math.cos(angle) * 0.105, Math.sin(angle) * 0.105);
+    chromeParts.push(spoke);
+  }
+
+  const discSides = isRear ? [1] : [-1, 1];
+  for (const sx of discSides) {
+    const disc = new THREE.CylinderGeometry(0.155, 0.155, 0.01, 18);
+    disc.rotateZ(Math.PI / 2);
+    disc.translate(sx * (tireTube * 0.85), 0, 0);
+    chromeParts.push(disc);
+  }
+  const chromeGeo = mergeGeometries(chromeParts, false)!;
+  for (const g of chromeParts) g.dispose();
+
+  let sprocketGeo: THREE.BufferGeometry | undefined;
+  if (isRear) {
+    sprocketGeo = new THREE.CylinderGeometry(0.12, 0.12, 0.014, 14);
+    sprocketGeo.rotateZ(Math.PI / 2);
+    sprocketGeo.translate(-tireTube * 0.92, 0, 0);
+  }
+
+  const built: CachedMotoWheelGeos = { tireGeo, rimGeo, stripesGeo, chromeGeo, sprocketGeo };
+  cachedMotoWheels.set(isRear, built);
+  return built;
+}
 
 export interface BuiltMotorcycle {
   group: THREE.Group;
@@ -86,71 +155,21 @@ export function createMotorcycleMesh(bodyColor: string, neonColor: string): Buil
     emissiveIntensity: 1.4,
   });
 
-  // --- Helper: Build Detailed Sportbike Wheel ---
+  // --- Helper: Build Detailed Sportbike Wheel (merged & cached static sub-meshes) ---
   const buildWheel = (isRear: boolean): THREE.Group => {
     const wheelGroup = new THREE.Group();
-    const tireMajor = isRear ? 0.265 : 0.26;
-    const tireTube = isRear ? 0.098 : 0.078;
+    const geos = getMotoWheelGeos(isRear);
 
-    // Rounded sport tire
-    const tireGeo = new THREE.TorusGeometry(tireMajor, tireTube, 14, 28);
-    tireGeo.rotateY(Math.PI / 2);
-    const tire = new THREE.Mesh(tireGeo, rubberMat);
+    const tire = new THREE.Mesh(geos.tireGeo, rubberMat);
     tire.castShadow = true;
     wheelGroup.add(tire);
 
-    // Inner alloy rim barrel
-    const rimGeo = new THREE.TorusGeometry(0.195, 0.022, 8, 24);
-    rimGeo.rotateY(Math.PI / 2);
-    const rim = new THREE.Mesh(rimGeo, accentDarkMat);
-    wheelGroup.add(rim);
+    wheelGroup.add(new THREE.Mesh(geos.rimGeo, accentDarkMat));
+    wheelGroup.add(new THREE.Mesh(geos.stripesGeo, neonMat));
+    wheelGroup.add(new THREE.Mesh(geos.chromeGeo, chromeMat));
 
-    // Glowing neon rim pinstripe (both sides)
-    const stripeGeo = new THREE.TorusGeometry(0.205, 0.006, 6, 24);
-    stripeGeo.rotateY(Math.PI / 2);
-    for (const sx of [-1, 1]) {
-      const stripe = new THREE.Mesh(stripeGeo, neonMat);
-      stripe.position.x = sx * (tireTube * 0.58);
-      wheelGroup.add(stripe);
-    }
-
-    // Central axle hub
-    const hub = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.055, 0.055, tireTube * 1.9, 12),
-      chromeMat,
-    );
-    hub.rotation.z = Math.PI / 2;
-    wheelGroup.add(hub);
-
-    // 5-spoke sportbike alloy spokes
-    const spokeGeo = new THREE.BoxGeometry(0.032, 0.185, 0.028);
-    for (let i = 0; i < 5; i++) {
-      const angle = (i / 5) * Math.PI * 2;
-      const spoke = new THREE.Mesh(spokeGeo, chromeMat);
-      spoke.position.set(0, Math.cos(angle) * 0.105, Math.sin(angle) * 0.105);
-      spoke.rotation.x = angle;
-      wheelGroup.add(spoke);
-    }
-
-    // Stainless steel brake rotor(s)
-    const discGeo = new THREE.CylinderGeometry(0.155, 0.155, 0.01, 18);
-    discGeo.rotateZ(Math.PI / 2);
-    const discSides = isRear ? [1] : [-1, 1];
-    for (const sx of discSides) {
-      const disc = new THREE.Mesh(discGeo, chromeMat);
-      disc.position.x = sx * (tireTube * 0.85);
-      wheelGroup.add(disc);
-    }
-
-    // Rear drive sprocket on left side
-    if (isRear) {
-      const sprocket = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.12, 0.12, 0.014, 14),
-        goldMat,
-      );
-      sprocket.rotation.z = Math.PI / 2;
-      sprocket.position.x = -tireTube * 0.92;
-      wheelGroup.add(sprocket);
+    if (geos.sprocketGeo) {
+      wheelGroup.add(new THREE.Mesh(geos.sprocketGeo, goldMat));
     }
 
     return wheelGroup;

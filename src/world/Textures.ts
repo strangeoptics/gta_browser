@@ -1,8 +1,37 @@
 import * as THREE from 'three';
 
+const facadeTextureCache = new Map<string, { map: THREE.CanvasTexture; emissiveMap: THREE.CanvasTexture }>();
+const neonSignTextureCache = new Map<string, THREE.CanvasTexture>();
+
 function hash2D(x: number, y: number): number {
-  const n = Math.sin(x * 127.1 + y * 311.7) * 43758.5453123;
-  return n - Math.floor(n);
+  let h = Math.imul((x * 4096) | 0, 374761393) + Math.imul((y * 4096) | 0, 668265263);
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
+/**
+ * Builds a `BoxGeometry(w, h, d)` whose index buffer is grouped into 2 draw calls instead of 6:
+ * - Material group 0: all 4 vertical wall faces (+X, -X, +Z, -Z)
+ * - Material group 1: top roof (+Y) and bottom (-Y) caps
+ */
+export function createBuildingBoxGeometry(w: number, h: number, d: number): THREE.BufferGeometry {
+  const geo = new THREE.BoxGeometry(w, h, d);
+  const index = geo.getIndex();
+  if (index) {
+    const src = index.array;
+    const reordered = new Uint16Array(36);
+    // +X (0..5) and -X (6..11) walls
+    for (let i = 0; i < 12; i++) reordered[i] = src[i];
+    // +Z (24..29) and -Z (30..35) walls
+    for (let i = 0; i < 12; i++) reordered[12 + i] = src[24 + i];
+    // +Y (12..17) and -Y (18..23) roof/floor caps
+    for (let i = 0; i < 12; i++) reordered[24 + i] = src[12 + i];
+    geo.setIndex(new THREE.BufferAttribute(reordered, 1));
+    geo.clearGroups();
+    geo.addGroup(0, 24, 0);
+    geo.addGroup(24, 12, 1);
+  }
+  return geo;
 }
 
 function smoothNoisePeriodic(x: number, y: number, period: number): number {
@@ -173,6 +202,11 @@ export function createArtDecoFacadeTexture(
   trimColor: string,
   seed: number,
 ): { map: THREE.CanvasTexture; emissiveMap: THREE.CanvasTexture } {
+  const normSeed = ((seed % 10) + 10) % 10;
+  const cacheKey = `${baseColor}|${trimColor}|${normSeed}`;
+  const cached = facadeTextureCache.get(cacheKey);
+  if (cached) return cached;
+  seed = normSeed;
   const w = 256;
   const h = 512;
 
@@ -274,13 +308,19 @@ export function createArtDecoFacadeTexture(
   const emissiveMap = new THREE.CanvasTexture(emCanvas);
   emissiveMap.colorSpace = THREE.SRGBColorSpace;
 
-  return { map, emissiveMap };
+  const pair = { map, emissiveMap };
+  facadeTextureCache.set(cacheKey, pair);
+  return pair;
 }
 
 /**
  * Generates a glowing retro Miami neon hotel/club sign texture.
  */
 export function createNeonSignTexture(text: string, neonColor: string): THREE.CanvasTexture {
+  const cacheKey = `${text}|${neonColor}`;
+  const cached = neonSignTextureCache.get(cacheKey);
+  if (cached) return cached;
+
   const canvas = document.createElement('canvas');
   canvas.width = 512;
   canvas.height = 128;
@@ -306,6 +346,7 @@ export function createNeonSignTexture(text: string, neonColor: string): THREE.Ca
 
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
+  neonSignTextureCache.set(cacheKey, tex);
   return tex;
 }
 

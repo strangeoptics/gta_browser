@@ -1,8 +1,9 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { AABB } from '../types';
 
 export interface BeachPropsHandle {
-  update: (elapsed: number) => void;
+  update: (elapsed: number, playerPos?: THREE.Vector3) => void;
 }
 
 /**
@@ -101,11 +102,32 @@ export function buildBeachHighlights(
 
   // Walkable wooden stairs climbing up the south side of the Lifeguard Tower (step height 0.24m)
   const lgSteps = 10;
+  const lgStairGeos: THREE.BufferGeometry[] = [];
   for (let s = 0; s < lgSteps; s++) {
     const stepTop = lgBaseY + (s + 1) * 0.235;
     const stepZ = lgZ + 2.0 + (lgSteps - s) * 0.34;
-    addSolid(1.4, stepTop - lgBaseY + 0.3, 0.38, lgX + 0.6, (stepTop + lgBaseY - 0.3) / 2, stepZ, woodMat, true);
+    const sh = stepTop - lgBaseY + 0.3;
+    const sx = lgX + 0.6;
+    const sy = (stepTop + lgBaseY - 0.3) / 2;
+    const sg = new THREE.BoxGeometry(1.4, sh, 0.38);
+    sg.translate(sx, sy, stepZ);
+    lgStairGeos.push(sg);
+    colliders.push({
+      minX: sx - 0.7,
+      maxX: sx + 0.7,
+      minY: sy - sh / 2,
+      maxY: sy + sh / 2,
+      minZ: stepZ - 0.19,
+      maxZ: stepZ + 0.19,
+      tag: 'beach-prop',
+    });
   }
+  const lgStairsMesh = new THREE.Mesh(mergeGeometries(lgStairGeos), woodMat);
+  lgStairsMesh.castShadow = true;
+  lgStairsMesh.receiveShadow = true;
+  scene.add(lgStairsMesh);
+  worldMeshes.push(lgStairsMesh);
+  for (const sg of lgStairGeos) sg.dispose();
 
   // ---------------------------------------------------------------------------
   // 2) Illuminated Wooden Pier leading directly out to the Stinger Speedboat (z = 8)
@@ -135,6 +157,7 @@ export function buildBeachHighlights(
       if (px === 88 || px === 97.5 || px === 107) {
         const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 8), flameMat);
         bulb.position.set(px, pierY + 0.72, pierZ + side);
+        bulb.userData.dynamic = true;
         scene.add(bulb);
         torchFlames.push(bulb);
       }
@@ -226,6 +249,7 @@ export function buildBeachHighlights(
     const tuft = new THREE.Mesh(bladeGeo, grassMat);
     tuft.position.set(gx, gy + 0.36, gz);
     tuft.scale.set(1.1, 0.8 + (Math.abs(gz) % 3) * 0.2, 1.1);
+    tuft.userData.dynamic = true;
     scene.add(tuft);
     grassTufts.push({ mesh: tuft, phase: gz * 0.4 });
   }
@@ -250,15 +274,18 @@ export function buildBeachHighlights(
 
   for (let i = 0; i < 5; i++) {
     const g = new THREE.Group();
+    g.userData.dynamic = true;
     const body = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.14, 0.55), gullMat);
     g.add(body);
 
     const leftWing = new THREE.Mesh(wingGeo, gullMat);
     leftWing.position.set(-0.36, 0.02, 0);
+    leftWing.userData.dynamic = true;
     g.add(leftWing);
 
     const rightWing = new THREE.Mesh(wingGeo, gullMat);
     rightWing.position.set(0.36, 0.02, 0);
+    rightWing.userData.dynamic = true;
     g.add(rightWing);
 
     scene.add(g);
@@ -276,13 +303,15 @@ export function buildBeachHighlights(
   }
 
   return {
-    update: (elapsed: number) => {
-      for (const g of grassTufts) {
-        g.mesh.rotation.z = Math.sin(elapsed * 2.1 + g.phase) * 0.12;
-      }
-      for (let i = 0; i < torchFlames.length; i++) {
-        const s = 0.92 + Math.sin(elapsed * 8.5 + i * 1.7) * 0.14;
-        torchFlames[i].scale.setScalar(s);
+    update: (elapsed: number, playerPos?: THREE.Vector3) => {
+      if (!playerPos || playerPos.x >= 15) {
+        for (const g of grassTufts) {
+          g.mesh.rotation.z = Math.sin(elapsed * 2.1 + g.phase) * 0.12;
+        }
+        for (let i = 0; i < torchFlames.length; i++) {
+          const s = 0.92 + Math.sin(elapsed * 8.5 + i * 1.7) * 0.14;
+          torchFlames[i].scale.setScalar(s);
+        }
       }
       for (const gull of gulls) {
         const a = elapsed * gull.speed + gull.phase;

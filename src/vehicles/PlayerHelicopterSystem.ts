@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { AABB } from '../types';
 import type { GamepadSnapshot } from '../engine/GamepadInput';
+import type { SpatialGrid } from '../engine/SpatialGrid';
 
 export interface PlayerHeliHudState {
   inHeli: boolean;
@@ -38,6 +39,12 @@ export class PlayerHelicopterSystem {
   private cockpitCam = false;
   private readonly camPosSmooth = new THREE.Vector3();
   private readonly camLookSmooth = new THREE.Vector3();
+  private readonly tmpDesiredPos = new THREE.Vector3();
+  private readonly tmpDesiredLook = new THREE.Vector3();
+  private readonly localColliders: AABB[] = [];
+  private cachedParkedSurfaceY: number | null = null;
+  private lastParkedX = NaN;
+  private lastParkedZ = NaN;
   private camInit = false;
 
   constructor(scene: THREE.Scene, spawnPos: THREE.Vector3) {
@@ -76,16 +83,41 @@ export class PlayerHelicopterSystem {
     this.camInit = false;
   }
 
-  public canExit(colliders: AABB[], getGroundHeight: (x: number, z: number) => number): boolean {
-    const surfaceY = this.findSurfaceHeight(this.position.x, this.position.z, this.position.y, colliders, getGroundHeight);
+  public canExit(
+    colliders: AABB[],
+    getGroundHeight: (x: number, z: number) => number,
+    playerGrid?: SpatialGrid,
+  ): boolean {
+    const surfaceY = this.findSurfaceHeight(
+      this.position.x,
+      this.position.z,
+      this.position.y,
+      colliders,
+      getGroundHeight,
+      playerGrid,
+    );
     return this.position.y - surfaceY < 3.2;
   }
 
-  public exit(colliders: AABB[], getGroundHeight: (x: number, z: number) => number): { x: number; y: number; z: number; yaw: number } {
+  public exit(
+    colliders: AABB[],
+    getGroundHeight: (x: number, z: number) => number,
+    playerGrid?: SpatialGrid,
+  ): { x: number; y: number; z: number; yaw: number } {
     this.active = false;
     this.keys.clear();
-    const surfaceY = this.findSurfaceHeight(this.position.x, this.position.z, this.position.y, colliders, getGroundHeight);
+    const surfaceY = this.findSurfaceHeight(
+      this.position.x,
+      this.position.z,
+      this.position.y,
+      colliders,
+      getGroundHeight,
+      playerGrid,
+    );
     this.position.y = surfaceY;
+    this.cachedParkedSurfaceY = surfaceY;
+    this.lastParkedX = this.position.x;
+    this.lastParkedZ = this.position.z;
     this.vx = 0;
     this.vy = 0;
     this.vz = 0;
@@ -109,9 +141,14 @@ export class PlayerHelicopterSystem {
     currentY: number,
     colliders: AABB[],
     getGroundHeight: (x: number, z: number) => number,
+    playerGrid?: SpatialGrid,
   ): number {
     let bestY = Math.max(0, getGroundHeight(x, z));
-    for (const box of colliders) {
+    const boxes = playerGrid
+      ? playerGrid.queryBox(x - 0.5, x + 0.5, z - 0.5, z + 0.5, colliders, this.localColliders)
+      : colliders;
+    for (let i = 0; i < boxes.length; i++) {
+      const box = boxes[i];
       if (x >= box.minX && x <= box.maxX && z >= box.minZ && z <= box.maxZ) {
         if (box.maxY <= currentY + 1.2 && box.maxY > bestY) {
           bestY = box.maxY;
@@ -129,6 +166,7 @@ export class PlayerHelicopterSystem {
     colliders: AABB[],
     getGroundHeight: (x: number, z: number) => number,
     pad?: GamepadSnapshot,
+    playerGrid?: SpatialGrid,
   ): PlayerHeliHudState {
     const clampedDt = Math.min(dt, 0.05);
 
@@ -138,15 +176,34 @@ export class PlayerHelicopterSystem {
 
     const targetRotor = this.active ? 34 : 0;
     this.rotorSpeed += (targetRotor - this.rotorSpeed) * (1 - Math.exp(-3.5 * clampedDt));
-    this.mainRotor.rotation.y += this.rotorSpeed * clampedDt;
-    this.tailRotor.rotation.x += this.rotorSpeed * 1.4 * clampedDt;
+    if (this.rotorSpeed > 0.01) {
+      this.mainRotor.rotation.y += this.rotorSpeed * clampedDt;
+      this.tailRotor.rotation.x += this.rotorSpeed * 1.4 * clampedDt;
+    }
     this.rotorDiscMat.opacity = THREE.MathUtils.clamp((this.rotorSpeed - 10) / 24, 0, 1) * 0.22;
 
     this.strobeClock += clampedDt;
     const strobeOn = Math.sin(this.strobeClock * 9.5) > 0.72;
     this.strobeMat.emissiveIntensity = strobeOn ? 4.2 : 0.35;
 
-    const surfaceY = this.findSurfaceHeight(this.position.x, this.position.z, this.position.y, colliders, getGroundHeight);
+    const isParkedIdle =
+      !this.active &&
+      this.vy === 0 &&
+      Math.abs(this.vx) < 0.01 &&
+      Math.abs(this.vz) < 0.01 &&
+      this.cachedParkedSurfaceY !== null &&
+      this.position.x === this.lastParkedX &&
+      this.position.z === this.lastParkedZ;
+
+    const surfaceY = isParkedIdle
+      ? this.cachedParkedSurfaceY!
+      : this.findSurfaceHeight(this.position.x, this.position.z, this.position.y, colliders, getGroundHeight, playerGrid);
+
+    if (!this.active && this.position.y <= surfaceY + 0.001) {
+      this.cachedParkedSurfaceY = surfaceY;
+      this.lastParkedX = this.position.x;
+      this.lastParkedZ = this.position.z;
+    }
 
     if (this.active && isPlaying) {
       const kbFwd = (this.keys.has('KeyW') ? 1 : 0) - (this.keys.has('KeyS') ? 1 : 0);
@@ -232,12 +289,12 @@ export class PlayerHelicopterSystem {
           this.position.z + fwdZ * 24,
         );
       } else {
-        const desiredPos = new THREE.Vector3(
+        const desiredPos = this.tmpDesiredPos.set(
           this.position.x - fwdX * 10.5,
           this.position.y + 4.6,
           this.position.z - fwdZ * 10.5,
         );
-        const desiredLook = new THREE.Vector3(
+        const desiredLook = this.tmpDesiredLook.set(
           this.position.x + fwdX * 8.5,
           this.position.y + 1.2,
           this.position.z + fwdZ * 8.5,

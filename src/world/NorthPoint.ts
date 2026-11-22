@@ -11,7 +11,7 @@ export interface NorthPointHandle {
   takeMarinaLoot: () => void;
   isNearLighthouseSpot: (pos: THREE.Vector3) => boolean;
   claimLighthouseBonus: () => boolean;
-  update: (elapsed: number) => void;
+  update: (elapsed: number, playerPos?: THREE.Vector3) => void;
 }
 
 // -----------------------------------------------------------------------------
@@ -535,6 +535,7 @@ export function buildNorthPoint(
   ];
   yachtSpecs.forEach(([yx, yz, yYaw, hull, stripe, sail], idx) => {
     const yg = buildMooredYacht(hull, stripe, sail);
+    yg.userData.dynamic = true;
     yg.position.set(yx, -0.25, yz);
     yg.rotation.y = yYaw;
     scene.add(yg);
@@ -556,6 +557,7 @@ export function buildNorthPoint(
   );
   marinaLootRing.rotation.x = -Math.PI / 2;
   marinaLootRing.position.set(-8, 0.25, -122.2);
+  marinaLootRing.userData.dynamic = true;
   scene.add(marinaLootRing);
   let marinaLootTaken = false;
 
@@ -834,6 +836,7 @@ export function buildNorthPoint(
 
   // Rotating Dual Volumetric Lighthouse Light Beams sweeping from 36.6m altitude!
   const beamPivot = new THREE.Group();
+  beamPivot.userData.dynamic = true;
   beamPivot.position.set(lhX, PLATEAU_Y + 25.6, lhZ);
   const beamGeo = new THREE.ConeGeometry(8.5, 92, 16, 1, true);
   beamGeo.translate(0, -46, 0);
@@ -870,6 +873,7 @@ export function buildNorthPoint(
   );
   scenicRing.rotation.x = -Math.PI / 2;
   scenicRing.position.set(79, PLATEAU_Y + 0.28, -100.8);
+  scenicRing.userData.dynamic = true;
   scene.add(scenicRing);
   let lighthouseBonusClaimed = false;
 
@@ -1023,13 +1027,16 @@ export function buildNorthPoint(
   // ===========================================================================
   // 8) HANDLE & ANIMATIONS
   // ===========================================================================
+  const marinaLootPos = new THREE.Vector3(-8, 0.4, -122.2);
+  const lighthouseSpotPos = new THREE.Vector3(79, PLATEAU_Y + 0.6, -100.8);
+
   return {
     stuntRamps,
     serpentinePoints,
     getGroundHeight,
 
     isNearMarinaLoot: (pos: THREE.Vector3) =>
-      !marinaLootTaken && pos.distanceToSquared(new THREE.Vector3(-8, 0.4, -122.2)) < 9.0,
+      !marinaLootTaken && pos.distanceToSquared(marinaLootPos) < 9.0,
 
     takeMarinaLoot: () => {
       marinaLootTaken = true;
@@ -1038,7 +1045,7 @@ export function buildNorthPoint(
     },
 
     isNearLighthouseSpot: (pos: THREE.Vector3) =>
-      pos.distanceToSquared(new THREE.Vector3(79, PLATEAU_Y + 0.6, -100.8)) < 14.0,
+      pos.distanceToSquared(lighthouseSpotPos) < 14.0,
 
     claimLighthouseBonus: () => {
       if (lighthouseBonusClaimed) return false;
@@ -1046,8 +1053,10 @@ export function buildNorthPoint(
       return true;
     },
 
-    update: (elapsed: number) => {
+    update: (elapsed: number, playerPos?: THREE.Vector3) => {
       beamPivot.rotation.y = elapsed * 0.52;
+
+      if (playerPos && playerPos.z > -20) return;
 
       for (const y of mooredYachts) {
         y.group.position.y = y.baseY + Math.sin(elapsed * 1.45 + y.phase) * 0.09;

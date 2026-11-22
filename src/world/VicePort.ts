@@ -23,7 +23,7 @@ export interface VicePortHandle {
   markDelivered: (vehicleName: string) => { reward: number; allDoneBonus: number };
   getDeliveredCount: () => number;
   stuntRamps: StuntRamp[];
-  update: (elapsed: number) => void;
+  update: (elapsed: number, playerPos?: THREE.Vector3) => void;
 }
 
 /**
@@ -357,11 +357,29 @@ export function buildVicePort(
   const cLen = 6.2;
   const cW = 2.5;
   const cH = 2.65;
+  const containerBuckets: { x: number; y: number; z: number; rotY: number; scaleY: number }[][] =
+    containerMats.map(() => []);
+
   for (const [cx, cz, tier, rot90, matIdx] of containerStacks) {
     const w = rot90 ? cW : cLen;
     const d = rot90 ? cLen : cW;
     const y = tier * cH + cH / 2;
-    addBox(w, cH, d, cx, y, cz, containerMats[matIdx % containerMats.length], true, 'container');
+    colliders.push({
+      minX: cx - w / 2,
+      maxX: cx + w / 2,
+      minY: y - cH / 2,
+      maxY: y + cH / 2,
+      minZ: cz - d / 2,
+      maxZ: cz + d / 2,
+      tag: 'container',
+    });
+    containerBuckets[matIdx % containerMats.length].push({
+      x: cx,
+      y,
+      z: cz,
+      rotY: rot90 ? Math.PI / 2 : 0,
+      scaleY: 1,
+    });
   }
 
   // ===========================================================================
@@ -440,6 +458,7 @@ export function buildVicePort(
 
     // Animated Moving Trolley + Glass Operator Cab + Suspended Shipping Container!
     const trolley = new THREE.Group();
+    trolley.userData.dynamic = true;
     trolley.position.set(craneX, portalH + 0.5, craneZ + 10.0);
 
     const carriage = new THREE.Mesh(new THREE.BoxGeometry(5.4, 0.65, 3.2), steelDarkMat);
@@ -535,19 +554,43 @@ export function buildVicePort(
   funnelTop.position.set(bridgeX - 2.9, 18.8, shipZ);
   scene.add(funnelTop);
 
-  // Stacked Shipping Containers loaded onto the Freighter's cargo deck!
+  // Stacked Shipping Containers loaded onto the Freighter's cargo deck! (batched into 6 InstancedMeshes!)
   for (let col = 0; col < 5; col++) {
     for (let row = 0; row < 3; row++) {
       const tiers = (col + row) % 2 === 0 ? 2 : 1;
       for (let t = 0; t < tiers; t++) {
         const idx = (col * 3 + row + t) % containerMats.length;
-        const box = new THREE.Mesh(new THREE.BoxGeometry(6.2, 2.6, 2.5), containerMats[idx]);
-        box.position.set(shipX - 11 + col * 6.8, 4.4 + t * 2.65, shipZ - 3.2 + row * 3.1);
-        box.castShadow = true;
-        scene.add(box);
+        containerBuckets[idx].push({
+          x: shipX - 11 + col * 6.8,
+          y: 4.4 + t * 2.65,
+          z: shipZ - 3.2 + row * 3.1,
+          rotY: 0,
+          scaleY: 2.6 / cH,
+        });
       }
     }
   }
+
+  const sharedContainerGeo = new THREE.BoxGeometry(cLen, cH, cW);
+  containerBuckets.forEach((items, matIdx) => {
+    if (items.length === 0) return;
+    const inst = new THREE.InstancedMesh(sharedContainerGeo, containerMats[matIdx], items.length);
+    inst.castShadow = true;
+    inst.receiveShadow = true;
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      dummy.position.set(it.x, it.y, it.z);
+      dummy.rotation.set(0, it.rotY, 0);
+      dummy.scale.set(1, it.scaleY, 1);
+      dummy.updateMatrix();
+      inst.setMatrixAt(i, dummy.matrix);
+    }
+    inst.instanceMatrix.needsUpdate = true;
+    inst.matrixAutoUpdate = false;
+    inst.computeBoundingSphere();
+    scene.add(inst);
+    worldMeshes.push(inst);
+  });
 
   // ===========================================================================
   // 6) FOUR 18-METER INDUSTRIAL FLOODLIGHT MASTS (Additive Haze Cones -> 0 PointLights!)
@@ -625,6 +668,7 @@ export function buildVicePort(
   );
   exportRing.rotation.x = -Math.PI / 2;
   exportRing.position.set(whX - 1.5, 0.04, whZ);
+  exportRing.userData.dynamic = true;
   scene.add(exportRing);
 
   // Dynamic 3D "WANTED VEHICLES" Chalkboard mounted beside the bay door (x = 49.6, z = 85.2)
@@ -725,7 +769,8 @@ export function buildVicePort(
       return { reward: spec.reward, allDoneBonus };
     },
     getDeliveredCount: () => delivered.size,
-    update: (elapsed: number) => {
+    update: (elapsed: number, playerPos?: THREE.Vector3) => {
+      if (playerPos && playerPos.z < 10) return;
       // Animate both towering Gantry Crane trolleys sliding back & forth over the cargo freighter!
       for (const ct of craneTrolleys) {
         ct.group.position.z = ct.baseZ + Math.sin(elapsed * 0.38 + ct.phase) * 9.5;

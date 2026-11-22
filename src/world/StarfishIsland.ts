@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { AABB } from '../types';
 import { createNeonSignTexture } from './Textures';
 
@@ -19,7 +20,7 @@ export interface StarfishIslandHandle {
   takeYachtLoot: () => void;
   helipadSpawn: THREE.Vector3;
   yacht: SuperyachtHandle;
-  update: (elapsed: number, dt: number) => void;
+  update: (elapsed: number, dt: number, playerPos?: THREE.Vector3) => void;
 }
 
 /**
@@ -93,9 +94,15 @@ export function buildStarfishIsland(
     return Math.sin(t * Math.PI) * 2.85 + t * islandY;
   };
 
-  // Build smooth subdivided arched bridge deck & neon side stripes
+  // Build smooth subdivided arched bridge deck & neon side stripes (merged by material -> 5 draw calls instead of 99!)
   const segCount = 22;
   const segLen = bridgeLen / segCount;
+  const deckGeos: THREE.BufferGeometry[] = [];
+  const dashGeos: THREE.BufferGeometry[] = [];
+  const railGeos: THREE.BufferGeometry[] = [];
+  const cyanNeonGeos: THREE.BufferGeometry[] = [];
+  const pinkNeonGeos: THREE.BufferGeometry[] = [];
+
   for (let i = 0; i < segCount; i++) {
     const x0 = bridgeStartX + i * segLen;
     const x1 = x0 + segLen;
@@ -106,41 +113,57 @@ export function buildStarfishIsland(
     const slope = Math.atan2(y1 - y0, segLen);
     const actualLen = Math.hypot(segLen, y1 - y0) + 0.08;
 
-    const deck = new THREE.Mesh(new THREE.BoxGeometry(actualLen, 0.36, bridgeW), roadMat);
-    deck.position.set(xm, ym - 0.18, bridgeZ);
-    deck.rotation.z = slope;
-    deck.castShadow = true;
-    deck.receiveShadow = true;
-    scene.add(deck);
-    worldMeshes.push(deck);
+    const deckGeo = new THREE.BoxGeometry(actualLen, 0.36, bridgeW);
+    deckGeo.rotateZ(slope);
+    deckGeo.translate(xm, ym - 0.18, bridgeZ);
+    deckGeos.push(deckGeo);
 
     // Center yellow road dash every 2nd segment
     if (i % 2 === 0) {
-      const dash = new THREE.Mesh(new THREE.BoxGeometry(actualLen * 0.55, 0.03, 0.24), yellowPaintMat);
-      dash.position.set(xm, ym + 0.015, bridgeZ);
-      dash.rotation.z = slope;
-      scene.add(dash);
+      const dashGeo = new THREE.BoxGeometry(actualLen * 0.55, 0.03, 0.24);
+      dashGeo.rotateZ(slope);
+      dashGeo.translate(xm, ym + 0.015, bridgeZ);
+      dashGeos.push(dashGeo);
     }
 
     // Concrete bridge side parapets + thin neon edge tubes
     for (const sz of [-1, 1]) {
       const railZ = bridgeZ + sz * (bridgeW / 2 + 0.25);
-      const rail = new THREE.Mesh(new THREE.BoxGeometry(actualLen, 0.85, 0.45), concreteMat);
-      rail.position.set(xm, ym + 0.32, railZ);
-      rail.rotation.z = slope;
-      rail.castShadow = true;
-      scene.add(rail);
+      const railGeo = new THREE.BoxGeometry(actualLen, 0.85, 0.45);
+      railGeo.rotateZ(slope);
+      railGeo.translate(xm, ym + 0.32, railZ);
+      railGeos.push(railGeo);
 
       if (i % 2 === 1) {
-        const neonStrip = new THREE.Mesh(
-          new THREE.BoxGeometry(actualLen * 0.85, 0.09, 0.12),
-          sz < 0 ? cyanNeon : pinkNeon,
-        );
-        neonStrip.position.set(xm, ym + 0.78, railZ);
-        neonStrip.rotation.z = slope;
-        scene.add(neonStrip);
+        const neonGeo = new THREE.BoxGeometry(actualLen * 0.85, 0.09, 0.12);
+        neonGeo.rotateZ(slope);
+        neonGeo.translate(xm, ym + 0.78, railZ);
+        if (sz < 0) cyanNeonGeos.push(neonGeo);
+        else pinkNeonGeos.push(neonGeo);
       }
     }
+  }
+
+  const mergedDeck = new THREE.Mesh(mergeGeometries(deckGeos), roadMat);
+  mergedDeck.castShadow = true;
+  mergedDeck.receiveShadow = true;
+  scene.add(mergedDeck);
+  worldMeshes.push(mergedDeck);
+
+  const mergedDash = new THREE.Mesh(mergeGeometries(dashGeos), yellowPaintMat);
+  scene.add(mergedDash);
+
+  const mergedRail = new THREE.Mesh(mergeGeometries(railGeos), concreteMat);
+  mergedRail.castShadow = true;
+  mergedRail.receiveShadow = true;
+  scene.add(mergedRail);
+  worldMeshes.push(mergedRail);
+
+  scene.add(new THREE.Mesh(mergeGeometries(cyanNeonGeos), cyanNeon));
+  scene.add(new THREE.Mesh(mergeGeometries(pinkNeonGeos), pinkNeon));
+
+  for (const g of [...deckGeos, ...dashGeos, ...railGeos, ...cyanNeonGeos, ...pinkNeonGeos]) {
+    g.dispose();
   }
 
   // Solid side guardrail colliders along the entire Causeway so cars & players stay safely on the bridge
@@ -314,6 +337,7 @@ export function buildStarfishIsland(
   topBar.position.set(0, 0.16, 0);
   vaultMesh.add(topBar);
   vaultMesh.position.set(vaultPos.x, islandY + 1.25, vaultPos.z);
+  vaultMesh.userData.dynamic = true;
   scene.add(vaultMesh);
   let islandVaultAvailable = true;
   let islandVaultRespawn = 0;
@@ -372,6 +396,7 @@ export function buildStarfishIsland(
   // --- Movable 44-Meter Superyacht Root Group ("LADY VICE") ---
   const yachtRoot = new THREE.Group();
   yachtRoot.position.set(yachtX, 0, yachtZ);
+  yachtRoot.userData.dynamic = true;
   scene.add(yachtRoot);
 
   const yachtColliderEntries: { box: AABB; lx: number; ly: number; lz: number; w: number; h: number; d: number }[] = [];
@@ -546,11 +571,32 @@ export function buildStarfishIsland(
   yachtRoot.add(frontSalonGlass);
 
   // Walkable Aft Staircase from Main Deck (y = 1.40) up to Upper Bridge & Helipad Deck (y = 4.28)
+  const yachtStairGeos: THREE.BufferGeometry[] = [];
   for (let s = 0; s < 12; s++) {
     const topY = mainDeckY + (s + 1) * 0.24;
     const sz = -15.0 + s * 0.36;
-    addYachtBox(2.4, topY - mainDeckY, 0.4, 0, (topY + mainDeckY) / 2, sz, plankedTeakMat, true, 'yacht-stairs');
+    const sh = topY - mainDeckY;
+    const sy = (topY + mainDeckY) / 2;
+    const sg = new THREE.BoxGeometry(2.4, sh, 0.4);
+    sg.translate(0, sy, sz);
+    yachtStairGeos.push(sg);
+    const box: AABB = {
+      minX: yachtX - 1.2,
+      maxX: yachtX + 1.2,
+      minY: sy - sh / 2,
+      maxY: sy + sh / 2,
+      minZ: yachtZ + sz - 0.2,
+      maxZ: yachtZ + sz + 0.2,
+      tag: 'yacht-stairs',
+    };
+    colliders.push(box);
+    yachtColliderEntries.push({ box, lx: 0, ly: sy, lz: sz, w: 2.4, h: sh, d: 0.4 });
   }
+  const yachtStairsMesh = new THREE.Mesh(mergeGeometries(yachtStairGeos), plankedTeakMat);
+  yachtStairsMesh.castShadow = true;
+  yachtStairsMesh.receiveShadow = true;
+  yachtRoot.add(yachtStairsMesh);
+  for (const sg of yachtStairGeos) sg.dispose();
 
   // --- Upper Flybridge, Raked Captain's Wheelhouse, Satcom Domes, Life Rafts & Helipad (y = 4.28m) ---
   addYachtBox(8.8, 0.24, 19.6, 0, upperDeckY - 0.12, -1.5, yachtHullMat, true, 'yacht-upper');
@@ -807,9 +853,16 @@ export function buildStarfishIsland(
       yachtLootMesh.visible = false;
       yachtLootRespawn = 60.0;
     },
-    update: (elapsed: number, dt: number) => {
+    update: (elapsed: number, dt: number, playerPos?: THREE.Vector3) => {
       const clampedDt = Math.min(dt, 0.05);
-      radarBar.rotation.y = elapsed * 2.4;
+      const nearYacht =
+        !playerPos || (playerPos.x - curYachtX) ** 2 + (playerPos.z - curYachtZ) ** 2 < 160 * 160;
+      const nearIsland =
+        !playerPos || (playerPos.x - vaultPos.x) ** 2 + (playerPos.z - vaultPos.z) ** 2 < 140 * 140;
+
+      if (nearYacht) {
+        radarBar.rotation.y = elapsed * 2.4;
+      }
 
       if (!islandVaultAvailable) {
         islandVaultRespawn -= clampedDt;
@@ -817,7 +870,7 @@ export function buildStarfishIsland(
           islandVaultAvailable = true;
           vaultMesh.visible = true;
         }
-      } else {
+      } else if (nearIsland) {
         vaultMesh.rotation.y = elapsed * 1.6;
         vaultMesh.position.y = islandY + 1.25 + Math.sin(elapsed * 2.8) * 0.06;
       }
@@ -828,7 +881,7 @@ export function buildStarfishIsland(
           yachtLootAvailable = true;
           yachtLootMesh.visible = true;
         }
-      } else {
+      } else if (nearYacht) {
         yachtLootMesh.rotation.y = -elapsed * 1.8;
         yachtLootMesh.position.y = upperDeckY + 1.18 + Math.sin(elapsed * 3.1) * 0.07;
       }

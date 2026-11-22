@@ -33,8 +33,10 @@ export class DestructibleProps {
   private readonly scene: THREE.Scene;
   private readonly props: DestructibleProp[] = [];
   private readonly drops: WaterDrop[] = [];
+  private readonly dropPool: THREE.Mesh[] = [];
   private readonly dropGeo = new THREE.BoxGeometry(0.14, 0.24, 0.14);
   private readonly hitboxMat = new THREE.MeshBasicMaterial({ visible: false });
+  private readonly tmpImpulse = new THREE.Vector3();
   private sprayTick = 0;
 
   public onPropSmashed?: (kind: PropKind) => void;
@@ -75,22 +77,38 @@ export class DestructibleProps {
     bins.forEach(([x, z], i) => this.createTrashBin(`bin-${i}`, x, z));
   }
 
+  public appendShootableHitboxes(out: THREE.Object3D[]): void {
+    for (let i = 0; i < this.props.length; i++) {
+      const p = this.props[i];
+      if (!p.broken) out.push(p.hitbox);
+    }
+  }
+
   public getShootableTargets(): ShootableTarget[] {
     const out: ShootableTarget[] = [];
-    for (const p of this.props) {
-      if (p.broken) continue;
-      out.push({
-        id: p.id,
-        mesh: p.hitbox,
-        onHit: (_dmg: number, hitPoint: THREE.Vector3, hitNormal: THREE.Vector3) => {
-          const impulse = hitNormal.clone().multiplyScalar(-5.5);
-          impulse.y = 4.5;
-          this.breakProp(p, impulse, hitPoint);
-          return true;
-        },
-      });
+    for (let i = 0; i < this.props.length; i++) {
+      const p = this.props[i];
+      if (!p.broken && p.hitbox.userData.shootableTarget) {
+        out.push(p.hitbox.userData.shootableTarget as ShootableTarget);
+      }
     }
     return out;
+  }
+
+  private registerProp(p: DestructibleProp): void {
+    const target: ShootableTarget = {
+      id: p.id,
+      mesh: p.hitbox,
+      onHit: (_dmg: number, hitPoint: THREE.Vector3, hitNormal: THREE.Vector3) => {
+        if (p.broken) return false;
+        const impulse = this.tmpImpulse.copy(hitNormal).multiplyScalar(-5.5);
+        impulse.y = 4.5;
+        this.breakProp(p, impulse, hitPoint);
+        return true;
+      },
+    };
+    p.hitbox.userData.shootableTarget = target;
+    this.props.push(p);
   }
 
   public handleVehicleImpact(vehiclePos: THREE.Vector3, vehicleYaw: number, speed: number): void {
@@ -147,23 +165,32 @@ export class DestructibleProps {
         }
       }
 
-      // Pressurized hydrant water geyser fountain!
+      // Pressurized hydrant water geyser fountain! (pooled meshes)
       if (p.kind === 'hydrant' && p.geyserTimer > 0) {
         p.geyserTimer -= clampedDt;
         if (this.sprayTick > 0.03) {
           for (let k = 0; k < 2; k++) {
-            const mat = new THREE.MeshBasicMaterial({
-              color: k === 0 ? '#7ff6ff' : '#e6ffff',
-              transparent: true,
-              opacity: 0.85,
-            });
-            const drop = new THREE.Mesh(this.dropGeo, mat);
+            const col = k === 0 ? '#7ff6ff' : '#e6ffff';
+            let drop = this.dropPool.pop();
+            if (drop) {
+              const mat = drop.material as THREE.MeshBasicMaterial;
+              mat.color.set(col);
+              mat.opacity = 0.85;
+              drop.visible = true;
+            } else {
+              const mat = new THREE.MeshBasicMaterial({
+                color: col,
+                transparent: true,
+                opacity: 0.85,
+              });
+              drop = new THREE.Mesh(this.dropGeo, mat);
+              this.scene.add(drop);
+            }
             drop.position.set(
               p.spawnPos.x + (Math.random() - 0.5) * 0.2,
               0.35,
               p.spawnPos.z + (Math.random() - 0.5) * 0.2,
             );
-            this.scene.add(drop);
             this.drops.push({
               mesh: drop,
               vel: new THREE.Vector3(
@@ -197,9 +224,11 @@ export class DestructibleProps {
       const d = this.drops[i];
       d.life -= clampedDt;
       if (d.life <= 0 || d.mesh.position.y < 0.05) {
-        this.scene.remove(d.mesh);
-        (d.mesh.material as THREE.Material).dispose();
-        this.drops.splice(i, 1);
+        d.mesh.visible = false;
+        this.dropPool.push(d.mesh);
+        const last = this.drops.length - 1;
+        if (i !== last) this.drops[i] = this.drops[last];
+        this.drops.pop();
       } else {
         d.vel.y -= 15.5 * clampedDt;
         d.mesh.position.addScaledVector(d.vel, clampedDt);
@@ -235,7 +264,7 @@ export class DestructibleProps {
     group.add(hitbox);
 
     this.scene.add(group);
-    this.props.push({
+    this.registerProp({
       id,
       kind: 'hydrant',
       group,
@@ -282,7 +311,7 @@ export class DestructibleProps {
     group.add(hitbox);
 
     this.scene.add(group);
-    this.props.push({
+    this.registerProp({
       id,
       kind: 'cafe',
       group,
@@ -323,7 +352,7 @@ export class DestructibleProps {
     group.add(hitbox);
 
     this.scene.add(group);
-    this.props.push({
+    this.registerProp({
       id,
       kind: 'bin',
       group,

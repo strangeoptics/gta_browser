@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { buildLowPolyCharacter } from '../entities/CharacterBuilder';
-import { getOutfitBackTexture, getOutfitTexture } from '../entities/CharacterTextures';
+import { getCombinedTorsoTexture } from '../entities/CharacterTextures';
 
 const PLAYER_OUTFITS = [
   { name: 'MIAMI WHITE SUIT', primary: '#f2e8e1', accent: '#36f1e6', pants: '#272c42', variant: 2, role: 'civilian' as const },
@@ -99,9 +99,8 @@ export class PlayerAvatar {
   public setOutfit(index: number): string {
     this.outfitIndex = ((index % PLAYER_OUTFITS.length) + PLAYER_OUTFITS.length) % PLAYER_OUTFITS.length;
     const o = PLAYER_OUTFITS[this.outfitIndex];
-    this.torsoMat.map = getOutfitTexture(o.role, o.primary, o.accent, o.variant);
+    this.torsoMat.map = getCombinedTorsoTexture(o.role, o.primary, o.accent, o.variant);
     this.torsoMat.needsUpdate = true;
-    this.torsoBackMat.map = getOutfitBackTexture(o.role, o.primary, o.accent, o.variant);
     this.torsoBackMat.needsUpdate = true;
     this.sleeveMat.color.set(o.primary);
     this.pantsMat.color.set(o.pants);

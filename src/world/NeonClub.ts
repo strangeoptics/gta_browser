@@ -133,6 +133,7 @@ export function buildNeonClub(
   // 2) Rotating Mirror Disco Ball & 4 Volumetric Sweeping Effect Spotlights
   // ---------------------------------------------------------------------------
   const discoGroup = new THREE.Group();
+  discoGroup.userData.dynamic = true;
   discoGroup.position.set(clubX + 1.0, 5.15, clubZ + 0.2);
 
   const rod = new THREE.Mesh(
@@ -205,6 +206,7 @@ export function buildNeonClub(
 
   for (const cfg of beamConfigs) {
     const pivot = new THREE.Group();
+    pivot.userData.dynamic = true;
     pivot.position.set(cfg.x, 5.95, cfg.z);
 
     // Lamp housing fixture
@@ -238,6 +240,7 @@ export function buildNeonClub(
     );
     floorPool.rotation.x = -Math.PI / 2;
     floorPool.position.set(cfg.x, 0.255, cfg.z);
+    floorPool.userData.dynamic = true;
     scene.add(floorPool);
 
     scene.add(pivot);
@@ -246,30 +249,48 @@ export function buildNeonClub(
 
   // Orbiting dynamic club point lights
   const clubLightPink = new THREE.PointLight('#ff4fa3', 38, 24, 1.5);
+  clubLightPink.userData.dynamic = true;
   scene.add(clubLightPink);
   const clubLightCyan = new THREE.PointLight('#36f1e6', 38, 24, 1.5);
+  clubLightCyan.userData.dynamic = true;
   scene.add(clubLightCyan);
 
   // ---------------------------------------------------------------------------
-  // 3) Pulsing 6x5 LED Dancefloor
+  // 3) Pulsing 6x5 LED Dancefloor (2 InstancedMeshes -> 2 draw calls instead of 30!)
   // ---------------------------------------------------------------------------
-  const danceTiles: { mat: THREE.MeshStandardMaterial; phase: number }[] = [];
   const floorTileGeo = new THREE.BoxGeometry(1.52, 0.05, 1.52);
+  const pinkTileMat = new THREE.MeshStandardMaterial({
+    color: '#ff4fa3',
+    emissive: '#ff4fa3',
+    emissiveIntensity: 1.1,
+    roughness: 0.12,
+  });
+  const cyanTileMat = new THREE.MeshStandardMaterial({
+    color: '#36f1e6',
+    emissive: '#36f1e6',
+    emissiveIntensity: 1.1,
+    roughness: 0.12,
+  });
+  const pinkTileInst = new THREE.InstancedMesh(floorTileGeo, pinkTileMat, 15);
+  const cyanTileInst = new THREE.InstancedMesh(floorTileGeo, cyanTileMat, 15);
+  let pinkIdx = 0;
+  let cyanIdx = 0;
+  tileDummy.rotation.set(0, 0, 0);
+  tileDummy.scale.set(1, 1, 1);
   for (let gx = 0; gx < 6; gx++) {
     for (let gz = 0; gz < 5; gz++) {
       const isPink = (gx + gz) % 2 === 0;
-      const mat = new THREE.MeshStandardMaterial({
-        color: isPink ? '#ff4fa3' : '#36f1e6',
-        emissive: isPink ? '#ff4fa3' : '#36f1e6',
-        emissiveIntensity: 1.1,
-        roughness: 0.12,
-      });
-      const tile = new THREE.Mesh(floorTileGeo, mat);
-      tile.position.set(clubX - 1.5 + gx * 1.6, 0.22, clubZ - 2.6 + gz * 1.6);
-      scene.add(tile);
-      danceTiles.push({ mat, phase: gx * 0.65 + gz * 0.85 });
+      tileDummy.position.set(clubX - 1.5 + gx * 1.6, 0.22, clubZ - 2.6 + gz * 1.6);
+      tileDummy.updateMatrix();
+      if (isPink) pinkTileInst.setMatrixAt(pinkIdx++, tileDummy.matrix);
+      else cyanTileInst.setMatrixAt(cyanIdx++, tileDummy.matrix);
     }
   }
+  pinkTileInst.instanceMatrix.needsUpdate = true;
+  cyanTileInst.instanceMatrix.needsUpdate = true;
+  pinkTileInst.matrixAutoUpdate = false;
+  cyanTileInst.matrixAutoUpdate = false;
+  scene.add(pinkTileInst, cyanTileInst);
 
   // ---------------------------------------------------------------------------
   // 4) Elaborate Bar Counter, Backlit Bottle Wall, Barstools & Animated Bartender
@@ -356,6 +377,7 @@ export function buildNeonClub(
 
   // Animated Bartender behind the bar (black vest, white shirt, bow tie, sunglasses!)
   const bartender = createClubCharacter('#ffffff', '#191522', true);
+  bartender.group.userData.dynamic = true;
   bartender.group.position.set(barX - 1.15, 0.2, clubZ + 0.4);
   bartender.group.rotation.y = Math.PI / 2; // faces east toward customers
   scene.add(bartender.group);
@@ -377,12 +399,14 @@ export function buildNeonClub(
       new THREE.MeshStandardMaterial({ color: '#111118', emissive: '#36f1e6', emissiveIntensity: 0.5 }),
     );
     deck.position.set(clubX + 1.0 + dx, 0.18 + 1.4, djZ);
+    deck.userData.dynamic = true;
     scene.add(deck);
     turntables.push(deck);
   }
 
   // Animated DJ behind the booth
   const dj = createClubCharacter('#ff4fa3', '#1d182b', true);
+  dj.group.userData.dynamic = true;
   dj.group.position.set(clubX + 1.0, 0.2, djZ - 0.85);
   dj.group.rotation.y = 0; // faces south toward dancefloor
   // Glowing cyan DJ headphones
@@ -402,6 +426,7 @@ export function buildNeonClub(
       );
       cone.rotation.x = Math.PI / 2;
       cone.position.set(clubX + 1.0 + side, wy, djZ + 0.72);
+      cone.userData.dynamic = true;
       scene.add(cone);
       woofers.push(cone);
     }
@@ -427,6 +452,7 @@ export function buildNeonClub(
   ];
   dancerDefs.forEach(([dx, dz, col], idx) => {
     const ch = createClubCharacter(col, '#211930', idx % 2 === 0);
+    ch.group.userData.dynamic = true;
     ch.group.position.set(dx, 0.24, dz);
     scene.add(ch.group);
     dancers.push({ char: ch, baseY: 0.24, phase: idx * 1.4 });
@@ -502,10 +528,9 @@ export function buildNeonClub(
       clubLightPink.intensity = 30 + beatPulse * 18;
       clubLightCyan.intensity = 30 + beatPulse * 18;
 
-      // Pulsing LED dancefloor tiles
-      for (const t of danceTiles) {
-        t.mat.emissiveIntensity = 0.55 + 1.15 * (0.5 + 0.5 * Math.sin(elapsed * 5.2 + t.phase)) + beatPulse * 0.35;
-      }
+      // Pulsing LED dancefloor tiles (2 shared materials instead of 30)
+      pinkTileMat.emissiveIntensity = 0.55 + 1.15 * (0.5 + 0.5 * Math.sin(elapsed * 5.2)) + beatPulse * 0.35;
+      cyanTileMat.emissiveIntensity = 0.55 + 1.15 * (0.5 + 0.5 * Math.sin(elapsed * 5.2 + 2.1)) + beatPulse * 0.35;
 
       // Subwoofer cones thumping to the 126 BPM bass!
       for (const w of woofers) {

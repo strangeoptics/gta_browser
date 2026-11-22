@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 export type CarModelType =
   | 'cybertruck'
@@ -67,70 +68,95 @@ function getTaxiSignTexture(): THREE.CanvasTexture {
   return cachedTaxiSignTex;
 }
 
+type WheelStyle = 'alloy' | 'aero' | 'turbine' | 'steel';
+
+let sharedWheelMats: {
+  tire: THREE.MeshStandardMaterial;
+  rims: Record<WheelStyle, THREE.MeshStandardMaterial>;
+} | null = null;
+
+function getSharedWheelMats() {
+  if (sharedWheelMats) return sharedWheelMats;
+  sharedWheelMats = {
+    tire: new THREE.MeshStandardMaterial({ color: '#141219', roughness: 0.88, metalness: 0.05 }),
+    rims: {
+      alloy: new THREE.MeshStandardMaterial({ color: '#d8e0ea', roughness: 0.16, metalness: 0.9 }),
+      turbine: new THREE.MeshStandardMaterial({ color: '#d8e0ea', roughness: 0.16, metalness: 0.9 }),
+      steel: new THREE.MeshStandardMaterial({ color: '#b8c0c8', roughness: 0.16, metalness: 0.9 }),
+      aero: new THREE.MeshStandardMaterial({ color: '#242730', roughness: 0.42, metalness: 0.55 }),
+    },
+  };
+  return sharedWheelMats;
+}
+
+const cachedWheelGeos = new Map<string, { tireGeo: THREE.BufferGeometry; rimGeo: THREE.BufferGeometry }>();
+
 /**
  * Helper: builds a detailed, rotating 3D car wheel with rounded torus tire,
  * deep alloy barrel, 5-spoke rim (or Cybertruck aero cap), brake rotor & hub.
+ * Merges static sub-parts into 2 cached geometries (tire + rim) -> 2 meshes instead of 11-12!
  */
-function buildCarWheel(
-  radius: number,
-  width: number,
-  style: 'alloy' | 'aero' | 'turbine' | 'steel',
-): THREE.Group {
+function buildCarWheel(radius: number, width: number, style: WheelStyle): THREE.Group {
   const wg = new THREE.Group();
-  const tireMat = new THREE.MeshStandardMaterial({ color: '#141219', roughness: 0.88, metalness: 0.05 });
-  const rimColor = style === 'aero' ? '#242730' : style === 'steel' ? '#b8c0c8' : '#d8e0ea';
-  const rimMat = new THREE.MeshStandardMaterial({
-    color: rimColor,
-    roughness: style === 'aero' ? 0.42 : 0.16,
-    metalness: style === 'aero' ? 0.55 : 0.9,
-  });
-  const darkMat = new THREE.MeshStandardMaterial({ color: '#1b1d24', roughness: 0.5, metalness: 0.6 });
+  const mats = getSharedWheelMats();
+  const key = `${radius.toFixed(3)}:${width.toFixed(3)}:${style}`;
 
-  const tube = width * 0.46;
-  const major = Math.max(0.14, radius - tube * 0.72);
+  let geos = cachedWheelGeos.get(key);
+  if (!geos) {
+    const tube = width * 0.46;
+    const major = Math.max(0.14, radius - tube * 0.72);
 
-  // Rounded tire tread
-  const tireGeo = new THREE.TorusGeometry(major, tube, 12, 22);
-  tireGeo.rotateY(Math.PI / 2);
-  const tire = new THREE.Mesh(tireGeo, tireMat);
+    // 1) Tire tread + inner sidewall core merged into 1 geometry
+    const tireTorus = new THREE.TorusGeometry(major, tube, 12, 22);
+    tireTorus.rotateY(Math.PI / 2);
+
+    const coreCyl = new THREE.CylinderGeometry(major * 0.86, major * 0.86, width * 0.78, 16);
+    coreCyl.rotateZ(Math.PI / 2);
+
+    const tireGeo = mergeGeometries([tireTorus, coreCyl], false)!;
+    tireTorus.dispose();
+    coreCyl.dispose();
+
+    // 2) Rim lips + spokes/aero cover + center hubcap merged into 1 geometry
+    const rimParts: THREE.BufferGeometry[] = [];
+    for (const sx of [-1, 1]) {
+      const lip = new THREE.TorusGeometry(major * 0.74, 0.018, 6, 20);
+      lip.rotateY(Math.PI / 2);
+      lip.translate(sx * (width * 0.4), 0, 0);
+      rimParts.push(lip);
+    }
+
+    if (style === 'aero') {
+      const cap = new THREE.CylinderGeometry(major * 0.72, major * 0.72, width * 0.84, 7);
+      cap.rotateZ(Math.PI / 2);
+      rimParts.push(cap);
+    } else {
+      const spokeCount = style === 'turbine' ? 8 : 5;
+      const spokeW = style === 'turbine' ? 0.022 : 0.036;
+      for (let i = 0; i < spokeCount; i++) {
+        const sp = new THREE.BoxGeometry(width * 0.86, major * 1.35, spokeW);
+        sp.rotateX((i / spokeCount) * Math.PI);
+        rimParts.push(sp);
+      }
+    }
+
+    const hub = new THREE.CylinderGeometry(0.06, 0.06, width * 0.9, 10);
+    hub.rotateZ(Math.PI / 2);
+    rimParts.push(hub);
+
+    const rimGeo = mergeGeometries(rimParts, false)!;
+    for (const g of rimParts) g.dispose();
+
+    geos = { tireGeo, rimGeo };
+    cachedWheelGeos.set(key, geos);
+  }
+
+  const tire = new THREE.Mesh(geos.tireGeo, mats.tire);
   tire.castShadow = true;
   wg.add(tire);
 
-  // Inner tire sidewall fill so there's no hollow gap
-  const core = new THREE.Mesh(new THREE.CylinderGeometry(major * 0.86, major * 0.86, width * 0.78, 16), darkMat);
-  core.rotation.z = Math.PI / 2;
-  wg.add(core);
-
-  // Outer alloy rim lip
-  const lipGeo = new THREE.TorusGeometry(major * 0.74, 0.018, 6, 20);
-  lipGeo.rotateY(Math.PI / 2);
-  for (const sx of [-1, 1]) {
-    const lip = new THREE.Mesh(lipGeo, rimMat);
-    lip.position.x = sx * (width * 0.4);
-    wg.add(lip);
-  }
-
-  if (style === 'aero') {
-    // Angular Cybertruck aero wheel cover
-    const cap = new THREE.Mesh(new THREE.CylinderGeometry(major * 0.72, major * 0.72, width * 0.84, 7), rimMat);
-    cap.rotation.z = Math.PI / 2;
-    wg.add(cap);
-  } else {
-    // 5-spoke or 8-fin turbine alloy spokes
-    const spokeCount = style === 'turbine' ? 8 : 5;
-    const spokeW = style === 'turbine' ? 0.022 : 0.036;
-    const spokeGeo = new THREE.BoxGeometry(width * 0.86, major * 1.35, spokeW);
-    for (let i = 0; i < spokeCount; i++) {
-      const sp = new THREE.Mesh(spokeGeo, rimMat);
-      sp.rotation.x = (i / spokeCount) * Math.PI;
-      wg.add(sp);
-    }
-  }
-
-  // Center hubcap
-  const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, width * 0.9, 10), rimMat);
-  hub.rotation.z = Math.PI / 2;
-  wg.add(hub);
+  const rim = new THREE.Mesh(geos.rimGeo, mats.rims[style]);
+  wg.add(rim);
 
   return wg;
 }

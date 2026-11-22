@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { resolvePlayerCollisions } from '../engine/Physics';
+import type { SpatialGrid } from '../engine/SpatialGrid';
 import type { GamepadSnapshot } from '../engine/GamepadInput';
 import type { AABB, PlayerStatus } from '../types';
 
@@ -76,6 +77,11 @@ export class PlayerController {
   private readonly forwardVec = new THREE.Vector3();
   private readonly rightVec = new THREE.Vector3();
   private readonly wishDir = new THREE.Vector3();
+  private readonly localColliders: AABB[] = [];
+  private readonly tmpPivot = new THREE.Vector3();
+  private readonly tmpLookDir = new THREE.Vector3();
+  private readonly tmpBackDir = new THREE.Vector3();
+  private readonly tmpCamEuler = new THREE.Euler(0, 0, 0, 'YXZ');
 
   constructor(camera: THREE.PerspectiveCamera, domElement: HTMLElement) {
     this.camera = camera;
@@ -334,6 +340,7 @@ export class PlayerController {
     worldMeshes?: THREE.Object3D[],
     isAds = false,
     drunkLevel = 0,
+    playerGrid?: SpatialGrid,
   ): PlayerStatus {
     const clampedDt = Math.min(dt, 0.05);
     const active = this.getIsActive();
@@ -370,7 +377,18 @@ export class PlayerController {
     }
     const padSprint = Boolean(pad?.connected && (pad.sprint || this.padSprintToggle) && pad.moveY > 0.25);
 
-    this.cachedCoverCandidate = !this.inCover && !this.swimming && this.grounded ? this.findCoverCandidate(colliders) : null;
+    const localBoxes = playerGrid
+      ? playerGrid.queryBox(
+          this.position.x - 2.4,
+          this.position.x + 2.4,
+          this.position.z - 2.4,
+          this.position.z + 2.4,
+          colliders,
+          this.localColliders,
+        )
+      : colliders;
+
+    this.cachedCoverCandidate = !this.inCover && !this.swimming && this.grounded ? this.findCoverCandidate(localBoxes) : null;
 
     this.crouching = active && (this.keys.has('KeyC') || this.keys.has('ControlLeft') || padCrouch);
     const wantsSprint =
@@ -539,7 +557,7 @@ export class PlayerController {
       this.velocity.y,
       this.radius,
       activeHeight,
-      colliders,
+      localBoxes,
       0.28,
       baseGroundY,
     );
@@ -593,14 +611,15 @@ export class PlayerController {
     if (this.thirdPerson) {
       // GTA Over-the-Shoulder 3rd-Person Camera with wall-clip avoidance
       const shoulderShift = this.inCover ? 0.65 : 0.52;
-      const pivot = new THREE.Vector3(
+      const pivot = this.tmpPivot.set(
         this.position.x + this.rightVec.x * shoulderShift + peekTanX,
         this.position.y + this.currentEyeHeight + 0.08,
         this.position.z + this.rightVec.z * shoulderShift + peekTanZ,
       );
-      const lookDir = new THREE.Vector3(0, 0, -1).applyEuler(new THREE.Euler(this.pitch, this.yaw, 0, 'YXZ'));
+      this.tmpCamEuler.set(this.pitch, this.yaw, 0, 'YXZ');
+      const lookDir = this.tmpLookDir.set(0, 0, -1).applyEuler(this.tmpCamEuler);
       const desiredDist = isAds ? 2.15 : this.inCover ? 3.05 : 3.55;
-      const backDir = lookDir.clone().negate();
+      const backDir = this.tmpBackDir.copy(lookDir).negate();
 
       let actualDist = desiredDist;
       if (worldMeshes && worldMeshes.length > 0) {

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { resolvePlayerCollisions } from '../engine/Physics';
+import type { SpatialGrid } from '../engine/SpatialGrid';
 import { getFaceTexture, getOutfitBackTexture, getOutfitTexture } from '../entities/CharacterTextures';
 import type { GamepadSnapshot } from '../engine/GamepadInput';
 import type { AABB } from '../types';
@@ -193,6 +194,9 @@ export class GarageRidesSystem {
   private readonly keys = new Set<string>();
   private readonly camPosSmooth = new THREE.Vector3();
   private readonly camLookSmooth = new THREE.Vector3();
+  private readonly tmpDesiredPos = new THREE.Vector3();
+  private readonly tmpDesiredLook = new THREE.Vector3();
+  private readonly localColliders: AABB[] = [];
   private camInitialized = false;
   private jumpQueued = false;
 
@@ -461,6 +465,7 @@ export class GarageRidesSystem {
     stuntRamps?: StuntRamp[],
     drunkLevel = 0,
     getGroundHeight?: (x: number, z: number) => number,
+    playerGrid?: SpatialGrid,
   ): GarageRideHudState {
     const clampedDt = Math.min(dt, 0.05);
 
@@ -481,6 +486,7 @@ export class GarageRidesSystem {
         stuntRamps,
         drunkLevel,
         getGroundHeight,
+        playerGrid,
       );
 
       // Show 3rd-person rider only in chase cam; hide in 1st-person POV
@@ -532,6 +538,7 @@ export class GarageRidesSystem {
     stuntRamps?: StuntRamp[],
     drunkLevel = 0,
     getGroundHeight?: (x: number, z: number) => number,
+    playerGrid?: SpatialGrid,
   ): void {
     const isSkate = r.id === 'skateboard';
     const kbThrottle = (this.keys.has('KeyW') ? 1 : 0) - (this.keys.has('KeyS') ? 1 : 0);
@@ -607,6 +614,10 @@ export class GarageRidesSystem {
     const preCollisionX = nextX;
     const preCollisionZ = nextZ;
 
+    const localBoxes = playerGrid
+      ? playerGrid.queryBox(nextX - 1.2, nextX + 1.2, nextZ - 1.2, nextZ + 1.2, colliders, this.localColliders)
+      : colliders;
+
     const resolved = resolvePlayerCollisions(
       nextX,
       nextY,
@@ -614,7 +625,7 @@ export class GarageRidesSystem {
       r.vy,
       0.44,
       1.72,
-      colliders,
+      localBoxes,
       0.28,
       baseGroundY,
     );
@@ -837,12 +848,12 @@ export class GarageRidesSystem {
 
     const chaseBack = isSkate ? 4.35 : 4.85;
     const chaseUp = isSkate ? 2.05 : 2.25;
-    const desiredPos = new THREE.Vector3(
+    const desiredPos = this.tmpDesiredPos.set(
       r.position.x - fwdX * chaseBack,
       r.position.y + chaseUp,
       r.position.z - fwdZ * chaseBack,
     );
-    const desiredLook = new THREE.Vector3(
+    const desiredLook = this.tmpDesiredLook.set(
       r.position.x + fwdX * 4.5,
       r.position.y + 1.15,
       r.position.z + fwdZ * 4.5,

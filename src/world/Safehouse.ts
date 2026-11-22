@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { Reflector } from 'three/examples/jsm/objects/Reflector.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { AABB } from '../types';
 import { createNeonSignTexture } from './Textures';
 import { ViceNewsTv } from './ViceNewsTv';
@@ -36,7 +37,15 @@ export interface SafehouseHandle {
   getTvMesh: () => THREE.Object3D;
   toggleTv: (cash: number, wantedStars: number) => boolean;
   isTvOn: () => boolean;
-  update: (elapsed: number, dt: number, playerPos?: THREE.Vector3, cash?: number, wantedStars?: number) => void;
+  update: (
+    elapsed: number,
+    dt: number,
+    playerPos?: THREE.Vector3,
+    cash?: number,
+    wantedStars?: number,
+    cameraYaw?: number,
+    performanceMode?: boolean,
+  ) => void;
 }
 
 /**
@@ -136,6 +145,7 @@ export function buildSafehouse(
   // ---------------------------------------------------------------------------
   // 1) Sectional Roll-Up Garage Door at x = 50, z = -34.3 (w = 5.6, h = 3.5)
   const garageDoorGroup = new THREE.Group();
+  garageDoorGroup.userData.dynamic = true;
   const garageDoorTopY = 0.18 + 3.5; // pivots/compresses upward into the lintel!
   garageDoorGroup.position.set(cx + 10.0, garageDoorTopY, cz + 5.7);
 
@@ -183,10 +193,13 @@ export function buildSafehouse(
   };
   const frontDoorN = buildGlassLeaf(cz - 3.75);
   const frontDoorS = buildGlassLeaf(cz - 2.25);
+  frontDoorN.userData.dynamic = true;
+  frontDoorS.userData.dynamic = true;
 
   // 3) Automatic Interior Sliding Door between Garage & Lounge (x = 35.0, z = -37.5, width = 2.4m)
   const innerDoorMat = new THREE.MeshStandardMaterial({ color: '#6b4738', roughness: 0.55 });
   const innerDoor = new THREE.Group();
+  innerDoor.userData.dynamic = true;
   innerDoor.position.set(cx - 5.0, 0.18 + 1.5, cz + 2.5);
   const innerPanel = new THREE.Mesh(new THREE.BoxGeometry(2.38, 2.98, 0.14), innerDoorMat);
   innerDoor.add(innerPanel);
@@ -438,6 +451,8 @@ export function buildSafehouse(
   };
   const cabDoorNorth = buildCabDoor(cabZ - cabD / 2 + 0.15, 1);
   const cabDoorSouth = buildCabDoor(cabZ + cabD / 2 - 0.15, -1);
+  cabDoorNorth.userData.dynamic = true;
+  cabDoorSouth.userData.dynamic = true;
   let cabOpenT = 0;
 
   // Wardrobe Closet (x = 34.5, z = -48.1)
@@ -484,7 +499,9 @@ export function buildSafehouse(
   });
   mirrorReflector.position.set(mirrorX, 1.48, mirrorZ + 0.055);
   mirrorReflector.camera.layers.enable(1);
-  mirrorReflector.visible = false; // toggled automatically only while inside Safehouse -> 0 FPS cost outside!
+  mirrorReflector.camera.far = 22;
+  mirrorReflector.userData.dynamic = true;
+  mirrorReflector.visible = false; // toggled automatically only while near mirror in Lounge -> 0 FPS cost elsewhere!
   scene.add(mirrorReflector);
 
   // Cash Vault / Safe with glowing gold bars & cash stacks (x = 45.5, z = -48.0)
@@ -665,6 +682,7 @@ export function buildSafehouse(
 
   // Hinged Fridge Door (swings open smoothly toward east when player approaches!)
   const fridgeDoorPivot = new THREE.Group();
+  fridgeDoorPivot.userData.dynamic = true;
   fridgeDoorPivot.position.set(fridgeX + 0.56, 0.2 + 1.125, fridgeZ - 0.54);
   const fridgeDoorMesh = new THREE.Mesh(new THREE.BoxGeometry(1.18, 2.22, 0.1), fridgeOuterMat);
   fridgeDoorMesh.position.set(-0.56, 0, 0);
@@ -687,11 +705,30 @@ export function buildSafehouse(
   const steps = Math.ceil(totalRise / stepH);
   const stairStartX = cx - 8.5;
   const stairZ = cz - 10.2; // climbs east along the north exterior wall!
+  const extStairGeos: THREE.BufferGeometry[] = [];
   for (let s = 0; s < steps; s++) {
     const topY = 0.18 + (s + 1) * stepH;
     const sx = stairStartX + s * stepRun;
-    addBox(stepRun + 0.06, topY, 2.0, sx, topY / 2, stairZ, stairMat, true, 'stairs');
+    const sw = stepRun + 0.06;
+    const sg = new THREE.BoxGeometry(sw, topY, 2.0);
+    sg.translate(sx, topY / 2, stairZ);
+    extStairGeos.push(sg);
+    colliders.push({
+      minX: sx - sw / 2,
+      maxX: sx + sw / 2,
+      minY: 0,
+      maxY: topY,
+      minZ: stairZ - 1.0,
+      maxZ: stairZ + 1.0,
+      tag: 'stairs',
+    });
   }
+  const extStairsMesh = new THREE.Mesh(mergeGeometries(extStairGeos), stairMat);
+  extStairsMesh.castShadow = true;
+  extStairsMesh.receiveShadow = true;
+  scene.add(extStairsMesh);
+  worldMeshes.push(extStairsMesh);
+  for (const sg of extStairGeos) sg.dispose();
   // Top landing bridge onto the rooftop terrace
   addBox(3.4, 0.36, 2.2, stairStartX + steps * stepRun + 1.4, 0.18 + floorH + 0.18, stairZ, stairMat);
 
@@ -741,10 +778,30 @@ export function buildSafehouse(
   scene.add(rimE);
 
   // Underwater walk-out steps along the west edge of the pool (0.24m risers -> smooth walk right out!)
+  const poolStepGeos: THREE.BufferGeometry[] = [];
   for (let s = 0; s < 5; s++) {
     const stepTop = poolFloorY + (s + 1) * 0.24;
-    addBox(0.42, stepTop - poolFloorY, 2.2, 38.85 + (4 - s) * 0.38, (stepTop + poolFloorY) / 2, poolCZ, poolTileMat, false, 'pool-stairs');
+    const sh = stepTop - poolFloorY;
+    const sx = 38.85 + (4 - s) * 0.38;
+    const sy = (stepTop + poolFloorY) / 2;
+    const sg = new THREE.BoxGeometry(0.42, sh, 2.2);
+    sg.translate(sx, sy, poolCZ);
+    poolStepGeos.push(sg);
+    colliders.push({
+      minX: sx - 0.21,
+      maxX: sx + 0.21,
+      minY: sy - sh / 2,
+      maxY: sy + sh / 2,
+      minZ: poolCZ - 1.1,
+      maxZ: poolCZ + 1.1,
+      tag: 'pool-stairs',
+    });
   }
+  const poolStepsMesh = new THREE.Mesh(mergeGeometries(poolStepGeos), poolTileMat);
+  poolStepsMesh.receiveShadow = true;
+  scene.add(poolStepsMesh);
+  worldMeshes.push(poolStepsMesh);
+  for (const sg of poolStepGeos) sg.dispose();
 
   // Translucent turquoise water surface (NO collider -> player splashes right through it!)
   const poolMat = new THREE.MeshStandardMaterial({
@@ -760,10 +817,12 @@ export function buildSafehouse(
   const poolWater = new THREE.Mesh(new THREE.PlaneGeometry(7.9, 4.9), poolMat);
   poolWater.rotation.x = -Math.PI / 2;
   poolWater.position.set(poolCX, roofY - 0.16, poolCZ);
+  poolWater.userData.dynamic = true;
   scene.add(poolWater);
 
   // --- Inflatable Unicorn Swim Ring floating in the Rooftop Pool ---
   const unicornFloat = new THREE.Group();
+  unicornFloat.userData.dynamic = true;
   const floatBaseX = poolCX + 1.1;
   const floatBaseZ = poolCZ - 0.25;
   const floatWaterY = roofY - 0.14;
@@ -922,6 +981,7 @@ export function buildSafehouse(
     }),
   );
   buySign.position.set(0, 1.35, 0);
+  buySign.userData.dynamic = true;
   barBuyMarkerGroup.add(buySign);
   scene.add(barBuyMarkerGroup);
 
@@ -1044,6 +1104,15 @@ export function buildSafehouse(
     rooftopBarGroup.visible = rooftopBarOwned;
   };
 
+  const availableFood: FoodItem[] = [];
+  const syncAvailableFood = (): FoodItem[] => {
+    availableFood.length = 0;
+    for (let i = 0; i < foodItems.length; i++) {
+      if (foodItems[i].available) availableFood.push(foodItems[i]);
+    }
+    return availableFood;
+  };
+
   return {
     position: new THREE.Vector3(cx, 0.2, cz),
     isInside: (pos: THREE.Vector3) =>
@@ -1075,7 +1144,7 @@ export function buildSafehouse(
       rooftopBarOwned = owned;
       syncRooftopBarVisuals();
     },
-    getFoodItems: () => foodItems.filter((f) => f.available),
+    getFoodItems: syncAvailableFood,
     consumeFood: (item: FoodItem) => {
       if (!item.available) return;
       item.available = false;
@@ -1090,7 +1159,15 @@ export function buildSafehouse(
       return on;
     },
     isTvOn: () => viceTv.isOn,
-    update: (elapsed: number, dt: number, playerPos?: THREE.Vector3, cash = 0, wantedStars = 0) => {
+    update: (
+      elapsed: number,
+      dt: number,
+      playerPos?: THREE.Vector3,
+      cash = 0,
+      wantedStars = 0,
+      cameraYaw?: number,
+      performanceMode = false,
+    ) => {
       const clampedDt = Math.min(dt, 0.05);
       const blend = 1 - Math.exp(-6.5 * clampedDt);
       const shDistSq = playerPos ? (playerPos.x - cx) ** 2 + (playerPos.z - cz) ** 2 : 0;
@@ -1103,8 +1180,12 @@ export function buildSafehouse(
           playerPos.z < cz + 9 &&
           playerPos.y < floorH + 0.3
         : false;
-      // Enable live Reflector mirror ONLY while inside the Safehouse (zero GPU cost outdoors!)
-      mirrorReflector.visible = inside;
+      // Enable live Reflector mirror ONLY when in Lounge, within 10.5m of mirror, not facing away, & not in perf mode
+      const inLounge = inside && !!playerPos && playerPos.z < cz + 2.5 && playerPos.y < 3.5;
+      const nearMirror =
+        inLounge && !!playerPos && (playerPos.x - mirrorX) ** 2 + (playerPos.z - mirrorZ) ** 2 < 10.5 * 10.5;
+      const facingMirrorWall = cameraYaw === undefined ? true : Math.cos(cameraYaw) > -0.35;
+      mirrorReflector.visible = !performanceMode && nearMirror && facingMirrorWall;
       if (!rooftopBarOwned) {
         buySign.rotation.y = elapsed * 0.9;
         buySign.position.y = 1.35 + Math.sin(elapsed * 2.4) * 0.08;

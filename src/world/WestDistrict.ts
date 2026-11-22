@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { AABB } from '../types';
-import { createNeonSignTexture } from './Textures';
+import { createBuildingBoxGeometry, createNeonSignTexture } from './Textures';
 
 export interface WestDistrictHandle {
   isCarInTuningBay: (pos: THREE.Vector3) => boolean;
@@ -9,7 +9,7 @@ export interface WestDistrictHandle {
   isNearBankVault: (pos: THREE.Vector3) => boolean;
   takeBankVault: () => void;
   isInsideInterior: (pos: THREE.Vector3) => boolean;
-  update: (elapsed: number) => void;
+  update: (elapsed: number, playerPos?: THREE.Vector3) => void;
 }
 
 // -----------------------------------------------------------------------------
@@ -429,6 +429,7 @@ export function buildWestDistrict(
 
   // Rotating 3D Neon Turbo Wheel Sculpture on the Garage Roof!
   const roofWheelGroup = new THREE.Group();
+  roofWheelGroup.userData.dynamic = true;
   roofWheelGroup.position.set(-79, 8.2, -40);
   const wheelTire = new THREE.Mesh(
     new THREE.TorusGeometry(1.15, 0.34, 12, 24),
@@ -452,6 +453,7 @@ export function buildWestDistrict(
   );
   tuningBayRing.rotation.x = -Math.PI / 2;
   tuningBayRing.position.set(-85, 0.23, -37.5);
+  tuningBayRing.userData.dynamic = true;
   scene.add(tuningBayRing);
 
   // Adjacent Hydraulic 2-Post Car Lift in North Bay (z = -46.5) with Show Chassis!
@@ -630,7 +632,21 @@ export function buildWestDistrict(
       emissiveIntensity: 0.7,
       roughness: 0.68,
     });
-    addBox(hs.w, hs.h, 5.2, hs.x, 0.18 + hs.h / 2, 10.8, [fMat, fMat, tileRoofMat, roofDarkMat, fMat, fMat], true, 'havana');
+    const hMesh = new THREE.Mesh(createBuildingBoxGeometry(hs.w, hs.h, 5.2), [fMat, tileRoofMat]);
+    hMesh.position.set(hs.x, 0.18 + hs.h / 2, 10.8);
+    hMesh.castShadow = true;
+    hMesh.receiveShadow = true;
+    scene.add(hMesh);
+    worldMeshes.push(hMesh);
+    colliders.push({
+      minX: hs.x - hs.w / 2,
+      maxX: hs.x + hs.w / 2,
+      minY: 0.18,
+      maxY: 0.18 + hs.h,
+      minZ: 10.8 - 2.6,
+      maxZ: 10.8 + 2.6,
+      tag: 'havana',
+    });
     // Spanish terracotta eaves overhang
     addVisual(new THREE.BoxGeometry(hs.w + 0.5, 0.35, 5.8), tileRoofMat, hs.x, 0.18 + hs.h + 0.15, 10.8, true);
     // Wrought-iron balcony overlooking the plaza (North face, z = 8.0)
@@ -697,6 +713,7 @@ export function buildWestDistrict(
   );
   petShopRing.rotation.x = -Math.PI / 2;
   petShopRing.position.set(-76.5, 0.23, 6.8);
+  petShopRing.userData.dynamic = true;
   scene.add(petShopRing);
 
   // ===========================================================================
@@ -811,6 +828,7 @@ export function buildWestDistrict(
   );
   bankLootRing.rotation.x = -Math.PI / 2;
   bankLootRing.position.set(-95.0, 0.66, 40.0);
+  bankLootRing.userData.dynamic = true;
   scene.add(bankLootRing);
 
   // Red Alarm Strobe Beacon inside Bank Lobby (flashes when Vault is robbed!)
@@ -843,7 +861,21 @@ export function buildWestDistrict(
       emissiveIntensity: 0.65,
       roughness: 0.7,
     });
-    addBox(6.0, bs.h, bs.d, -125.0, 0.18 + bs.h / 2, bs.z, [fMat, fMat, tileRoofMat, roofDarkMat, fMat, fMat], true, 'west-backdrop');
+    const bdMesh = new THREE.Mesh(createBuildingBoxGeometry(6.0, bs.h, bs.d), [fMat, tileRoofMat]);
+    bdMesh.position.set(-125.0, 0.18 + bs.h / 2, bs.z);
+    bdMesh.castShadow = true;
+    bdMesh.receiveShadow = true;
+    scene.add(bdMesh);
+    worldMeshes.push(bdMesh);
+    colliders.push({
+      minX: -128.0,
+      maxX: -122.0,
+      minY: 0.18,
+      maxY: 0.18 + bs.h,
+      minZ: bs.z - bs.d / 2,
+      maxZ: bs.z + bs.d / 2,
+      tag: 'west-backdrop',
+    });
     const sTex = createNeonSignTexture(bs.sign, bs.neon);
     const sMat = new THREE.MeshStandardMaterial({
       map: sTex,
@@ -897,6 +929,8 @@ export function buildWestDistrict(
   // ===========================================================================
   // 6) HANDLE & ANIMATIONS
   // ===========================================================================
+  const petShopPos = new THREE.Vector3(-76.5, 0.3, 6.8);
+
   return {
     isCarInTuningBay: (pos: THREE.Vector3) =>
       pos.x > -96 && pos.x < -76 && pos.z > -44 && pos.z < -31,
@@ -905,7 +939,7 @@ export function buildWestDistrict(
       pos.x > -95.5 && pos.x < -81.5 && pos.z > -10.5 && pos.z < -6.5,
 
     isNearPetShop: (pos: THREE.Vector3) =>
-      pos.distanceToSquared(new THREE.Vector3(-76.5, 0.3, 6.8)) < 8.5,
+      pos.distanceToSquared(petShopPos) < 8.5,
 
     isNearBankVault: (pos: THREE.Vector3) =>
       !bankVaultTaken && pos.x > -99.8 && pos.x < -91.5 && pos.z > 36.2 && pos.z < 43.8,
@@ -924,7 +958,17 @@ export function buildWestDistrict(
       return inDiner || inBank || inGarage;
     },
 
-    update: (elapsed: number) => {
+    update: (elapsed: number, playerPos?: THREE.Vector3) => {
+      // Flash red bank alarm strobe after heist
+      if (alarmTimer > 0) {
+        alarmTimer -= 0.016;
+        alarmBeaconMat.emissiveIntensity = Math.sin(elapsed * 18) > 0 ? 5.2 : 0.25;
+      } else {
+        alarmBeaconMat.emissiveIntensity = 0.2;
+      }
+
+      if (playerPos && playerPos.x > -20) return;
+
       // Spin 3D rooftop neon wheel on Vice Customs
       roofWheelGroup.rotation.y = elapsed * 0.9;
 
@@ -940,14 +984,6 @@ export function buildWestDistrict(
       const hue = (elapsed * 0.18) % 1;
       jukeboxArchMat.color.setHSL(hue, 0.95, 0.6);
       jukeboxArchMat.emissive.setHSL(hue, 0.95, 0.55);
-
-      // Flash red bank alarm strobe after heist
-      if (alarmTimer > 0) {
-        alarmTimer -= 0.016;
-        alarmBeaconMat.emissiveIntensity = Math.sin(elapsed * 18) > 0 ? 5.2 : 0.25;
-      } else {
-        alarmBeaconMat.emissiveIntensity = 0.2;
-      }
     },
   };
 }

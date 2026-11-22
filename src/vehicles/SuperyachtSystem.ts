@@ -32,6 +32,7 @@ export class SuperyachtSystem {
   private readonly handle: SuperyachtHandle;
   private readonly keys = new Set<string>();
   private readonly wakes: YachtWakePuff[] = [];
+  private readonly wakePool: THREE.Mesh[] = [];
   private readonly wakeGeo = new THREE.BoxGeometry(1.4, 0.22, 1.4);
 
   private active = false;
@@ -39,6 +40,12 @@ export class SuperyachtSystem {
   private wakeTimer = 0;
   private readonly camPosSmooth = new THREE.Vector3();
   private readonly camLookSmooth = new THREE.Vector3();
+  private readonly tmpDesiredPos = new THREE.Vector3();
+  private readonly tmpDesiredLook = new THREE.Vector3();
+  private readonly tmpBridgeEyeLocal = new THREE.Vector3();
+  private readonly tmpBridgeLookLocal = new THREE.Vector3();
+  private readonly tmpBridgeEye = new THREE.Vector3();
+  private readonly tmpBridgeLook = new THREE.Vector3();
   private camInit = false;
 
   constructor(scene: THREE.Scene, handle: SuperyachtHandle) {
@@ -163,7 +170,7 @@ export class SuperyachtSystem {
     this.handle.group.position.copy(this.position);
     this.handle.group.rotation.y = this.yaw;
 
-    // Twin foaming superyacht stern wake trails
+    // Twin foaming superyacht stern wake trails (pooled!)
     if (Math.abs(this.speed) > 2.2) {
       this.wakeTimer -= clampedDt;
       if (this.wakeTimer <= 0) {
@@ -171,18 +178,25 @@ export class SuperyachtSystem {
         const rightX = Math.cos(this.yaw);
         const rightZ = -Math.sin(this.yaw);
         for (const side of [-3.4, 3.4]) {
-          const mat = new THREE.MeshBasicMaterial({
-            color: '#dffeff',
-            transparent: true,
-            opacity: 0.68,
-          });
-          const puff = new THREE.Mesh(this.wakeGeo, mat);
+          let puff = this.wakePool.pop();
+          if (puff) {
+            (puff.material as THREE.MeshBasicMaterial).opacity = 0.68;
+            puff.scale.set(1, 1, 1);
+            puff.visible = true;
+          } else {
+            const mat = new THREE.MeshBasicMaterial({
+              color: '#dffeff',
+              transparent: true,
+              opacity: 0.68,
+            });
+            puff = new THREE.Mesh(this.wakeGeo, mat);
+            this.scene.add(puff);
+          }
           puff.position.set(
             this.position.x - fwdX * 21.5 + rightX * side + (Math.random() - 0.5) * 1.4,
             0.05,
             this.position.z - fwdZ * 21.5 + rightZ * side + (Math.random() - 0.5) * 1.4,
           );
-          this.scene.add(puff);
           this.wakes.push({ mesh: puff, life: 1.5, maxLife: 1.5 });
         }
       }
@@ -192,9 +206,11 @@ export class SuperyachtSystem {
       const w = this.wakes[i];
       w.life -= clampedDt;
       if (w.life <= 0) {
-        this.scene.remove(w.mesh);
-        (w.mesh.material as THREE.Material).dispose();
-        this.wakes.splice(i, 1);
+        w.mesh.visible = false;
+        this.wakePool.push(w.mesh);
+        const last = this.wakes.length - 1;
+        if (i !== last) this.wakes[i] = this.wakes[last];
+        this.wakes.pop();
       } else {
         const s = 1 + (1 - w.life / w.maxLife) * 2.8;
         w.mesh.scale.set(s, 1, s);
@@ -205,17 +221,23 @@ export class SuperyachtSystem {
     // Update Camera when piloting "LADY VICE"
     if (this.active) {
       if (this.firstPersonCam) {
-        const bridgeEye = this.handle.getWorldPos(new THREE.Vector3(0, this.handle.upperDeckY + 2.2, 6.2));
-        const bridgeLook = this.handle.getWorldPos(new THREE.Vector3(0, this.handle.upperDeckY + 0.8, 36.0));
+        const bridgeEye = this.handle.getWorldPos(
+          this.tmpBridgeEyeLocal.set(0, this.handle.upperDeckY + 2.2, 6.2),
+          this.tmpBridgeEye,
+        );
+        const bridgeLook = this.handle.getWorldPos(
+          this.tmpBridgeLookLocal.set(0, this.handle.upperDeckY + 0.8, 36.0),
+          this.tmpBridgeLook,
+        );
         camera.position.copy(bridgeEye);
         camera.lookAt(bridgeLook);
       } else {
-        const desiredPos = new THREE.Vector3(
+        const desiredPos = this.tmpDesiredPos.set(
           this.position.x - fwdX * 36.0,
           this.position.y + 13.5,
           this.position.z - fwdZ * 36.0,
         );
-        const desiredLook = new THREE.Vector3(
+        const desiredLook = this.tmpDesiredLook.set(
           this.position.x + fwdX * 14.0,
           this.position.y + 3.2,
           this.position.z + fwdZ * 14.0,

@@ -260,6 +260,7 @@ export class StoryCampaign {
   private dialogueText: string | null = null;
   private dialogueTimer = 0;
   private pendingToast: string | null = null;
+  private readonly tmpTarget = new THREE.Vector3();
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
@@ -420,7 +421,7 @@ export class StoryCampaign {
     }
 
     const st = this.activeChapter.stages[this.stageIdx];
-    const targetVec = new THREE.Vector3(...st.targetPos);
+    const targetVec = this.tmpTarget.set(st.targetPos[0], st.targetPos[1], st.targetPos[2]);
 
     this.beaconGroup.visible = true;
     const pulse = 1 + Math.sin(elapsed * 4.5) * 0.1;
@@ -432,7 +433,10 @@ export class StoryCampaign {
 
     const horizDist = Math.hypot(playerPos.x - targetVec.x, playerPos.z - targetVec.z);
     const dist3D = playerPos.distanceTo(targetVec);
-    const aliveEnemies = this.stageEnemies.filter((e) => e.alive).length;
+    let aliveEnemies = 0;
+    for (let i = 0; i < this.stageEnemies.length; i++) {
+      if (this.stageEnemies[i].alive) aliveEnemies++;
+    }
 
     let stageDone = false;
     if (st.kind === 'goto') {
@@ -493,7 +497,7 @@ export class StoryCampaign {
     }
 
     const curStage = this.activeChapter.stages[this.stageIdx];
-    const curTarget = new THREE.Vector3(...curStage.targetPos);
+    const curTarget = this.tmpTarget.set(curStage.targetPos[0], curStage.targetPos[1], curStage.targetPos[2]);
     const curDist = Math.round(Math.hypot(playerPos.x - curTarget.x, playerPos.z - curTarget.z));
     const desc =
       curStage.kind === 'eliminate_and_grab' && aliveEnemies > 0

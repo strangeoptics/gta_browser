@@ -1,10 +1,6 @@
 import * as THREE from 'three';
 import type { ShootableTarget } from '../combat/WeaponSystem';
-
-interface HeliTracer {
-  line: THREE.Line;
-  life: number;
-}
+import { TracerPool } from '../combat/TracerPool';
 
 /**
  * Vice PD Police Helicopter that deploys at 3+ Wanted Stars.
@@ -24,7 +20,9 @@ export class HelicopterSystem {
   private readonly tailRotor: THREE.Mesh;
   private readonly searchlight: THREE.SpotLight;
   private readonly searchTarget = new THREE.Object3D();
-  private readonly tracers: HeliTracer[] = [];
+  private readonly tracerPool: TracerPool;
+  private readonly tmpStart = new THREE.Vector3();
+  private readonly tmpEnd = new THREE.Vector3();
 
   private orbitAngle = 0;
   private fireCooldown = 1.6;
@@ -37,6 +35,7 @@ export class HelicopterSystem {
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
+    this.tracerPool = new TracerPool(scene);
     const built = this.createChopperMesh();
     this.group = built.group;
     this.mainRotor = built.mainRotor;
@@ -45,6 +44,20 @@ export class HelicopterSystem {
       new THREE.BoxGeometry(2.6, 2.4, 7.2),
       new THREE.MeshBasicMaterial({ visible: false }),
     );
+    const shootable: ShootableTarget = {
+      id: 'vice-pd-heli',
+      mesh: this.hitbox,
+      onHit: (damage: number) => {
+        if (!this.active || this.crashing) return false;
+        this.hp = Math.max(0, this.hp - damage);
+        if (this.hp <= 0) {
+          this.startCrash();
+          return true;
+        }
+        return false;
+      },
+    };
+    this.hitbox.userData.shootableTarget = shootable;
     this.group.add(this.hitbox);
     this.group.visible = false;
     this.scene.add(this.group);
@@ -56,22 +69,15 @@ export class HelicopterSystem {
     this.scene.add(this.searchTarget);
   }
 
+  public appendShootableHitboxes(out: THREE.Object3D[]): void {
+    if (this.active && !this.crashing) {
+      out.push(this.hitbox);
+    }
+  }
+
   public getShootableTargets(): ShootableTarget[] {
     if (!this.active || this.crashing) return [];
-    return [
-      {
-        id: 'vice-pd-heli',
-        mesh: this.hitbox,
-        onHit: (damage: number) => {
-          this.hp = Math.max(0, this.hp - damage);
-          if (this.hp <= 0) {
-            this.startCrash();
-            return true;
-          }
-          return false;
-        },
-      },
-    ];
+    return [this.hitbox.userData.shootableTarget as ShootableTarget];
   }
 
   public applyBlastDamage(origin: THREE.Vector3, radius: number, maxDamage: number): void {
@@ -123,6 +129,7 @@ export class HelicopterSystem {
       this.group.position.copy(this.position);
       this.mainRotor.rotation.y += clampedDt * 26;
       this.tailRotor.rotation.x += clampedDt * 34;
+      this.tracerPool.update(clampedDt);
       return;
     }
 
@@ -180,29 +187,18 @@ export class HelicopterSystem {
       }
     }
 
-    // Update aerial tracers
-    for (let i = this.tracers.length - 1; i >= 0; i--) {
-      const t = this.tracers[i];
-      t.life -= clampedDt;
-      if (t.life <= 0) {
-        this.scene.remove(t.line);
-        t.line.geometry.dispose();
-        (t.line.material as THREE.Material).dispose();
-        this.tracers.splice(i, 1);
-      }
-    }
+    // Update pooled aerial tracers
+    this.tracerPool.update(clampedDt);
   }
 
   private fireAtPlayer(playerPos: THREE.Vector3): void {
-    const start = new THREE.Vector3(this.position.x, this.position.y - 1.1, this.position.z);
-    const end = playerPos.clone().add(
-      new THREE.Vector3((Math.random() - 0.5) * 2.4, 0.6, (Math.random() - 0.5) * 2.4),
+    const start = this.tmpStart.set(this.position.x, this.position.y - 1.1, this.position.z);
+    const end = this.tmpEnd.set(
+      playerPos.x + (Math.random() - 0.5) * 2.4,
+      playerPos.y + 0.6,
+      playerPos.z + (Math.random() - 0.5) * 2.4,
     );
-    const geo = new THREE.BufferGeometry().setFromPoints([start, end]);
-    const mat = new THREE.LineBasicMaterial({ color: '#36f1e6', transparent: true, opacity: 0.9 });
-    const line = new THREE.Line(geo, mat);
-    this.scene.add(line);
-    this.tracers.push({ line, life: 0.14 });
+    this.tracerPool.spawn(start, end, '#36f1e6', 0.14, 0.9, false);
 
     if (Math.random() < 0.34) {
       this.onPlayerDamaged?.(9);

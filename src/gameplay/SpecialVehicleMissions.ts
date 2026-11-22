@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { AABB } from '../types';
 import type { GamepadSnapshot } from '../engine/GamepadInput';
+import type { SpatialGrid } from '../engine/SpatialGrid';
 import type { NpcSystem } from '../entities/NpcSystem';
 import type { Vehicle } from '../vehicles/VehicleSystem';
 
@@ -120,8 +121,25 @@ export class SpecialVehicleMissionSystem {
   private readonly emsDepotGroup = new THREE.Group();
   private readonly emsDepotRing: THREE.Mesh;
 
-  // Firefighter burning wrecks
+  // Firefighter burning wrecks + shared wreck geometries/materials
   private readonly wrecks: BurningWreck[] = [];
+  private readonly wreckCharredMat = new THREE.MeshStandardMaterial({
+    color: '#1b171d',
+    roughness: 0.94,
+    metalness: 0.25,
+  });
+  private readonly wreckBodyGeo = new THREE.BoxGeometry(1.95, 0.72, 4.1);
+  private readonly wreckCabinGeo = new THREE.BoxGeometry(1.68, 0.56, 1.9);
+  private readonly wreckWheelGeo = (() => {
+    const g = new THREE.CylinderGeometry(0.32, 0.32, 0.24, 10);
+    g.rotateZ(Math.PI / 2);
+    return g;
+  })();
+  private readonly wreckConeGeoSmall = new THREE.ConeGeometry(0.42, 1.35, 7);
+  private readonly wreckConeGeoLarge = new THREE.ConeGeometry(0.56, 1.35, 7);
+  private readonly wreckRingGeo = new THREE.RingGeometry(2.6, 3.2, 26);
+  private readonly tmpNozzleWorld = new THREE.Vector3();
+  private readonly tmpSamplePos = new THREE.Vector3();
 
   // Firetruck high-pressure water cannon state (works anytime in Firetruck!)
   private turretYaw = 0; // local relative to truck forward (-1.85 .. +1.85 rad)
@@ -366,6 +384,10 @@ export class SpecialVehicleMissionSystem {
   private clearWrecks(): void {
     for (const w of this.wrecks) {
       this.scene.remove(w.group);
+      for (const fl of w.flames) {
+        (fl.material as THREE.Material).dispose();
+      }
+      (w.ring.material as THREE.Material).dispose();
     }
     this.wrecks.length = 0;
   }
@@ -392,25 +414,22 @@ export class SpecialVehicleMissionSystem {
     group.position.set(x, 0, z);
     group.rotation.y = Math.random() * Math.PI * 2;
 
-    const charredMat = new THREE.MeshStandardMaterial({ color: '#1b171d', roughness: 0.94, metalness: 0.25 });
-    const body = new THREE.Mesh(new THREE.BoxGeometry(1.95, 0.72, 4.1), charredMat);
+    const body = new THREE.Mesh(this.wreckBodyGeo, this.wreckCharredMat);
     body.position.y = 0.56;
     body.castShadow = true;
     group.add(body);
 
-    const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.68, 0.56, 1.9), charredMat);
+    const cabin = new THREE.Mesh(this.wreckCabinGeo, this.wreckCharredMat);
     cabin.position.set(0, 1.15, -0.15);
     group.add(cabin);
 
-    const wheelGeo = new THREE.CylinderGeometry(0.32, 0.32, 0.24, 10);
-    wheelGeo.rotateZ(Math.PI / 2);
     for (const [wx, wz] of [
       [-0.98, 1.25],
       [0.98, 1.25],
       [-0.98, -1.25],
       [0.98, -1.25],
     ]) {
-      const w = new THREE.Mesh(wheelGeo, charredMat);
+      const w = new THREE.Mesh(this.wreckWheelGeo, this.wreckCharredMat);
       w.position.set(wx, 0.32, wz);
       group.add(w);
     }
@@ -433,7 +452,7 @@ export class SpecialVehicleMissionSystem {
         transparent: true,
         opacity: 0.9,
       });
-      const cone = new THREE.Mesh(new THREE.ConeGeometry(0.42 + (i % 2) * 0.14, 1.35, 7), fMat);
+      const cone = new THREE.Mesh(i % 2 === 0 ? this.wreckConeGeoSmall : this.wreckConeGeoLarge, fMat);
       cone.position.set(fx, fy + 0.45, fz);
       group.add(cone);
       flames.push(cone);
@@ -446,7 +465,7 @@ export class SpecialVehicleMissionSystem {
       side: THREE.DoubleSide,
       depthWrite: false,
     });
-    const ring = new THREE.Mesh(new THREE.RingGeometry(2.6, 3.2, 26), ringMat);
+    const ring = new THREE.Mesh(this.wreckRingGeo, ringMat);
     ring.rotation.x = -Math.PI / 2;
     ring.position.y = 0.09;
     group.add(ring);
@@ -503,6 +522,7 @@ export class SpecialVehicleMissionSystem {
     npcs: NpcSystem,
     worldColliders: AABB[],
     pad?: GamepadSnapshot,
+    npcGrid?: SpatialGrid,
   ): { firing: boolean; splashEvent: boolean; sprayedPolice: boolean } {
     let firing = false;
     let splashEvent = false;
@@ -538,7 +558,7 @@ export class SpecialVehicleMissionSystem {
         const dirY = Math.sin(this.turretPitch) + 0.08;
         const dirZ = Math.cos(worldYaw) * cosP;
 
-        const nozzleWorld = new THREE.Vector3(0, 0.06, 1.15);
+        const nozzleWorld = this.tmpNozzleWorld.set(0, 0.06, 1.15);
         activeCar.waterTurret.localToWorld(nozzleWorld);
 
         if (this.waterSpawnTimer <= 0) {
@@ -568,7 +588,7 @@ export class SpecialVehicleMissionSystem {
         const flatDirLen = Math.hypot(dirX, dirZ) || 1;
         const pushDirX = dirX / flatDirLen;
         const pushDirZ = dirZ / flatDirLen;
-        const samplePos = new THREE.Vector3();
+        const samplePos = this.tmpSamplePos;
 
         for (let dist = 4; dist <= 23; dist += 3.8) {
           const tFlight = dist / 26;
@@ -577,7 +597,7 @@ export class SpecialVehicleMissionSystem {
           samplePos.set(nozzleWorld.x + dirX * dist, Math.max(0.2, arcY), nozzleWorld.z + dirZ * dist);
 
           // 1) Push pedestrians & Vice PD officers backward with high-pressure water!
-          const hitCounts = npcs.applyWaterCannonPush(samplePos, pushDirX, pushDirZ, 2.6, dt, worldColliders);
+          const hitCounts = npcs.applyWaterCannonPush(samplePos, pushDirX, pushDirZ, 2.6, dt, worldColliders, npcGrid);
           if (hitCounts.policeHit > 0) sprayedPolice = true;
 
           // 2) Extinguish Firefighter mission burning wrecks!
@@ -627,7 +647,9 @@ export class SpecialVehicleMissionSystem {
         }
         p.mesh.visible = false;
         this.dropletPool.push(p.mesh);
-        this.droplets.splice(i, 1);
+        const last = this.droplets.length - 1;
+        if (i !== last) this.droplets[i] = this.droplets[last];
+        this.droplets.pop();
       } else {
         p.mesh.position.addScaledVector(p.vel, dt);
         if (!p.isSteam) {
@@ -654,6 +676,7 @@ export class SpecialVehicleMissionSystem {
     npcs: NpcSystem,
     worldColliders: AABB[],
     pad?: GamepadSnapshot,
+    npcGrid?: SpatialGrid,
   ): SpecialMissionHudState {
     const clampedDt = Math.min(dt, 0.05);
 
@@ -666,6 +689,7 @@ export class SpecialVehicleMissionSystem {
       npcs,
       worldColliders,
       pad,
+      npcGrid,
     );
 
     const idleOut: SpecialMissionHudState = {

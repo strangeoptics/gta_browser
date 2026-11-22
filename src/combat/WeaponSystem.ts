@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { GamepadSnapshot } from '../engine/GamepadInput';
+import { TracerPool } from './TracerPool';
 
 export interface ShootableTarget {
   id: string;
@@ -38,12 +39,6 @@ interface WeaponDef {
   hipPos: THREE.Vector3;
   adsPos: THREE.Vector3;
   tracerColor: number;
-}
-
-interface TracerEffect {
-  line: THREE.Line;
-  life: number;
-  maxLife: number;
 }
 
 interface SparkParticle {
@@ -183,12 +178,22 @@ export class WeaponSystem {
   private hitmarkerKill = false;
   private baseFov = 75;
 
-  // Effects pools
-  private readonly tracers: TracerEffect[] = [];
+  // Effects pools & reusable raycast scratch buffers
+  private readonly tracerPool: TracerPool;
   private readonly sparks: SparkParticle[] = [];
   private readonly sparkPool: THREE.Mesh[] = [];
   private readonly sparkGeo = new THREE.BoxGeometry(0.05, 0.05, 0.05);
   private readonly raycaster = new THREE.Raycaster();
+  private readonly raycastScratch: THREE.Object3D[] = [];
+  private readonly tmpOrigin = new THREE.Vector3();
+  private readonly tmpDir = new THREE.Vector3();
+  private readonly tmpEnd = new THREE.Vector3();
+  private readonly tmpNormal = new THREE.Vector3();
+  private readonly tmpForward = new THREE.Vector3();
+  private readonly tmpNegForward = new THREE.Vector3();
+  private readonly tmpTargetPos = new THREE.Vector3();
+  private readonly tmpToTarget = new THREE.Vector3();
+  private readonly tmpMuzzleWorld = new THREE.Vector3();
 
   // Optional callbacks for audio, wanted, decals & explosion hooks
   public onShotFired?: (weaponId: string, origin: THREE.Vector3) => void;
@@ -199,6 +204,7 @@ export class WeaponSystem {
     this.scene = scene;
     this.camera = camera;
     this.baseFov = camera.fov;
+    this.tracerPool = new TracerPool(scene);
 
     this.camera.add(this.rig);
     this.scene.add(this.camera);
@@ -297,8 +303,8 @@ export class WeaponSystem {
     dt: number,
     isPlaying: boolean,
     carPos: THREE.Vector3,
-    worldMeshes: THREE.Object3D[],
-    targets: ShootableTarget[],
+    worldMeshes: readonly THREE.Object3D[],
+    targetHitboxes: readonly THREE.Object3D[],
     pad?: GamepadSnapshot,
   ): void {
     const clampedDt = Math.min(dt, 0.05);
@@ -311,35 +317,31 @@ export class WeaponSystem {
 
     const smg = WEAPONS[2];
     this.fireCooldown = 1 / smg.fireRate;
-    const origin = new THREE.Vector3(carPos.x, carPos.y + 1.18, carPos.z);
+    const origin = this.tmpOrigin.set(carPos.x, carPos.y + 1.18, carPos.z);
     this.onShotFired?.('smg', origin);
 
-    const dir = new THREE.Vector3(
-      (Math.random() - 0.5) * 0.05,
-      (Math.random() - 0.5) * 0.04,
-      -1,
-    )
+    const dir = this.tmpDir
+      .set((Math.random() - 0.5) * 0.05, (Math.random() - 0.5) * 0.04, -1)
       .normalize()
       .applyQuaternion(this.camera.quaternion);
 
-    const targetMap = new Map<THREE.Object3D, ShootableTarget>();
-    const targetRoots: THREE.Object3D[] = [];
-    for (const t of targets) {
-      targetRoots.push(t.mesh);
-      targetMap.set(t.mesh, t);
-    }
+    const raycastables = this.raycastScratch;
+    raycastables.length = 0;
+    for (let i = 0; i < targetHitboxes.length; i++) raycastables.push(targetHitboxes[i]);
+    for (let i = 0; i < worldMeshes.length; i++) raycastables.push(worldMeshes[i]);
+
     this.raycaster.set(origin, dir);
     this.raycaster.far = 90;
 
-    // Non-recursive flat hitbox + world mesh raycast (zero hierarchy traversal!)
-    const hits = this.raycaster.intersectObjects([...targetRoots, ...worldMeshes], false);
-    let endPoint = origin.clone().addScaledVector(dir, 90);
+    // Non-recursive flat hitbox + world mesh raycast (zero hierarchy traversal & zero allocations!)
+    const hits = this.raycaster.intersectObjects(raycastables, false);
+    const endPoint = this.tmpEnd.copy(origin).addScaledVector(dir, 90);
     if (hits.length > 0) {
       const hit = hits[0];
-      endPoint = hit.point.clone();
-      const normal = hit.face ? hit.face.normal.clone() : new THREE.Vector3(0, 1, 0);
+      endPoint.copy(hit.point);
+      const normal = hit.face ? this.tmpNormal.copy(hit.face.normal) : this.tmpNormal.set(0, 1, 0);
       if (hit.object instanceof THREE.Mesh) normal.transformDirection(hit.object.matrixWorld);
-      const matched = targetMap.get(hit.object);
+      const matched = hit.object.userData.shootableTarget as ShootableTarget | undefined;
       if (matched) {
         const killed = matched.onHit(smg.damage, endPoint, normal);
         this.hitmarkerAlpha = 1.0;
@@ -428,8 +430,8 @@ export class WeaponSystem {
     dt: number,
     isActive: boolean,
     playerSpeed: number,
-    worldMeshes: THREE.Object3D[],
-    targets: ShootableTarget[],
+    worldMeshes: readonly THREE.Object3D[],
+    targetHitboxes: readonly THREE.Object3D[],
     pad?: GamepadSnapshot,
     drunkLevel = 0,
   ): WeaponHudState {
@@ -471,10 +473,10 @@ export class WeaponSystem {
     if (!this.handMode && this.enabled && isActive && effectiveTrigger && !this.reloading && this.fireCooldown <= 0) {
       if (def.auto || !this.semiConsumed) {
         if (isMelee) {
-          this.performKatanaSlash(def, targets);
+          this.performKatanaSlash(def, targetHitboxes);
           this.semiConsumed = true;
         } else if (this.ammo[this.slotIndex] > 0) {
-          this.fireWeapon(def, worldMeshes, targets);
+          this.fireWeapon(def, worldMeshes, targetHitboxes);
           this.semiConsumed = true;
         } else {
           this.startReload();
@@ -572,28 +574,32 @@ export class WeaponSystem {
     };
   }
 
-  private performKatanaSlash(def: WeaponDef, targets: ShootableTarget[]): void {
+  private performKatanaSlash(def: WeaponDef, targetHitboxes: readonly THREE.Object3D[]): void {
     this.fireCooldown = 1 / def.fireRate;
     this.slashAnimTimer = 0.24;
 
-    const camOrigin = new THREE.Vector3();
+    const camOrigin = this.tmpOrigin;
     this.camera.getWorldPosition(camOrigin);
     this.onShotFired?.('katana', camOrigin);
 
-    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion);
-    const targetPos = new THREE.Vector3();
+    const forward = this.tmpForward.set(0, 0, -1).applyQuaternion(this.camera.quaternion);
+    const negForward = this.tmpNegForward.copy(forward).negate();
+    const targetPos = this.tmpTargetPos;
 
-    for (const t of targets) {
-      t.mesh.getWorldPosition(targetPos);
-      const toTarget = targetPos.clone().sub(camOrigin);
+    for (let i = 0; i < targetHitboxes.length; i++) {
+      const hb = targetHitboxes[i];
+      const t = hb.userData.shootableTarget as ShootableTarget | undefined;
+      if (!t) continue;
+      hb.getWorldPosition(targetPos);
+      const toTarget = this.tmpToTarget.copy(targetPos).sub(camOrigin);
       const dist = toTarget.length();
-      if (dist <= def.range) {
-        toTarget.normalize();
+      if (dist <= def.range && dist > 0.0001) {
+        toTarget.multiplyScalar(1 / dist);
         if (toTarget.dot(forward) > 0.35) {
-          const killed = t.onHit(def.damage, targetPos, forward.clone().negate());
+          const killed = t.onHit(def.damage, targetPos, negForward);
           this.hitmarkerAlpha = 1.0;
           this.hitmarkerKill = this.hitmarkerKill || killed;
-          this.spawnSparks(targetPos, forward.clone().negate(), killed ? 0xff4fa3 : 0x36f1e6, 10);
+          this.spawnSparks(targetPos, negForward, killed ? 0xff4fa3 : 0x36f1e6, 10);
         }
       }
     }
@@ -601,8 +607,8 @@ export class WeaponSystem {
 
   private fireWeapon(
     def: WeaponDef,
-    worldMeshes: THREE.Object3D[],
-    targets: ShootableTarget[],
+    worldMeshes: readonly THREE.Object3D[],
+    targetHitboxes: readonly THREE.Object3D[],
   ): void {
     this.ammo[this.slotIndex]--;
     this.fireCooldown = 1 / def.fireRate;
@@ -618,30 +624,24 @@ export class WeaponSystem {
     this.muzzleLight.intensity = 6.5;
     this.flashTimer = 0.045;
 
-    const muzzleWorld = tipLocal.clone();
+    const muzzleWorld = this.tmpMuzzleWorld.copy(tipLocal);
     this.rig.localToWorld(muzzleWorld);
 
-    const camOrigin = new THREE.Vector3();
+    const camOrigin = this.tmpOrigin;
     this.camera.getWorldPosition(camOrigin);
     this.onShotFired?.(def.id, camOrigin);
 
     const spread = (this.ads ? def.spreadAds : def.spreadHip) + this.drunkLevel * 0.095;
 
-    // Flat non-recursive hitbox raycast list (12-triangle proxy boxes -> >85% faster than deep vehicle/NPC hierarchies!)
-    const targetMap = new Map<THREE.Object3D, ShootableTarget>();
-    const targetRoots: THREE.Object3D[] = [];
-    for (const t of targets) {
-      targetRoots.push(t.mesh);
-      targetMap.set(t.mesh, t);
-    }
-    const raycastables = [...targetRoots, ...worldMeshes];
+    // Build flat raycast list in reusable scratch buffer (zero allocations!)
+    const raycastables = this.raycastScratch;
+    raycastables.length = 0;
+    for (let i = 0; i < targetHitboxes.length; i++) raycastables.push(targetHitboxes[i]);
+    for (let i = 0; i < worldMeshes.length; i++) raycastables.push(worldMeshes[i]);
 
     for (let p = 0; p < def.pellets; p++) {
-      const dir = new THREE.Vector3(
-        (Math.random() - 0.5) * spread * 2,
-        (Math.random() - 0.5) * spread * 2,
-        -1,
-      )
+      const dir = this.tmpDir
+        .set((Math.random() - 0.5) * spread * 2, (Math.random() - 0.5) * spread * 2, -1)
         .normalize()
         .applyQuaternion(this.camera.quaternion);
 
@@ -649,23 +649,23 @@ export class WeaponSystem {
       this.raycaster.far = def.range;
 
       const hits = this.raycaster.intersectObjects(raycastables, false);
-      let endPoint = camOrigin.clone().addScaledVector(dir, def.range);
+      const endPoint = this.tmpEnd.copy(camOrigin).addScaledVector(dir, def.range);
 
       if (hits.length > 0) {
         const hit = hits[0];
-        endPoint = hit.point.clone();
-        const normal = hit.face ? hit.face.normal.clone() : new THREE.Vector3(0, 1, 0);
+        endPoint.copy(hit.point);
+        const normal = hit.face ? this.tmpNormal.copy(hit.face.normal) : this.tmpNormal.set(0, 1, 0);
         if (hit.object instanceof THREE.Mesh) {
           normal.transformDirection(hit.object.matrixWorld);
         }
 
         if (def.id === 'launcher') {
-          this.onExplosion?.(endPoint, 9.5, def.damage);
+          this.onExplosion?.(endPoint.clone(), 9.5, def.damage);
           this.hitmarkerAlpha = 1.0;
           this.hitmarkerKill = true;
           this.spawnSparks(endPoint, normal, 0xff7b33, 18);
         } else {
-          const matchedTarget = targetMap.get(hit.object);
+          const matchedTarget = hit.object.userData.shootableTarget as ShootableTarget | undefined;
           if (matchedTarget) {
             const killed = matchedTarget.onHit(def.damage, endPoint, normal);
             this.hitmarkerAlpha = 1.0;
@@ -687,15 +687,7 @@ export class WeaponSystem {
   }
 
   private spawnTracer(start: THREE.Vector3, end: THREE.Vector3, color: number): void {
-    const geo = new THREE.BufferGeometry().setFromPoints([start, end]);
-    const mat = new THREE.LineBasicMaterial({
-      color,
-      transparent: true,
-      opacity: 0.78,
-    });
-    const line = new THREE.Line(geo, mat);
-    this.scene.add(line);
-    this.tracers.push({ line, life: 0.065, maxLife: 0.065 });
+    this.tracerPool.spawn(start, end, color, 0.065, 0.78);
   }
 
   private spawnSparks(
@@ -733,18 +725,7 @@ export class WeaponSystem {
   }
 
   private updateEffects(dt: number): void {
-    for (let i = this.tracers.length - 1; i >= 0; i--) {
-      const t = this.tracers[i];
-      t.life -= dt;
-      if (t.life <= 0) {
-        this.scene.remove(t.line);
-        t.line.geometry.dispose();
-        (t.line.material as THREE.Material).dispose();
-        this.tracers.splice(i, 1);
-      } else {
-        (t.line.material as THREE.LineBasicMaterial).opacity = (t.life / t.maxLife) * 0.75;
-      }
-    }
+    this.tracerPool.update(dt);
 
     for (let i = this.sparks.length - 1; i >= 0; i--) {
       const s = this.sparks[i];
@@ -752,7 +733,9 @@ export class WeaponSystem {
       if (s.life <= 0) {
         s.mesh.visible = false;
         this.sparkPool.push(s.mesh);
-        this.sparks.splice(i, 1);
+        const last = this.sparks.length - 1;
+        if (i !== last) this.sparks[i] = this.sparks[last];
+        this.sparks.pop();
       } else {
         s.vel.y -= 14 * dt;
         s.mesh.position.addScaledVector(s.vel, dt);

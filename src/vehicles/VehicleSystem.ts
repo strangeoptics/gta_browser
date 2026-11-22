@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { AABB } from '../types';
 import type { ShootableTarget } from '../combat/WeaponSystem';
 import type { GamepadSnapshot } from '../engine/GamepadInput';
+import type { SpatialGrid } from '../engine/SpatialGrid';
 import type { StuntRamp } from '../world/StuntRamps';
 import { ROAD_COORDS } from '../world/CityLayout';
 import { createCarModel, type CarModelType } from './CarBuilder';
@@ -54,6 +55,7 @@ export interface Vehicle {
   aiSpeed: number;
   aiTargetX: number;
   aiTargetZ: number;
+  collider: AABB;
 }
 
 export interface DrivingHudState {
@@ -124,10 +126,17 @@ export class VehicleSystem {
   private camInitialized = false;
 
   private readonly explosions: ExplosionFlash[] = [];
+  private readonly explosionSphereGeo = new THREE.SphereGeometry(1.1, 14, 10);
+  private readonly explosionSpherePool: THREE.Mesh[] = [];
   private readonly smokeParticles: SmokeParticle[] = [];
   private readonly smokePool: THREE.Mesh[] = [];
   private readonly smokeGeo = new THREE.BoxGeometry(0.28, 0.28, 0.28);
   private readonly hitboxMat = new THREE.MeshBasicMaterial({ visible: false });
+  private readonly localColliders: AABB[] = [];
+  private readonly vehicleColliderScratch: AABB[] = [];
+  private readonly tmpDesiredPos = new THREE.Vector3();
+  private readonly tmpDesiredLook = new THREE.Vector3();
+  private readonly tmpImpactPos = new THREE.Vector3();
 
   private acquireSmokeMesh(color: string | number, opacity: number, scale: number): THREE.Mesh {
     const existing = this.smokePool.pop();
@@ -246,7 +255,26 @@ export class VehicleSystem {
         aiSpeed: spec.ai ? 7.5 : 0,
         aiTargetX: spec.x,
         aiTargetZ: spec.z,
+        collider: {
+          minX: spec.x - 1.5,
+          maxX: spec.x + 1.5,
+          minY: 0,
+          maxY: isRv ? 2.75 : 1.5,
+          minZ: spec.z - 2.25,
+          maxZ: spec.z + 2.25,
+          tag: 'vehicle',
+        },
       };
+      const shootable: ShootableTarget = {
+        id: v.id,
+        mesh: hitbox,
+        onHit: (damage: number) => {
+          if (v === this.activeVehicle || v.destroyed) return false;
+          this.damageVehicle(v, damage);
+          return v.destroyed;
+        },
+      };
+      hitbox.userData.shootableTarget = shootable;
       if (spec.ai) {
         this.pickNextAiWaypoint(v);
       }
@@ -374,26 +402,32 @@ export class VehicleSystem {
     return out;
   }
 
+  public appendShootableHitboxes(out: THREE.Object3D[]): void {
+    for (let i = 0; i < this.vehicles.length; i++) {
+      const v = this.vehicles[i];
+      if (v !== this.activeVehicle && !v.destroyed) {
+        out.push(v.hitbox);
+      }
+    }
+  }
+
   public getShootableTargets(): ShootableTarget[] {
-    return this.vehicles
-      .filter((v) => v !== this.activeVehicle && !v.destroyed)
-      .map((v) => ({
-        id: v.id,
-        mesh: v.hitbox,
-        onHit: (damage: number) => {
-          this.damageVehicle(v, damage);
-          return v.destroyed;
-        },
-      }));
+    const out: ShootableTarget[] = [];
+    for (let i = 0; i < this.vehicles.length; i++) {
+      const v = this.vehicles[i];
+      if (v !== this.activeVehicle && !v.destroyed && v.hitbox.userData.shootableTarget) {
+        out.push(v.hitbox.userData.shootableTarget as ShootableTarget);
+      }
+    }
+    return out;
   }
 
   /**
-   * Returns AABB colliders for all non-driven vehicles so the player on foot
-   * cannot walk through cars (and can jump onto their hoods/roofs).
+   * Updates in-place AABB colliders for all non-driven vehicles and appends them into `out`.
    */
-  public getVehicleColliders(): AABB[] {
-    const out: AABB[] = [];
-    for (const v of this.vehicles) {
+  public appendVehicleColliders(out: AABB[]): void {
+    for (let i = 0; i < this.vehicles.length; i++) {
+      const v = this.vehicles[i];
       if (v === this.activeVehicle) continue;
       const cos = Math.abs(Math.cos(v.yaw));
       const sin = Math.abs(Math.sin(v.yaw));
@@ -401,17 +435,21 @@ export class VehicleSystem {
       const lHalf = v.isBike ? 1.25 : v.isRv ? 3.05 : 2.25;
       const halfX = wHalf * cos + lHalf * sin;
       const halfZ = wHalf * sin + lHalf * cos;
-      out.push({
-        minX: v.position.x - halfX,
-        maxX: v.position.x + halfX,
-        minY: 0,
-        maxY: v.isRv ? 2.75 : 1.5,
-        minZ: v.position.z - halfZ,
-        maxZ: v.position.z + halfZ,
-        tag: 'vehicle',
-      });
+      const c = v.collider;
+      c.minX = v.position.x - halfX;
+      c.maxX = v.position.x + halfX;
+      c.minY = v.position.y;
+      c.maxY = v.position.y + (v.isRv ? 2.75 : 1.5);
+      c.minZ = v.position.z - halfZ;
+      c.maxZ = v.position.z + halfZ;
+      out.push(c);
     }
-    return out;
+  }
+
+  public getVehicleColliders(): AABB[] {
+    this.vehicleColliderScratch.length = 0;
+    this.appendVehicleColliders(this.vehicleColliderScratch);
+    return this.vehicleColliderScratch;
   }
 
   public damageVehicle(v: Vehicle, damage: number): void {
@@ -437,14 +475,22 @@ export class VehicleSystem {
   }
 
   public spawnExplosionVfx(origin: THREE.Vector3): void {
-    const sphereMat = new THREE.MeshBasicMaterial({
-      color: '#ff8833',
-      transparent: true,
-      opacity: 0.92,
-    });
-    const sphere = new THREE.Mesh(new THREE.SphereGeometry(1.1, 14, 10), sphereMat);
+    let sphere = this.explosionSpherePool.pop();
+    if (sphere) {
+      const mat = sphere.material as THREE.MeshBasicMaterial;
+      mat.opacity = 0.92;
+      sphere.scale.setScalar(1);
+      sphere.visible = true;
+    } else {
+      const sphereMat = new THREE.MeshBasicMaterial({
+        color: '#ff8833',
+        transparent: true,
+        opacity: 0.92,
+      });
+      sphere = new THREE.Mesh(this.explosionSphereGeo, sphereMat);
+      this.scene.add(sphere);
+    }
     sphere.position.set(origin.x, origin.y + 0.9, origin.z);
-    this.scene.add(sphere);
 
     this.explosionLight.position.copy(sphere.position);
     this.explosionLight.intensity = 60;
@@ -509,6 +555,7 @@ export class VehicleSystem {
   private resolveCarToCarCollisions(
     solidColliders: AABB[],
     bounds: { minX: number; maxX: number; minZ: number; maxZ: number },
+    vehicleGrid?: SpatialGrid,
   ): void {
     const sphereRadius = 1.08;
     const minDist = sphereRadius * 2;
@@ -571,8 +618,8 @@ export class VehicleSystem {
         b.position.z = THREE.MathUtils.clamp(b.position.z + hitNz * deepestOverlap * pushB, bounds.minZ + 1.5, bounds.maxZ - 1.5);
 
         // Keep separated cars out of buildings
-        this.clampCarAgainstBuildings(a, solidColliders);
-        this.clampCarAgainstBuildings(b, solidColliders);
+        this.clampCarAgainstBuildings(a, solidColliders, vehicleGrid);
+        this.clampCarAgainstBuildings(b, solidColliders, vehicleGrid);
 
         a.mesh.position.x = a.position.x;
         a.mesh.position.z = a.position.z;
@@ -609,7 +656,7 @@ export class VehicleSystem {
             this.damageVehicle(a, dmgA);
             this.damageVehicle(b, dmgB);
 
-            const contact = new THREE.Vector3(hitPointX, 0.7, hitPointZ);
+            const contact = this.tmpImpactPos.set(hitPointX, 0.7, hitPointZ);
             this.spawnCrashSparks(contact, Math.min(14, Math.round(closingSpeed * 0.8)));
 
             if (this.crashSoundCooldown <= 0) {
@@ -622,10 +669,21 @@ export class VehicleSystem {
     }
   }
 
-  private clampCarAgainstBuildings(v: Vehicle, solidColliders: AABB[]): void {
+  private clampCarAgainstBuildings(v: Vehicle, solidColliders: AABB[], vehicleGrid?: SpatialGrid): void {
     const carRadius = v.isBike ? 0.72 : 1.45;
     const vehTop = v.position.y + (v.isRv ? 2.75 : 1.55);
-    for (const box of solidColliders) {
+    const boxes = vehicleGrid
+      ? vehicleGrid.queryBox(
+          v.position.x - carRadius - 0.3,
+          v.position.x + carRadius + 0.3,
+          v.position.z - carRadius - 0.3,
+          v.position.z + carRadius + 0.3,
+          solidColliders,
+          this.localColliders,
+        )
+      : solidColliders;
+    for (let i = 0; i < boxes.length; i++) {
+      const box = boxes[i];
       if (v.position.y >= box.maxY || vehTop <= box.minY) continue;
       if (
         v.position.x + carRadius > box.minX &&
@@ -660,6 +718,7 @@ export class VehicleSystem {
     shouldTrafficStop?: (x: number, z: number, yaw: number) => boolean,
     drunkLevel = 0,
     getGroundHeight?: (x: number, z: number) => number,
+    vehicleGrid?: SpatialGrid,
   ): DrivingHudState {
     const clampedDt = Math.min(dt, 0.05);
     this.ramCooldown = Math.max(0, this.ramCooldown - clampedDt);
@@ -739,16 +798,17 @@ export class VehicleSystem {
           stuntRamps,
           drunkLevel,
           getGroundHeight,
+          vehicleGrid,
         );
       } else if (v.isPursuitUnit && wantedStars >= 2) {
         // Active Vice PD Cruiser chase!
-        this.updatePolicePursuitCar(v, clampedDt, playerPos, solidColliders, bounds);
+        this.updatePolicePursuitCar(v, clampedDt, playerPos, solidColliders, bounds, vehicleGrid);
       } else if (v.isAiControlled) {
         this.updateAiCar(v, clampedDt, playerPos, shouldTrafficStop);
       } else {
         v.speed *= Math.exp(-3.2 * clampedDt);
         if (Math.abs(v.speed) > 0.05) {
-          this.moveVehicleWithCollision(v, clampedDt, solidColliders, bounds);
+          this.moveVehicleWithCollision(v, clampedDt, solidColliders, bounds, vehicleGrid);
         }
       }
 
@@ -759,7 +819,7 @@ export class VehicleSystem {
     }
 
     // Resolve solid car-to-car collisions & severity-based crash damage
-    this.resolveCarToCarCollisions(solidColliders, bounds);
+    this.resolveCarToCarCollisions(solidColliders, bounds, vehicleGrid);
 
     this.updateExplosionVfx(clampedDt);
 
@@ -798,12 +858,12 @@ export class VehicleSystem {
       } else {
         const chaseBack = v.isRv ? 9.4 : 7.2;
         const chaseUp = v.isRv ? 4.2 : 3.2;
-        const desiredPos = new THREE.Vector3(
+        const desiredPos = this.tmpDesiredPos.set(
           v.position.x - forwardX * chaseBack,
           v.position.y + chaseUp,
           v.position.z - forwardZ * chaseBack,
         );
-        const desiredLook = new THREE.Vector3(
+        const desiredLook = this.tmpDesiredLook.set(
           v.position.x + forwardX * 6.0,
           v.position.y + 1.1,
           v.position.z + forwardZ * 6.0,
@@ -871,10 +931,11 @@ export class VehicleSystem {
       const ex = this.explosions[i];
       ex.life -= dt;
       if (ex.life <= 0) {
-        this.scene.remove(ex.sphere);
-        ex.sphere.geometry.dispose();
-        (ex.sphere.material as THREE.Material).dispose();
-        this.explosions.splice(i, 1);
+        ex.sphere.visible = false;
+        this.explosionSpherePool.push(ex.sphere);
+        const last = this.explosions.length - 1;
+        if (i !== last) this.explosions[i] = this.explosions[last];
+        this.explosions.pop();
       } else {
         const t = 1 - ex.life / ex.maxLife;
         const scale = 1 + t * 5.2;
@@ -891,7 +952,9 @@ export class VehicleSystem {
       if (p.life <= 0) {
         p.mesh.visible = false;
         this.smokePool.push(p.mesh);
-        this.smokeParticles.splice(i, 1);
+        const last = this.smokeParticles.length - 1;
+        if (i !== last) this.smokeParticles[i] = this.smokeParticles[last];
+        this.smokeParticles.pop();
       } else {
         p.mesh.position.addScaledVector(p.vel, dt);
         p.vel.y -= 3.2 * dt;
@@ -906,6 +969,7 @@ export class VehicleSystem {
     playerPos: THREE.Vector3,
     solidColliders: AABB[],
     bounds: { minX: number; maxX: number; minZ: number; maxZ: number },
+    vehicleGrid?: SpatialGrid,
   ): void {
     const toX = playerPos.x - v.position.x;
     const toZ = playerPos.z - v.position.z;
@@ -921,7 +985,7 @@ export class VehicleSystem {
     const targetSpeed = dist > 7.5 ? 14.5 : 4.5;
     v.speed += (targetSpeed - v.speed) * (1 - Math.exp(-3.5 * dt));
 
-    this.moveVehicleWithCollision(v, dt, solidColliders, bounds);
+    this.moveVehicleWithCollision(v, dt, solidColliders, bounds, vehicleGrid);
 
     // Ram damage if police cruiser clips player
     if (dist < 3.2 && v.speed > 5.5 && this.ramCooldown <= 0) {
@@ -941,6 +1005,7 @@ export class VehicleSystem {
     stuntRamps?: StuntRamp[],
     drunkLevel = 0,
     getGroundHeight?: (x: number, z: number) => number,
+    vehicleGrid?: SpatialGrid,
   ): void {
     const kbAccel = (this.keys.has('KeyW') ? 1 : 0) - (this.keys.has('KeyS') ? 1 : 0);
     const kbSteer = (this.keys.has('KeyA') ? 1 : 0) - (this.keys.has('KeyD') ? 1 : 0);
@@ -1022,7 +1087,7 @@ export class VehicleSystem {
     const turnRate = (handbrake ? 2.75 : v.isBike ? 2.65 : 2.15) * speedFactor * dirSign;
     v.yaw += steerInput * turnRate * dt;
 
-    this.moveVehicleWithCollision(v, dt, solidColliders, bounds);
+    this.moveVehicleWithCollision(v, dt, solidColliders, bounds, vehicleGrid);
 
     // Stunt Ramp elevation & airborne jump physics!
     let onRampHeight = 0;
@@ -1104,6 +1169,7 @@ export class VehicleSystem {
     dt: number,
     solidColliders: AABB[],
     bounds: { minX: number; maxX: number; minZ: number; maxZ: number },
+    vehicleGrid?: SpatialGrid,
   ): void {
     const dx = Math.sin(v.yaw) * v.speed * dt;
     const dz = Math.cos(v.yaw) * v.speed * dt;
@@ -1129,7 +1195,19 @@ export class VehicleSystem {
     const vehTop = v.position.y + (v.isRv ? 2.75 : 1.55);
     let collided = false;
 
-    for (const box of solidColliders) {
+    const boxes = vehicleGrid
+      ? vehicleGrid.queryBox(
+          nextX - carRadius - 0.4,
+          nextX + carRadius + 0.4,
+          nextZ - carRadius - 0.4,
+          nextZ + carRadius + 0.4,
+          solidColliders,
+          this.localColliders,
+        )
+      : solidColliders;
+
+    for (let i = 0; i < boxes.length; i++) {
+      const box = boxes[i];
       if (v.position.y >= box.maxY || vehTop <= box.minY) continue;
       if (
         nextX + carRadius > box.minX &&
@@ -1155,7 +1233,7 @@ export class VehicleSystem {
       if (impactSpeed > 8.5) {
         const wallDmg = (impactSpeed - 7.5) * 3.4;
         this.damageVehicle(v, wallDmg);
-        this.spawnCrashSparks(new THREE.Vector3(nextX, 0.7, nextZ), 6);
+        this.spawnCrashSparks(this.tmpImpactPos.set(nextX, 0.7, nextZ), 6);
         if (this.crashSoundCooldown <= 0) {
           this.crashSoundCooldown = 0.25;
           this.onCarCrash?.(Math.min(1, impactSpeed / 20), v === this.activeVehicle);

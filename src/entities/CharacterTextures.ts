@@ -188,7 +188,7 @@ export function getOutfitTexture(
     ctx.fillStyle = accentColor;
     for (let y = 14; y < size; y += 28) {
       for (let x = 14; x < size; x += 30) {
-        const ox = (y % 56 === 14 ? 0 : 14);
+        const ox = y % 56 === 14 ? 0 : 14;
         ctx.beginPath();
         ctx.ellipse(x + ox, y, 10, 4, 0.5, 0, Math.PI * 2);
         ctx.fill();
@@ -272,6 +272,42 @@ export function getOutfitBackTexture(
     ctx.fillStyle = 'rgba(0,0,0,0.1)';
     ctx.fillRect(0, 16, size, 2);
   }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  textureCache.set(key, tex);
+  return tex;
+}
+
+/**
+ * Combines front outfit (top-left 128x128), back outfit (top-right 128x128),
+ * and solid side/sleeve color (bottom 256x128) into a single cached 256x256 CanvasTexture
+ * so character torsos render in 1 draw call instead of 3!
+ */
+export function getCombinedTorsoTexture(
+  role: NpcRole,
+  primaryColor: string,
+  accentColor: string,
+  variant: number,
+): THREE.CanvasTexture {
+  const frontRole: NpcRole = role === 'guard' ? 'bounty' : role;
+  const key = `torso-atlas:${role}:${primaryColor}:${accentColor}:${variant}`;
+  const cached = textureCache.get(key);
+  if (cached) return cached;
+
+  const frontTex = getOutfitTexture(frontRole, primaryColor, accentColor, variant);
+  const backTex = getOutfitBackTexture(role, primaryColor, accentColor, variant);
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d')!;
+
+  ctx.fillStyle = role === 'bounty' ? '#f5f0eb' : primaryColor;
+  ctx.fillRect(0, 0, 256, 256);
+
+  ctx.drawImage(frontTex.image as HTMLCanvasElement, 0, 0, 128, 128);
+  ctx.drawImage(backTex.image as HTMLCanvasElement, 128, 0, 128, 128);
 
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;

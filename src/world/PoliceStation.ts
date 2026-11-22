@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { AABB } from '../types';
 import { createNeonSignTexture } from './Textures';
 import type { FoodItem } from './Safehouse';
@@ -176,20 +177,44 @@ export function buildPoliceStation(
   // --- Automatic Front Glass Sliding Doors ---
   const frontDoorN = new THREE.Mesh(new THREE.BoxGeometry(0.12, 3.35, 2.15), glassMat);
   frontDoorN.position.set(cx + 9.75, floorY + 1.75, cz - 1.08);
+  frontDoorN.userData.dynamic = true;
   scene.add(frontDoorN);
   const frontDoorS = new THREE.Mesh(new THREE.BoxGeometry(0.12, 3.35, 2.15), glassMat);
   frontDoorS.position.set(cx + 9.75, floorY + 1.75, cz + 1.08);
+  frontDoorS.userData.dynamic = true;
   scene.add(frontDoorS);
 
   // --- Exterior Walkable Rooftop Stairs (South side -> leads up to Police Helipad!) ---
   const stepH = 0.24; // <= 0.28m maxStepHeight
   const stepRun = 0.38;
   const numSteps = Math.ceil((floorH + 0.16) / stepH);
+  const pdStairGeos: THREE.BufferGeometry[] = [];
   for (let s = 0; s < numSteps; s++) {
     const topY = floorY + (s + 1) * stepH;
     const sx = cx - 0.6 + s * stepRun;
-    addBox(stepRun + 0.04, topY - floorY, 1.8, sx, (topY + floorY) / 2, cz + 11.1, navyMat, true, 'pd-stairs');
+    const sw = stepRun + 0.04;
+    const sh = topY - floorY;
+    const sy = (topY + floorY) / 2;
+    const sz = cz + 11.1;
+    const sg = new THREE.BoxGeometry(sw, sh, 1.8);
+    sg.translate(sx, sy, sz);
+    pdStairGeos.push(sg);
+    colliders.push({
+      minX: sx - sw / 2,
+      maxX: sx + sw / 2,
+      minY: sy - sh / 2,
+      maxY: sy + sh / 2,
+      minZ: sz - 0.9,
+      maxZ: sz + 0.9,
+      tag: 'pd-stairs',
+    });
   }
+  const pdStairsMesh = new THREE.Mesh(mergeGeometries(pdStairGeos), navyMat);
+  pdStairsMesh.castShadow = true;
+  pdStairsMesh.receiveShadow = true;
+  scene.add(pdStairsMesh);
+  worldMeshes.push(pdStairsMesh);
+  for (const sg of pdStairGeos) sg.dispose();
   // Upper landing connecting top step to the South parapet gap
   addBox(2.4, 0.34, 2.2, cx + 7.7, roofY + 0.17, cz + 11.0, roofMat, true, 'pd-stairs');
 
@@ -242,6 +267,7 @@ export function buildPoliceStation(
   // Automatic Security Glass Door into Evidence Room (x = -39.5, z = 5.5)
   const evidenceDoor = new THREE.Mesh(new THREE.BoxGeometry(0.1, 3.2, 2.3), glassMat);
   evidenceDoor.position.set(cx + 0.5, floorY + 1.65, cz + 5.5);
+  evidenceDoor.userData.dynamic = true;
   scene.add(evidenceDoor);
 
   const restrictedTex = createNeonSignTexture('EVIDENCE · ARMORY', '#ff4455');
@@ -431,6 +457,7 @@ export function buildPoliceStation(
   gateCross.position.set(0, floorY + 1.4, 0);
   cellGate.add(gateCross);
   cellGate.position.set(cx - 1.85, 0, cz - 4.8);
+  cellGate.userData.dynamic = true;
   scene.add(cellGate);
   let cellLockTimer = 0;
   let cellGateOpenT = 1;
@@ -451,6 +478,7 @@ export function buildPoliceStation(
   const vestPlate = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.34, 0.32), navyMat);
   kevlarMesh.add(vestBody, vestPlate);
   kevlarMesh.position.set(kevlarPos.x, floorY + 1.48, kevlarPos.z);
+  kevlarMesh.userData.dynamic = true;
   scene.add(kevlarMesh);
   let kevlarAvailable = true;
   let kevlarRespawn = 0;
@@ -470,6 +498,7 @@ export function buildPoliceStation(
   caseHandle.position.y = 0.21;
   cashCaseMesh.add(caseBody, caseTrim, caseHandle);
   cashCaseMesh.position.set(evidenceCashPos.x, floorY + 1.35, evidenceCashPos.z);
+  cashCaseMesh.userData.dynamic = true;
   scene.add(cashCaseMesh);
   let evidenceCashAvailable = true;
   let evidenceCashRespawn = 0;
@@ -508,6 +537,15 @@ export function buildPoliceStation(
   let evidenceOpenT = 0;
   let alarmTimer = 0;
 
+  const availableDonuts: FoodItem[] = [];
+  const syncAvailableDonuts = (): FoodItem[] => {
+    availableDonuts.length = 0;
+    for (let i = 0; i < donuts.length; i++) {
+      if (donuts[i].available) availableDonuts.push(donuts[i]);
+    }
+    return availableDonuts;
+  };
+
   return {
     position: new THREE.Vector3(cx, floorY, cz),
     isInside: (pos: THREE.Vector3) =>
@@ -537,7 +575,7 @@ export function buildPoliceStation(
       cashCaseMesh.visible = false;
       evidenceCashRespawn = 60.0;
     },
-    getDonuts: () => donuts.filter((d) => d.available),
+    getDonuts: syncAvailableDonuts,
     consumeDonut: (item: FoodItem) => {
       if (!item.available) return;
       item.available = false;
@@ -555,9 +593,12 @@ export function buildPoliceStation(
       const clampedDt = Math.min(dt, 0.05);
       const blend = 1 - Math.exp(-7.0 * clampedDt);
       const pdDistSq = playerPos ? (playerPos.x - cx) ** 2 + (playerPos.z - cz) ** 2 : 0;
+      const nearPd = pdDistSq < 45 * 45;
       lobbyLight.intensity = pdDistSq < 40 * 40 ? 16 : 0;
 
-      redrawWantedBoard(cash, wantedStars);
+      if (nearPd) {
+        redrawWantedBoard(cash, wantedStars);
+      }
 
       // Restock donuts & Kevlar vest
       for (const d of donuts) {
@@ -575,7 +616,7 @@ export function buildPoliceStation(
           kevlarAvailable = true;
           kevlarMesh.visible = true;
         }
-      } else {
+      } else if (nearPd) {
         kevlarMesh.rotation.y = elapsed * 1.4;
         kevlarMesh.position.y = floorY + 1.48 + Math.sin(elapsed * 2.6) * 0.06;
       }
@@ -585,7 +626,7 @@ export function buildPoliceStation(
           evidenceCashAvailable = true;
           cashCaseMesh.visible = true;
         }
-      } else {
+      } else if (nearPd) {
         cashCaseMesh.rotation.y = -elapsed * 1.6;
         cashCaseMesh.position.y = floorY + 1.35 + Math.sin(elapsed * 3.0 + 1.0) * 0.07;
       }

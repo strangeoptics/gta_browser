@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { NpcRole } from './NpcSystem';
-import { getOutfitBackTexture, getOutfitTexture } from './CharacterTextures';
+import { getCombinedTorsoTexture } from './CharacterTextures';
 
 export type CharacterBodyType = 'male' | 'female' | 'muscular';
 export type CharacterHairStyle =
@@ -87,10 +87,8 @@ function ringPoints(r: RingSpec): [number, number, number][] {
 }
 
 /**
- * Builds a faceted 8-sided sculpted torso BufferGeometry with 3 material groups:
- *   0: Side bevels, shoulders, top & bottom caps (sleeve/jacket color)
- *   1: Front torso panel with clean [0..1] planar UVs (procedural outfit front texture)
- *   2: Back torso panel with clean [0..1] planar UVs (procedural outfit back texture)
+ * Builds a faceted 8-sided sculpted torso BufferGeometry mapped onto a single 256x256 UV atlas
+ * (top-left: front outfit, top-right: back outfit, bottom: solid side/sleeve color) -> 1 draw call!
  */
 function createSculptedTorsoGeometry(bodyType: CharacterBodyType): THREE.BufferGeometry {
   const rings: RingSpec[] =
@@ -111,16 +109,10 @@ function createSculptedTorsoGeometry(bodyType: CharacterBodyType): THREE.BufferG
   const totalH = rings[rings.length - 1].y;
   const pts = rings.map(ringPoints);
 
-  const sidePos: number[] = [];
-  const sideUv: number[] = [];
-  const frontPos: number[] = [];
-  const frontUv: number[] = [];
-  const backPos: number[] = [];
-  const backUv: number[] = [];
+  const pos: number[] = [];
+  const uv: number[] = [];
 
   const pushTri = (
-    posArr: number[],
-    uvArr: number[],
     a: [number, number, number],
     b: [number, number, number],
     c: [number, number, number],
@@ -128,13 +120,18 @@ function createSculptedTorsoGeometry(bodyType: CharacterBodyType): THREE.BufferG
     ub: [number, number],
     uc: [number, number],
   ) => {
-    posArr.push(a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2]);
-    uvArr.push(ua[0], ua[1], ub[0], ub[1], uc[0], uc[1]);
+    pos.push(a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2]);
+    uv.push(ua[0], ua[1], ub[0], ub[1], uc[0], uc[1]);
   };
 
   for (let r = 0; r < rings.length - 1; r++) {
-    const v0 = rings[r].y / totalH;
-    const v1 = rings[r + 1].y / totalH;
+    const t0 = rings[r].y / totalH;
+    const t1 = rings[r + 1].y / totalH;
+    const atlasV0 = 0.504 + t0 * 0.492;
+    const atlasV1 = 0.504 + t1 * 0.492;
+    const sideV0 = 0.08 + t0 * 0.34;
+    const sideV1 = 0.08 + t1 * 0.34;
+
     for (let i = 0; i < 8; i++) {
       const next = (i + 1) % 8;
       const a = pts[r][i];
@@ -143,45 +140,35 @@ function createSculptedTorsoGeometry(bodyType: CharacterBodyType): THREE.BufferG
       const d = pts[r + 1][i];
 
       if (i === 0) {
-        // Front panel (+Z): maps U 0..1 left-to-right, V 0..1 bottom-to-top
-        pushTri(frontPos, frontUv, a, b, c, [0, v0], [1, v0], [1, v1]);
-        pushTri(frontPos, frontUv, a, c, d, [0, v0], [1, v1], [0, v1]);
+        // Front panel (+Z): top-left quadrant of 256x256 atlas
+        pushTri(a, b, c, [0.004, atlasV0], [0.496, atlasV0], [0.496, atlasV1]);
+        pushTri(a, c, d, [0.004, atlasV0], [0.496, atlasV1], [0.004, atlasV1]);
       } else if (i === 4) {
-        // Back panel (-Z): maps U 0..1 left-to-right when viewed from behind
-        pushTri(backPos, backUv, a, b, c, [0, v0], [1, v0], [1, v1]);
-        pushTri(backPos, backUv, a, c, d, [0, v0], [1, v1], [0, v1]);
+        // Back panel (-Z): top-right quadrant of 256x256 atlas
+        pushTri(a, b, c, [0.504, atlasV0], [0.996, atlasV0], [0.996, atlasV1]);
+        pushTri(a, c, d, [0.504, atlasV0], [0.996, atlasV1], [0.504, atlasV1]);
       } else {
-        pushTri(sidePos, sideUv, a, b, c, [0, v0], [1, v0], [1, v1]);
-        pushTri(sidePos, sideUv, a, c, d, [0, v0], [1, v1], [0, v1]);
+        // Side bevels: bottom solid-color half of 256x256 atlas
+        pushTri(a, b, c, [0.2, sideV0], [0.8, sideV0], [0.8, sideV1]);
+        pushTri(a, c, d, [0.2, sideV0], [0.8, sideV1], [0.2, sideV1]);
       }
     }
   }
 
-  // Top shoulder cap (+Y) and bottom waist cap (-Y) go into group 0 (side/sleeve)
+  // Top shoulder cap (+Y) and bottom waist cap (-Y) sample solid side color
   const topRing = pts[rings.length - 1];
   const topCenter: [number, number, number] = [0, totalH + 0.025, 0];
   const botRing = pts[0];
   const botCenter: [number, number, number] = [0, 0, 0];
   for (let i = 0; i < 8; i++) {
     const next = (i + 1) % 8;
-    pushTri(sidePos, sideUv, topCenter, topRing[i], topRing[next], [0.5, 0.5], [0, 1], [1, 1]);
-    pushTri(sidePos, sideUv, botCenter, botRing[next], botRing[i], [0.5, 0.5], [1, 0], [0, 0]);
+    pushTri(topCenter, topRing[i], topRing[next], [0.5, 0.25], [0.2, 0.4], [0.8, 0.4]);
+    pushTri(botCenter, botRing[next], botRing[i], [0.5, 0.25], [0.8, 0.1], [0.2, 0.1]);
   }
 
-  const allPos = new Float32Array([...sidePos, ...frontPos, ...backPos]);
-  const allUv = new Float32Array([...sideUv, ...frontUv, ...backUv]);
-
   const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(allPos, 3));
-  geo.setAttribute('uv', new THREE.BufferAttribute(allUv, 2));
-
-  const sideVerts = sidePos.length / 3;
-  const frontVerts = frontPos.length / 3;
-  const backVerts = backPos.length / 3;
-
-  geo.addGroup(0, sideVerts, 0);
-  geo.addGroup(sideVerts, frontVerts, 1);
-  geo.addGroup(sideVerts + frontVerts, backVerts, 2);
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pos), 3));
+  geo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(uv), 2));
   geo.computeVertexNormals();
   return geo;
 }
@@ -302,6 +289,32 @@ interface SharedCharacterGeos {
   beltFemale: THREE.BufferGeometry;
   beltBuckle: THREE.BufferGeometry;
   lapel: THREE.BufferGeometry;
+  badge: THREE.BufferGeometry;
+  chainGold: THREE.BufferGeometry;
+  shadesBridge: THREE.BufferGeometry;
+  shadesFrame: THREE.BufferGeometry;
+  shadesLens: THREE.BufferGeometry;
+  shadesTemple: THREE.BufferGeometry;
+  eyeBox: THREE.BufferGeometry;
+  pupilBox: THREE.BufferGeometry;
+  browBox: THREE.BufferGeometry;
+  mustacheBox: THREE.BufferGeometry;
+  mouthBox: THREE.BufferGeometry;
+  haloTorus: THREE.BufferGeometry;
+  policeCrown: THREE.BufferGeometry;
+  policeBand: THREE.BufferGeometry;
+  policeBrim: THREE.BufferGeometry;
+  policeEmblem: THREE.BufferGeometry;
+  capDome: THREE.BufferGeometry;
+  capVisor: THREE.BufferGeometry;
+  hairCrown: THREE.BufferGeometry;
+  hairBack: THREE.BufferGeometry;
+  pompadourCrest: THREE.BufferGeometry;
+  featheredWing: THREE.BufferGeometry;
+  scrunchie: THREE.BufferGeometry;
+  ponytailCone: THREE.BufferGeometry;
+  bobLock: THREE.BufferGeometry;
+  bobBack: THREE.BufferGeometry;
 }
 
 let cachedGeos: SharedCharacterGeos | null = null;
@@ -315,7 +328,7 @@ function getSharedGeos(): SharedCharacterGeos {
       { y: 0.052, fx: sx * 0.78, fz, sx, sz: fz * 0.6, bx: sx * 0.78, bz: fz },
     ]);
 
-  cachedGeos = {
+  const shared: SharedCharacterGeos = {
     torsoMale: createSculptedTorsoGeometry('male'),
     torsoFemale: createSculptedTorsoGeometry('female'),
     pelvisMale: createPelvisGeometry('male'),
@@ -343,7 +356,37 @@ function getSharedGeos(): SharedCharacterGeos {
     beltFemale: makeBelt(0.156, 0.104),
     beltBuckle: new THREE.BoxGeometry(0.075, 0.055, 0.024),
     lapel: new THREE.BoxGeometry(0.055, 0.22, 0.025),
+    badge: new THREE.OctahedronGeometry(0.028, 0),
+    chainGold: new THREE.TorusGeometry(0.055, 0.009, 5, 10, Math.PI),
+    shadesBridge: new THREE.BoxGeometry(0.036, 0.014, 0.016),
+    shadesFrame: new THREE.BoxGeometry(0.072, 0.044, 0.016),
+    shadesLens: new THREE.BoxGeometry(0.06, 0.033, 0.018),
+    shadesTemple: new THREE.BoxGeometry(0.01, 0.012, 0.115),
+    eyeBox: new THREE.BoxGeometry(0.036, 0.02, 0.012),
+    pupilBox: new THREE.BoxGeometry(0.016, 0.016, 0.014),
+    browBox: new THREE.BoxGeometry(0.044, 0.012, 0.014),
+    mustacheBox: new THREE.BoxGeometry(0.068, 0.018, 0.022),
+    mouthBox: new THREE.BoxGeometry(0.046, 0.012, 0.012),
+    haloTorus: new THREE.TorusGeometry(0.25, 0.032, 6, 14),
+    policeCrown: new THREE.CylinderGeometry(0.135, 0.118, 0.09, 8),
+    policeBand: new THREE.CylinderGeometry(0.12, 0.12, 0.028, 8),
+    policeBrim: new THREE.CylinderGeometry(0.115, 0.125, 0.018, 8, 1, false, -Math.PI * 0.35, Math.PI * 0.7),
+    policeEmblem: new THREE.OctahedronGeometry(0.024, 0),
+    capDome: new THREE.SphereGeometry(0.125, 7, 5, 0, Math.PI * 2, 0, Math.PI * 0.55),
+    capVisor: new THREE.BoxGeometry(0.17, 0.016, 0.11),
+    hairCrown: new THREE.DodecahedronGeometry(0.128, 0),
+    hairBack: new THREE.CylinderGeometry(0.105, 0.095, 0.14, 6),
+    pompadourCrest: new THREE.BoxGeometry(0.165, 0.075, 0.16),
+    featheredWing: new THREE.ConeGeometry(0.065, 0.16, 5),
+    scrunchie: new THREE.TorusGeometry(0.036, 0.014, 5, 8),
+    ponytailCone: new THREE.ConeGeometry(0.056, 0.26, 6),
+    bobLock: new THREE.CylinderGeometry(0.048, 0.036, 0.21, 5),
+    bobBack: new THREE.CylinderGeometry(0.11, 0.095, 0.19, 6),
   };
+  for (const geo of Object.values(shared)) {
+    geo.userData.shared = true;
+  }
+  cachedGeos = shared;
   return cachedGeos;
 }
 
@@ -358,11 +401,12 @@ let sharedAccessories: {
   gold: THREE.MeshStandardMaterial;
   capDark: THREE.MeshStandardMaterial;
   capBrim: THREE.MeshStandardMaterial;
+  bountyHalo: THREE.MeshBasicMaterial;
 } | null = null;
 
 function getSharedAccessories() {
   if (sharedAccessories) return sharedAccessories;
-  sharedAccessories = {
+  const acc = {
     sunglassFrame: new THREE.MeshStandardMaterial({ color: '#14101c', roughness: 0.3, flatShading: true }),
     sunglassLens: new THREE.MeshStandardMaterial({
       color: '#20183a',
@@ -379,8 +423,34 @@ function getSharedAccessories() {
     gold: new THREE.MeshStandardMaterial({ color: '#ffd15c', metalness: 0.85, roughness: 0.22, flatShading: true }),
     capDark: new THREE.MeshStandardMaterial({ color: '#142447', roughness: 0.55, flatShading: true }),
     capBrim: new THREE.MeshStandardMaterial({ color: '#0d1018', roughness: 0.28, flatShading: true }),
+    bountyHalo: new THREE.MeshBasicMaterial({ color: '#ff4fa3' }),
   };
+  for (const mat of Object.values(acc)) {
+    mat.userData.shared = true;
+  }
+  sharedAccessories = acc;
   return sharedAccessories;
+}
+
+/**
+ * Disposes per-instance materials and non-shared geometries on a despawned character
+ * without touching shared geometries, shared accessory materials, or cached CanvasTextures.
+ */
+export function disposeCharacter(root: THREE.Object3D): void {
+  const disposedMats = new Set<THREE.Material>();
+  root.traverse((obj) => {
+    if (!(obj instanceof THREE.Mesh)) return;
+    if (obj.geometry && !obj.geometry.userData.shared) {
+      obj.geometry.dispose();
+    }
+    const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+    for (const m of mats) {
+      if (m && !m.userData.shared && !disposedMats.has(m)) {
+        disposedMats.add(m);
+        m.dispose();
+      }
+    }
+  });
 }
 
 /**
@@ -401,17 +471,13 @@ export function buildLowPolyCharacter(opts: LowPolyCharacterOptions): LowPolyCha
   const skinMat = new THREE.MeshStandardMaterial({ color: opts.skinColor, roughness: 0.7, flatShading: true });
   const hairMat = new THREE.MeshStandardMaterial({ color: opts.hairColor, roughness: 0.8, flatShading: true });
 
-  const texRole: NpcRole = opts.role === 'guard' ? 'bounty' : opts.role;
-  const torsoFront = new THREE.MeshStandardMaterial({
-    map: getOutfitTexture(texRole, opts.primaryColor, opts.accentColor, opts.outfitVariant),
+  const torsoMat = new THREE.MeshStandardMaterial({
+    map: getCombinedTorsoTexture(opts.role, opts.primaryColor, opts.accentColor, opts.outfitVariant),
     roughness: 0.62,
     flatShading: true,
   });
-  const torsoBack = new THREE.MeshStandardMaterial({
-    map: getOutfitBackTexture(opts.role, opts.primaryColor, opts.accentColor, opts.outfitVariant),
-    roughness: 0.62,
-    flatShading: true,
-  });
+  const torsoFront = torsoMat;
+  const torsoBack = torsoMat;
   const sleeveMat = new THREE.MeshStandardMaterial({
     color: opts.role === 'bounty' ? '#f5f0eb' : opts.primaryColor,
     roughness: 0.62,
@@ -442,12 +508,8 @@ export function buildLowPolyCharacter(opts: LowPolyCharacterOptions): LowPolyCha
   buckle.position.set(0, 0.936, isFemale ? 0.106 : 0.116);
   bodyRoot.add(buckle);
 
-  // 2. Sculpted Tapered Torso (with distinct Front/Back outfit textures + Side color)
-  const torso = new THREE.Mesh(isFemale ? g.torsoFemale : g.torsoMale, [
-    sleeveMat,
-    torsoFront,
-    torsoBack,
-  ]);
+  // 2. Sculpted Tapered Torso (single combined UV atlas material -> 1 draw call!)
+  const torso = new THREE.Mesh(isFemale ? g.torsoFemale : g.torsoMale, torsoMat);
   torso.position.y = 0.94;
   if (isMuscular) {
     // Broad V-taper 80s action-hero chest & shoulders
@@ -494,7 +556,7 @@ export function buildLowPolyCharacter(opts: LowPolyCharacterOptions): LowPolyCha
     tag2.rotation.z = -0.12;
     bodyRoot.add(tag1, tag2);
   } else if (opts.role === 'police') {
-    const badge = new THREE.Mesh(new THREE.OctahedronGeometry(0.028, 0), acc.gold);
+    const badge = new THREE.Mesh(g.badge, acc.gold);
     badge.scale.set(1, 1.15, 0.35);
     badge.position.set(0.09, 1.33, 0.136);
     bodyRoot.add(badge);
@@ -510,7 +572,7 @@ export function buildLowPolyCharacter(opts: LowPolyCharacterOptions): LowPolyCha
       bodyRoot.add(lapel);
     }
     if (opts.role === 'bounty' || opts.role === 'guard') {
-      const chain = new THREE.Mesh(new THREE.TorusGeometry(0.055, 0.009, 5, 10, Math.PI), acc.gold);
+      const chain = new THREE.Mesh(g.chainGold, acc.gold);
       chain.position.set(0, 1.41, isFemale ? 0.12 : 0.132);
       chain.rotation.z = Math.PI;
       bodyRoot.add(chain);
@@ -578,39 +640,39 @@ export function buildLowPolyCharacter(opts: LowPolyCharacterOptions): LowPolyCha
     const shades = new THREE.Group();
     shades.position.set(0, 0.025, 0.118);
 
-    const bridge = new THREE.Mesh(new THREE.BoxGeometry(0.036, 0.014, 0.016), acc.sunglassFrame);
+    const bridge = new THREE.Mesh(g.shadesBridge, acc.sunglassFrame);
     bridge.position.set(0, 0.006, 0.004);
     shades.add(bridge);
 
     for (const side of [-1, 1] as const) {
-      const frame = new THREE.Mesh(new THREE.BoxGeometry(0.072, 0.044, 0.016), acc.sunglassFrame);
+      const frame = new THREE.Mesh(g.shadesFrame, acc.sunglassFrame);
       frame.position.set(side * 0.048, 0, 0);
       frame.rotation.y = side * -0.14;
       shades.add(frame);
 
-      const lens = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.033, 0.018), acc.sunglassLens);
+      const lens = new THREE.Mesh(g.shadesLens, acc.sunglassLens);
       lens.position.set(side * 0.048, 0, 0.002);
       lens.rotation.y = side * -0.14;
       shades.add(lens);
 
       // Temple arm back to ear
-      const temple = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.012, 0.115), acc.sunglassFrame);
+      const temple = new THREE.Mesh(g.shadesTemple, acc.sunglassFrame);
       temple.position.set(side * 0.095, 0.008, -0.058);
       shades.add(temple);
     }
     headGroup.add(shades);
   } else {
     for (const side of [-1, 1] as const) {
-      const eye = new THREE.Mesh(new THREE.BoxGeometry(0.036, 0.02, 0.012), acc.eyeWhite);
+      const eye = new THREE.Mesh(g.eyeBox, acc.eyeWhite);
       eye.position.set(side * 0.042, 0.022, 0.115);
       eye.rotation.y = side * -0.15;
       headGroup.add(eye);
 
-      const pupil = new THREE.Mesh(new THREE.BoxGeometry(0.016, 0.016, 0.014), acc.eyePupil);
+      const pupil = new THREE.Mesh(g.pupilBox, acc.eyePupil);
       pupil.position.set(side * 0.042, 0.022, 0.118);
       headGroup.add(pupil);
 
-      const brow = new THREE.Mesh(new THREE.BoxGeometry(0.044, 0.012, 0.014), hairMat);
+      const brow = new THREE.Mesh(g.browBox, hairMat);
       brow.position.set(side * 0.043, 0.048, 0.116);
       brow.rotation.z = side * -0.06;
       headGroup.add(brow);
@@ -619,23 +681,20 @@ export function buildLowPolyCharacter(opts: LowPolyCharacterOptions): LowPolyCha
 
   // Optional 3D 80s Mustache & Mouth
   if (opts.hasMustache && !isFemale) {
-    const stache = new THREE.Mesh(new THREE.BoxGeometry(0.068, 0.018, 0.022), hairMat);
+    const stache = new THREE.Mesh(g.mustacheBox, hairMat);
     stache.position.set(0, -0.046, 0.116);
     headGroup.add(stache);
   }
-  const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.046, 0.012, 0.012), acc.mouth);
+  const mouth = new THREE.Mesh(g.mouthBox, acc.mouth);
   mouth.position.set(0, -0.072, 0.109);
   headGroup.add(mouth);
 
   // 4. Sculpted 3D 80s Hairstyles & Headgear
-  addLowPolyHairOrHat(headGroup, opts.hairStyle, hairMat, opts.accentColor, acc);
+  addLowPolyHairOrHat(headGroup, opts.hairStyle, hairMat, opts.accentColor, acc, g);
 
   // Bounty Target Neon Halo
   if (opts.withHalo) {
-    const halo = new THREE.Mesh(
-      new THREE.TorusGeometry(0.25, 0.032, 6, 14),
-      new THREE.MeshBasicMaterial({ color: '#ff4fa3' }),
-    );
+    const halo = new THREE.Mesh(g.haloTorus, acc.bountyHalo);
     halo.rotation.x = Math.PI / 2;
     halo.position.y = 0.42;
     headGroup.add(halo);
@@ -679,7 +738,6 @@ export function buildLowPolyCharacter(opts: LowPolyCharacterOptions): LowPolyCha
     const lower = new THREE.Mesh(forearmGeo, forearmMat);
     lower.position.y = -forearmLen * 0.5;
     if (isMuscular) lower.scale.set(1.2, 1.0, 1.2);
-    lower.castShadow = true;
     elbowPivot.add(lower);
 
     const handAnchor = new THREE.Group();
@@ -731,13 +789,11 @@ export function buildLowPolyCharacter(opts: LowPolyCharacterOptions): LowPolyCha
 
     const shin = new THREE.Mesh(shinGeo, shinMat);
     shin.position.y = -shinLen * 0.5;
-    shin.castShadow = true;
     kneePivot.add(shin);
 
     const shoe = new THREE.Mesh(g.shoe, shoeMat);
     shoe.position.set(0, -shinLen - 0.085, 0.015);
     if (isFemale) shoe.scale.set(0.88, 0.9, 0.92);
-    shoe.castShadow = true;
     kneePivot.add(shoe);
 
     bodyRoot.add(legPivot);
@@ -777,23 +833,24 @@ function addLowPolyHairOrHat(
   hairMat: THREE.MeshStandardMaterial,
   accentColor: string,
   acc: ReturnType<typeof getSharedAccessories>,
+  g: SharedCharacterGeos,
 ): void {
   if (style === 'police') {
     // Peaked Vice PD officer cap
-    const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.135, 0.118, 0.09, 8), acc.capDark);
+    const crown = new THREE.Mesh(g.policeCrown, acc.capDark);
     crown.position.set(0, 0.13, -0.005);
     headGroup.add(crown);
 
-    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.028, 8), acc.capBrim);
+    const band = new THREE.Mesh(g.policeBand, acc.capBrim);
     band.position.set(0, 0.095, -0.005);
     headGroup.add(band);
 
-    const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.115, 0.125, 0.018, 8, 1, false, -Math.PI * 0.35, Math.PI * 0.7), acc.capBrim);
+    const brim = new THREE.Mesh(g.policeBrim, acc.capBrim);
     brim.position.set(0, 0.088, 0.05);
     brim.rotation.x = 0.15;
     headGroup.add(brim);
 
-    const emblem = new THREE.Mesh(new THREE.OctahedronGeometry(0.024, 0), acc.gold);
+    const emblem = new THREE.Mesh(g.policeEmblem, acc.gold);
     emblem.scale.set(1, 1.1, 0.4);
     emblem.position.set(0, 0.125, 0.122);
     headGroup.add(emblem);
@@ -802,12 +859,12 @@ function addLowPolyHairOrHat(
 
   if (style === 'cap') {
     const capMat = new THREE.MeshStandardMaterial({ color: accentColor, roughness: 0.6, flatShading: true });
-    const dome = new THREE.Mesh(new THREE.SphereGeometry(0.125, 7, 5, 0, Math.PI * 2, 0, Math.PI * 0.55), capMat);
+    const dome = new THREE.Mesh(g.capDome, capMat);
     dome.position.set(0, 0.065, -0.005);
     dome.scale.set(1.0, 0.92, 1.08);
     headGroup.add(dome);
 
-    const visor = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.016, 0.11), capMat);
+    const visor = new THREE.Mesh(g.capVisor, capMat);
     visor.position.set(0, 0.072, 0.12);
     visor.rotation.x = 0.12;
     headGroup.add(visor);
@@ -815,25 +872,25 @@ function addLowPolyHairOrHat(
   }
 
   // Base hair cap wrapping upper & back cranium
-  const crown = new THREE.Mesh(new THREE.DodecahedronGeometry(0.128, 0), hairMat);
+  const crown = new THREE.Mesh(g.hairCrown, hairMat);
   crown.position.set(0, 0.085, -0.022);
   crown.scale.set(1.0, 0.72, 1.08);
   headGroup.add(crown);
 
-  const backHair = new THREE.Mesh(new THREE.CylinderGeometry(0.105, 0.095, 0.14, 6), hairMat);
+  const backHair = new THREE.Mesh(g.hairBack, hairMat);
   backHair.position.set(0, 0.01, -0.062);
   headGroup.add(backHair);
 
   if (style === 'pompadour') {
     // Swept 80s Miami Vice pompadour wave
-    const crest = new THREE.Mesh(new THREE.BoxGeometry(0.165, 0.075, 0.16), hairMat);
+    const crest = new THREE.Mesh(g.pompadourCrest, hairMat);
     crest.position.set(0, 0.135, 0.032);
     crest.rotation.x = -0.22;
     headGroup.add(crest);
   } else if (style === 'feathered') {
     // Voluminous 80s feathered cut with layered side wings
     for (const side of [-1, 1] as const) {
-      const wing = new THREE.Mesh(new THREE.ConeGeometry(0.065, 0.16, 5), hairMat);
+      const wing = new THREE.Mesh(g.featheredWing, hairMat);
       wing.position.set(side * 0.105, 0.03, -0.025);
       wing.rotation.z = side * 0.25;
       headGroup.add(wing);
@@ -841,12 +898,12 @@ function addLowPolyHairOrHat(
   } else if (style === 'ponytail') {
     // High 80s ponytail with neon scrunchie
     const tieMat = new THREE.MeshStandardMaterial({ color: accentColor, roughness: 0.45, flatShading: true });
-    const scrunchie = new THREE.Mesh(new THREE.TorusGeometry(0.036, 0.014, 5, 8), tieMat);
+    const scrunchie = new THREE.Mesh(g.scrunchie, tieMat);
     scrunchie.position.set(0, 0.06, -0.135);
     scrunchie.rotation.x = 0.35;
     headGroup.add(scrunchie);
 
-    const tail = new THREE.Mesh(new THREE.ConeGeometry(0.056, 0.26, 6), hairMat);
+    const tail = new THREE.Mesh(g.ponytailCone, hairMat);
     tail.position.set(0, -0.055, -0.175);
     tail.rotation.x = -0.32;
     headGroup.add(tail);
@@ -877,12 +934,12 @@ function addLowPolyHairOrHat(
   } else if (style === 'bob') {
     // Stylish 80s angled bob framing the face
     for (const side of [-1, 1] as const) {
-      const lock = new THREE.Mesh(new THREE.CylinderGeometry(0.048, 0.036, 0.21, 5), hairMat);
+      const lock = new THREE.Mesh(g.bobLock, hairMat);
       lock.position.set(side * 0.105, -0.015, -0.015);
       lock.rotation.z = side * -0.08;
       headGroup.add(lock);
     }
-    const backBob = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.095, 0.19, 6), hairMat);
+    const backBob = new THREE.Mesh(g.bobBack, hairMat);
     backBob.position.set(0, -0.02, -0.068);
     headGroup.add(backBob);
   }

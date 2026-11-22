@@ -1441,3 +1441,20 @@ kbd {
   font-size: 11px;
   color: #36f1e6;
 }
+
+/* Performance Mode: disable expensive compositor backdrop-filter blurs across HUD & overlays */
+body.perf-mode #debug-info,
+body.perf-mode #weapon-panel,
+body.perf-mode #objective-box,
+body.perf-mode #status-box,
+body.perf-mode #vehicle-panel,
+body.perf-mode #photo-bar,
+body.perf-mode #wasted-overlay,
+body.perf-mode #shop-overlay,
+body.perf-mode #pet-shop-overlay,
+body.perf-mode #dev-overlay,
+body.perf-mode #phone-overlay,
+body.perf-mode #overlay {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}

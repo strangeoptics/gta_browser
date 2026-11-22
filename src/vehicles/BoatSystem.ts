@@ -27,12 +27,15 @@ export class BoatSystem {
   private readonly group: THREE.Group;
   private readonly keys = new Set<string>();
   private readonly wakes: WakePuff[] = [];
+  private readonly wakePool: THREE.Mesh[] = [];
   private readonly wakeGeo = new THREE.BoxGeometry(0.38, 0.14, 0.38);
 
   private active = false;
   private wakeTimer = 0;
   private readonly camPosSmooth = new THREE.Vector3();
   private readonly camLookSmooth = new THREE.Vector3();
+  private readonly tmpDesiredPos = new THREE.Vector3();
+  private readonly tmpDesiredLook = new THREE.Vector3();
   private camInit = false;
 
   constructor(scene: THREE.Scene) {
@@ -149,23 +152,30 @@ export class BoatSystem {
     this.group.position.copy(this.position);
     this.group.rotation.y = this.yaw;
 
-    // Emit foaming white-cyan wake spray behind the stern when moving
+    // Emit foaming white-cyan wake spray behind the stern when moving (pooled!)
     if (Math.abs(this.speed) > 3.5) {
       this.wakeTimer -= clampedDt;
       if (this.wakeTimer <= 0) {
         this.wakeTimer = 0.045;
-        const mat = new THREE.MeshBasicMaterial({
-          color: '#d8ffff',
-          transparent: true,
-          opacity: 0.75,
-        });
-        const puff = new THREE.Mesh(this.wakeGeo, mat);
+        let puff = this.wakePool.pop();
+        if (puff) {
+          (puff.material as THREE.MeshBasicMaterial).opacity = 0.75;
+          puff.scale.set(1, 1, 1);
+          puff.visible = true;
+        } else {
+          const mat = new THREE.MeshBasicMaterial({
+            color: '#d8ffff',
+            transparent: true,
+            opacity: 0.75,
+          });
+          puff = new THREE.Mesh(this.wakeGeo, mat);
+          this.scene.add(puff);
+        }
         puff.position.set(
           this.position.x - fwdX * 3.1 + (Math.random() - 0.5) * 0.9,
           0.02,
           this.position.z - fwdZ * 3.1 + (Math.random() - 0.5) * 0.9,
         );
-        this.scene.add(puff);
         this.wakes.push({ mesh: puff, life: 0.9, maxLife: 0.9 });
       }
     }
@@ -174,9 +184,11 @@ export class BoatSystem {
       const w = this.wakes[i];
       w.life -= clampedDt;
       if (w.life <= 0) {
-        this.scene.remove(w.mesh);
-        (w.mesh.material as THREE.Material).dispose();
-        this.wakes.splice(i, 1);
+        w.mesh.visible = false;
+        this.wakePool.push(w.mesh);
+        const last = this.wakes.length - 1;
+        if (i !== last) this.wakes[i] = this.wakes[last];
+        this.wakes.pop();
       } else {
         const s = 1 + (1 - w.life / w.maxLife) * 2.2;
         w.mesh.scale.set(s, 1, s);
@@ -185,12 +197,12 @@ export class BoatSystem {
     }
 
     if (this.active) {
-      const desiredPos = new THREE.Vector3(
+      const desiredPos = this.tmpDesiredPos.set(
         this.position.x - fwdX * 10.5,
         this.position.y + 4.2,
         this.position.z - fwdZ * 10.5,
       );
-      const desiredLook = new THREE.Vector3(
+      const desiredLook = this.tmpDesiredLook.set(
         this.position.x + fwdX * 9.0,
         this.position.y + 1.0,
         this.position.z + fwdZ * 9.0,

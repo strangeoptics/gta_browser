@@ -31,6 +31,7 @@ export class PayNSpray {
   private readonly scene: THREE.Scene;
   private readonly ring: THREE.Mesh;
   private readonly puffs: PaintPuff[] = [];
+  private readonly puffPool: THREE.Mesh[] = [];
   private readonly puffGeo = new THREE.BoxGeometry(0.32, 0.32, 0.32);
 
   constructor(scene: THREE.Scene) {
@@ -103,21 +104,31 @@ export class PayNSpray {
     v.bodyMat.color.set(newColor);
     v.bodyMat.roughness = 0.2;
 
-    // Colorful paint mist burst around the car
+    // Colorful paint mist burst around the car (pooled meshes!)
     for (let i = 0; i < 24; i++) {
-      const mat = new THREE.MeshBasicMaterial({
-        color: i % 3 === 0 ? '#ffffff' : newColor,
-        transparent: true,
-        opacity: 0.85,
-      });
-      const mesh = new THREE.Mesh(this.puffGeo, mat);
+      const col = i % 3 === 0 ? '#ffffff' : newColor;
+      let mesh = this.puffPool.pop();
+      if (mesh) {
+        const mat = mesh.material as THREE.MeshBasicMaterial;
+        mat.color.set(col);
+        mat.opacity = 0.85;
+        mesh.scale.setScalar(1);
+        mesh.visible = true;
+      } else {
+        const mat = new THREE.MeshBasicMaterial({
+          color: col,
+          transparent: true,
+          opacity: 0.85,
+        });
+        mesh = new THREE.Mesh(this.puffGeo, mat);
+        this.scene.add(mesh);
+      }
       const angle = (i / 24) * Math.PI * 2;
       mesh.position.set(
         v.position.x + Math.cos(angle) * 1.4,
         0.7 + Math.random() * 0.7,
         v.position.z + Math.sin(angle) * 2.1,
       );
-      this.scene.add(mesh);
       this.puffs.push({
         mesh,
         vel: new THREE.Vector3(Math.cos(angle) * 2.6, 1.4 + Math.random() * 1.8, Math.sin(angle) * 2.6),
@@ -137,9 +148,11 @@ export class PayNSpray {
       const p = this.puffs[i];
       p.life -= dt;
       if (p.life <= 0) {
-        this.scene.remove(p.mesh);
-        (p.mesh.material as THREE.Material).dispose();
-        this.puffs.splice(i, 1);
+        p.mesh.visible = false;
+        this.puffPool.push(p.mesh);
+        const last = this.puffs.length - 1;
+        if (i !== last) this.puffs[i] = this.puffs[last];
+        this.puffs.pop();
       } else {
         p.mesh.position.addScaledVector(p.vel, dt);
         const sc = 1 + (1 - p.life / p.maxLife) * 1.8;

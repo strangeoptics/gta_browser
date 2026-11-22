@@ -1,9 +1,12 @@
 import * as THREE from 'three';
 import type { AABB } from '../types';
 import type { ShootableTarget } from '../combat/WeaponSystem';
+import { TracerPool } from '../combat/TracerPool';
+import type { SpatialGrid } from '../engine/SpatialGrid';
 import { BLOCK_CENTERS } from '../world/CityLayout';
 import {
   buildLowPolyCharacter,
+  disposeCharacter,
   type CharacterBodyType,
   type CharacterHairStyle,
   type LowPolyCharacterOptions,
@@ -42,11 +45,7 @@ export interface NpcEntity {
   rightElbowPivot: THREE.Group;
   muzzleFlash?: THREE.Mesh;
   deathTimer: number;
-}
-
-interface EnemyTracer {
-  line: THREE.Line;
-  life: number;
+  collider: AABB;
 }
 
 const CIV_SHIRTS = ['#ff7eb3', '#36f1e6', '#ffbe6b', '#d9b8ff', '#fff0d9', '#7ef2c8', '#ff8b7b'];
@@ -70,9 +69,25 @@ const NPC_RADIUS = 0.42;
 export class NpcSystem {
   public readonly npcs: NpcEntity[] = [];
   private readonly scene: THREE.Scene;
-  private readonly enemyTracers: EnemyTracer[] = [];
+  private readonly tracerPool: TracerPool;
   private readonly hitboxGeo = new THREE.BoxGeometry(0.68, 1.88, 0.54);
   private readonly hitboxMat = new THREE.MeshBasicMaterial({ visible: false });
+  private readonly sharedGunGeoNormal = new THREE.BoxGeometry(0.055, 0.08, 0.25);
+  private readonly sharedGunGeoBounty = new THREE.BoxGeometry(0.055, 0.08, 0.34);
+  private readonly sharedGunMat = new THREE.MeshStandardMaterial({
+    color: '#24202b',
+    metalness: 0.75,
+    roughness: 0.3,
+    flatShading: true,
+  });
+  private readonly sharedMuzzleGeo = new THREE.OctahedronGeometry(0.09, 0);
+  private readonly sharedMuzzleMatNormal = new THREE.MeshBasicMaterial({ color: '#ffcf66' });
+  private readonly sharedMuzzleMatBounty = new THREE.MeshBasicMaterial({ color: '#ff4fa3' });
+  private readonly blockerScratch: AABB[] = [];
+  private readonly gridQueryScratch: AABB[] = [];
+  private readonly npcColliderScratch: AABB[] = [];
+  private readonly tmpStart = new THREE.Vector3();
+  private readonly tmpEnd = new THREE.Vector3();
   private nextId = 1;
   private guardAlertTimer = 0;
   private guardRespawnTimer = 0;
@@ -82,6 +97,15 @@ export class NpcSystem {
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
+    this.tracerPool = new TracerPool(scene);
+    this.hitboxGeo.userData.shared = true;
+    this.hitboxMat.userData.shared = true;
+    this.sharedGunGeoNormal.userData.shared = true;
+    this.sharedGunGeoBounty.userData.shared = true;
+    this.sharedGunMat.userData.shared = true;
+    this.sharedMuzzleGeo.userData.shared = true;
+    this.sharedMuzzleMatNormal.userData.shared = true;
+    this.sharedMuzzleMatBounty.userData.shared = true;
     for (let i = 0; i < 12; i++) {
       this.spawnCivilian();
     }
@@ -192,13 +216,16 @@ export class NpcSystem {
     return this.createNpc('civilian', spot.x, spot.z, shirt, 45);
   }
 
-  public spawnPoliceNear(playerPos: THREE.Vector3, blockers: AABB[] = []): NpcEntity {
+  public spawnPoliceNear(playerPos: THREE.Vector3, blockers: AABB[] = [], npcGrid?: SpatialGrid): NpcEntity {
     // Dispatch reinforcements directly from Vice PD Precinct 06 (-40, 0) when within range!
     const distToPrecinct = Math.hypot(playerPos.x - -40, playerPos.z - 0);
     if (distToPrecinct < 65 && distToPrecinct > 14) {
       const px = -27.2 + (Math.random() - 0.5) * 1.4;
       const pz = (Math.random() - 0.5) * 5.0;
-      if (!this.overlapsAny(px, pz, NPC_RADIUS + 0.25, blockers)) {
+      const local = npcGrid
+        ? npcGrid.queryBox(px - 1.2, px + 1.2, pz - 1.2, pz + 1.2, blockers, this.gridQueryScratch)
+        : blockers;
+      if (!this.overlapsAny(px, pz, NPC_RADIUS + 0.25, local)) {
         const officer = this.createNpc('police', px, pz, '#1e325c', 75);
         officer.state = 'pursue';
         return officer;
@@ -212,7 +239,10 @@ export class NpcSystem {
       const dist = 28 + Math.random() * 14;
       const cx = THREE.MathUtils.clamp(playerPos.x + Math.cos(angle) * dist, -62, 66);
       const cz = THREE.MathUtils.clamp(playerPos.z + Math.sin(angle) * dist, -62, 62);
-      if (!this.overlapsAny(cx, cz, NPC_RADIUS + 0.25, blockers)) {
+      const local = npcGrid
+        ? npcGrid.queryBox(cx - 1.2, cx + 1.2, cz - 1.2, cz + 1.2, blockers, this.gridQueryScratch)
+        : blockers;
+      if (!this.overlapsAny(cx, cz, NPC_RADIUS + 0.25, local)) {
         x = cx;
         z = cz;
         break;
@@ -291,9 +321,13 @@ export class NpcSystem {
     radius: number,
     dt: number,
     worldColliders: AABB[],
+    npcGrid?: SpatialGrid,
   ): { civiliansHit: number; policeHit: number } {
     const rSq = radius * radius;
-    const blockers: AABB[] = [SAFEHOUSE_NO_ENTRY, ...worldColliders];
+    const blockers = this.blockerScratch;
+    blockers.length = 0;
+    blockers.push(SAFEHOUSE_NO_ENTRY);
+    for (let i = 0; i < worldColliders.length; i++) blockers.push(worldColliders[i]);
     let civiliansHit = 0;
     let policeHit = 0;
     const pushSpeed = 12.5;
@@ -313,6 +347,7 @@ export class NpcSystem {
         NPC_RADIUS,
         blockers,
         npc.position.y,
+        npcGrid,
       );
       npc.position.x = resolved.x;
       npc.position.z = resolved.z;
@@ -329,52 +364,47 @@ export class NpcSystem {
     return { civiliansHit, policeHit };
   }
 
+  public appendShootableHitboxes(out: THREE.Object3D[]): void {
+    for (let i = 0; i < this.npcs.length; i++) {
+      const npc = this.npcs[i];
+      if (npc.alive) out.push(npc.hitbox);
+    }
+  }
+
   public getShootableTargets(): ShootableTarget[] {
     const out: ShootableTarget[] = [];
-    for (const npc of this.npcs) {
-      if (!npc.alive) continue;
-      out.push({
-        id: npc.id,
-        mesh: npc.hitbox,
-        onHit: (damage: number) => {
-          npc.hp -= damage;
-          npc.flinchTimer = 0.18;
-          if (npc.role === 'civilian') npc.state = 'flee';
-          else {
-            npc.state = 'pursue';
-            if (npc.role === 'guard') this.guardAlertTimer = 28.0;
-          }
-
-          if (npc.hp <= 0) {
-            this.killNpc(npc);
-            return true;
-          }
-          return false;
-        },
-      });
+    for (let i = 0; i < this.npcs.length; i++) {
+      const npc = this.npcs[i];
+      if (npc.alive && npc.hitbox.userData.shootableTarget) {
+        out.push(npc.hitbox.userData.shootableTarget as ShootableTarget);
+      }
     }
     return out;
   }
 
   /**
-   * Returns solid AABB colliders for all living NPCs so the player cannot walk through people.
+   * Appends solid in-place AABB colliders for all living NPCs into `out` with zero allocations.
    */
-  public getNpcColliders(): AABB[] {
-    const out: AABB[] = [];
+  public appendNpcColliders(out: AABB[]): void {
     const halfW = 0.34;
-    for (const npc of this.npcs) {
+    for (let i = 0; i < this.npcs.length; i++) {
+      const npc = this.npcs[i];
       if (!npc.alive) continue;
-      out.push({
-        minX: npc.position.x - halfW,
-        maxX: npc.position.x + halfW,
-        minY: npc.position.y,
-        maxY: npc.position.y + 1.85,
-        minZ: npc.position.z - halfW,
-        maxZ: npc.position.z + halfW,
-        tag: 'npc',
-      });
+      const c = npc.collider;
+      c.minX = npc.position.x - halfW;
+      c.maxX = npc.position.x + halfW;
+      c.minY = npc.position.y;
+      c.maxY = npc.position.y + 1.85;
+      c.minZ = npc.position.z - halfW;
+      c.maxZ = npc.position.z + halfW;
+      out.push(c);
     }
-    return out;
+  }
+
+  public getNpcColliders(): AABB[] {
+    this.npcColliderScratch.length = 0;
+    this.appendNpcColliders(this.npcColliderScratch);
+    return this.npcColliderScratch;
   }
 
   public getAlivePoliceCount(): number {
@@ -390,6 +420,7 @@ export class NpcSystem {
     const idx = this.npcs.indexOf(target);
     if (idx !== -1) {
       this.scene.remove(target.group);
+      disposeCharacter(target.group);
       this.npcs.splice(idx, 1);
     }
   }
@@ -400,6 +431,7 @@ export class NpcSystem {
       const n = this.npcs[i];
       if (n.role === 'police') {
         this.scene.remove(n.group);
+        disposeCharacter(n.group);
         this.npcs.splice(i, 1);
       }
     }
@@ -421,18 +453,34 @@ export class NpcSystem {
     wantedStars: number,
     worldColliders: AABB[] = [],
     playerCover?: { inCover: boolean; peeking: boolean; normalX: number; normalZ: number },
+    npcGrid?: SpatialGrid,
   ): void {
     const clampedDt = Math.min(dt, 0.05);
 
-    // worldColliders passed from main.ts are already pre-filtered to solid NPC blockers
-    const blockers: AABB[] = [SAFEHOUSE_NO_ENTRY, ...worldColliders];
-
-    const desiredPolice = wantedStars === 0 ? 0 : Math.min(7, wantedStars + 1);
-    if (this.getAlivePoliceCount() < desiredPolice && Math.random() < clampedDt * 0.9) {
-      this.spawnPoliceNear(playerPos, blockers);
+    // Build extra dynamic blocker list in-place (zero allocations!)
+    const blockers = this.blockerScratch;
+    blockers.length = 0;
+    blockers.push(SAFEHOUSE_NO_ENTRY);
+    for (let i = 0; i < worldColliders.length; i++) {
+      blockers.push(worldColliders[i]);
     }
 
-    const aliveCivs = this.npcs.filter((n) => n.alive && n.role === 'civilian').length;
+    let alivePolice = 0;
+    let aliveCivs = 0;
+    let aliveGuards = 0;
+    for (let i = 0; i < this.npcs.length; i++) {
+      const n = this.npcs[i];
+      if (!n.alive) continue;
+      if (n.role === 'police') alivePolice++;
+      else if (n.role === 'civilian') aliveCivs++;
+      else if (n.role === 'guard') aliveGuards++;
+    }
+
+    const desiredPolice = wantedStars === 0 ? 0 : Math.min(7, wantedStars + 1);
+    if (alivePolice < desiredPolice && Math.random() < clampedDt * 0.9) {
+      this.spawnPoliceNear(playerPos, blockers, npcGrid);
+    }
+
     if (aliveCivs < 10 && Math.random() < clampedDt * 0.6) {
       this.spawnCivilian();
     }
@@ -440,7 +488,6 @@ export class NpcSystem {
     if (this.guardAlertTimer > 0) {
       this.guardAlertTimer = Math.max(0, this.guardAlertTimer - clampedDt);
     }
-    const aliveGuards = this.npcs.filter((n) => n.alive && n.role === 'guard').length;
     if (aliveGuards === 0) {
       this.guardRespawnTimer += clampedDt;
       if (this.guardRespawnTimer > 45.0 && playerPos.x < 135) {
@@ -469,6 +516,7 @@ export class NpcSystem {
         npc.deathTimer -= clampedDt;
         if (npc.deathTimer <= 0) {
           this.scene.remove(npc.group);
+          disposeCharacter(npc.group);
           this.npcs.splice(i, 1);
         }
         continue;
@@ -533,6 +581,7 @@ export class NpcSystem {
             npc.state = 'walk';
             if (distToPlayer > 18) {
               this.scene.remove(npc.group);
+              disposeCharacter(npc.group);
               this.npcs.splice(i, 1);
               continue;
             }
@@ -585,7 +634,7 @@ export class NpcSystem {
         const stepZ = moveZ * moveSpeed * clampedDt;
 
         // Axis-separated wall sliding so NPCs never clip through buildings, vehicles, or the Safehouse
-        const resolved = this.moveWithWallSlide(prevX, prevZ, stepX, stepZ, NPC_RADIUS, blockers, npc.position.y);
+        const resolved = this.moveWithWallSlide(prevX, prevZ, stepX, stepZ, NPC_RADIUS, blockers, npc.position.y, npcGrid);
         npc.position.x = resolved.x;
         npc.position.z = resolved.z;
 
@@ -675,8 +724,8 @@ export class NpcSystem {
           const push = (minSep - d) * 0.5;
           const nx = dx / d;
           const nz = dz / d;
-          const resA = this.moveWithWallSlide(a.position.x, a.position.z, -nx * push, -nz * push, NPC_RADIUS, blockers, a.position.y);
-          const resB = this.moveWithWallSlide(b.position.x, b.position.z, nx * push, nz * push, NPC_RADIUS, blockers, b.position.y);
+          const resA = this.moveWithWallSlide(a.position.x, a.position.z, -nx * push, -nz * push, NPC_RADIUS, blockers, a.position.y, npcGrid);
+          const resB = this.moveWithWallSlide(b.position.x, b.position.z, nx * push, nz * push, NPC_RADIUS, blockers, b.position.y, npcGrid);
           a.position.x = resA.x;
           a.position.z = resA.z;
           b.position.x = resB.x;
@@ -689,17 +738,8 @@ export class NpcSystem {
       }
     }
 
-    // Update enemy tracers
-    for (let i = this.enemyTracers.length - 1; i >= 0; i--) {
-      const t = this.enemyTracers[i];
-      t.life -= clampedDt;
-      if (t.life <= 0) {
-        this.scene.remove(t.line);
-        t.line.geometry.dispose();
-        (t.line.material as THREE.Material).dispose();
-        this.enemyTracers.splice(i, 1);
-      }
-    }
+    // Update pooled enemy tracers
+    this.tracerPool.update(clampedDt);
   }
 
   private fireNpcShot(
@@ -714,13 +754,16 @@ export class NpcSystem {
 
     const fwdX = Math.sin(npc.yaw);
     const fwdZ = Math.cos(npc.yaw);
-    const start = new THREE.Vector3(npc.position.x + fwdX * 0.55, npc.position.y + 1.32, npc.position.z + fwdZ * 0.55);
-    const jitter = new THREE.Vector3(
-      (Math.random() - 0.5) * 1.4,
-      (Math.random() - 0.5) * 0.8 + 1.1,
-      (Math.random() - 0.5) * 1.4,
+    const start = this.tmpStart.set(
+      npc.position.x + fwdX * 0.55,
+      npc.position.y + 1.32,
+      npc.position.z + fwdZ * 0.55,
     );
-    const end = playerPos.clone().add(jitter);
+    const end = this.tmpEnd.set(
+      playerPos.x + (Math.random() - 0.5) * 1.4,
+      playerPos.y + (Math.random() - 0.5) * 0.8 + 1.1,
+      playerPos.z + (Math.random() - 0.5) * 1.4,
+    );
 
     // Check if the player's cover wall blocks the incoming line of fire!
     let coverBlocksShot = false;
@@ -746,15 +789,7 @@ export class NpcSystem {
       }
     }
 
-    const geo = new THREE.BufferGeometry().setFromPoints([start, end]);
-    const mat = new THREE.LineBasicMaterial({
-      color: npc.role === 'police' ? 0x5ec8ff : 0xff4fa3,
-      transparent: true,
-      opacity: 0.85,
-    });
-    const line = new THREE.Line(geo, mat);
-    this.scene.add(line);
-    this.enemyTracers.push({ line, life: 0.1 });
+    this.tracerPool.spawn(start, end, npc.role === 'police' ? 0x5ec8ff : 0xff4fa3, 0.1, 0.85, false);
 
     if (coverBlocksShot) return;
 
@@ -838,24 +873,21 @@ export class NpcSystem {
     const { bodyRoot } = rig;
     group.add(bodyRoot);
 
-    // Attach 3D weapon + muzzle flash to right hand anchor for armed roles
+    // Attach shared 3D weapon + muzzle flash to right hand anchor for armed roles
     let muzzleFlash: THREE.Mesh | undefined;
     if (role === 'police' || role === 'bounty' || role === 'guard') {
-      const gunMat = new THREE.MeshStandardMaterial({
-        color: '#24202b',
-        metalness: 0.75,
-        roughness: 0.3,
-        flatShading: true,
-      });
       const barrelLen = role === 'bounty' ? 0.34 : 0.25;
-      const gun = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.08, barrelLen), gunMat);
+      const gun = new THREE.Mesh(
+        role === 'bounty' ? this.sharedGunGeoBounty : this.sharedGunGeoNormal,
+        this.sharedGunMat,
+      );
       gun.position.set(0, -0.05, barrelLen * 0.38);
       gun.rotation.x = Math.PI / 2;
       rig.rightHandAnchor.add(gun);
 
       muzzleFlash = new THREE.Mesh(
-        new THREE.OctahedronGeometry(0.09, 0),
-        new THREE.MeshBasicMaterial({ color: role === 'bounty' ? '#ff4fa3' : '#ffcf66' }),
+        this.sharedMuzzleGeo,
+        role === 'bounty' ? this.sharedMuzzleMatBounty : this.sharedMuzzleMatNormal,
       );
       muzzleFlash.position.set(0, -0.05 - barrelLen * 0.45, 0.08);
       muzzleFlash.visible = false;
@@ -897,9 +929,42 @@ export class NpcSystem {
       rightElbowPivot: rig.rightElbowPivot,
       muzzleFlash,
       deathTimer: 0,
+      collider: {
+        minX: x - 0.34,
+        maxX: x + 0.34,
+        minY: baseY,
+        maxY: baseY + 1.85,
+        minZ: z - 0.34,
+        maxZ: z + 0.34,
+        tag: 'npc',
+      },
     };
+    this.attachShootableTarget(npc);
     this.npcs.push(npc);
     return npc;
+  }
+
+  private attachShootableTarget(npc: NpcEntity): void {
+    const target: ShootableTarget = {
+      id: npc.id,
+      mesh: npc.hitbox,
+      onHit: (damage: number) => {
+        if (!npc.alive) return false;
+        npc.hp -= damage;
+        npc.flinchTimer = 0.18;
+        if (npc.role === 'civilian') npc.state = 'flee';
+        else {
+          npc.state = 'pursue';
+          if (npc.role === 'guard') this.guardAlertTimer = 28.0;
+        }
+        if (npc.hp <= 0) {
+          this.killNpc(npc);
+          return true;
+        }
+        return false;
+      },
+    };
+    npc.hitbox.userData.shootableTarget = target;
   }
 
   private createCustomNpc(
@@ -951,13 +1016,24 @@ export class NpcSystem {
       leftElbowPivot: rig.leftElbowPivot,
       rightElbowPivot: rig.rightElbowPivot,
       deathTimer: 0,
+      collider: {
+        minX: x - 0.34,
+        maxX: x + 0.34,
+        minY: baseY,
+        maxY: baseY + 1.85,
+        minZ: z - 0.34,
+        maxZ: z + 0.34,
+        tag: 'npc',
+      },
     };
+    this.attachShootableTarget(npc);
     this.npcs.push(npc);
     return npc;
   }
 
   private overlapsAny(x: number, z: number, radius: number, blockers: AABB[]): boolean {
-    for (const box of blockers) {
+    for (let i = 0; i < blockers.length; i++) {
+      const box = blockers[i];
       if (x + radius > box.minX && x - radius < box.maxX && z + radius > box.minZ && z - radius < box.maxZ) {
         return true;
       }
@@ -973,6 +1049,7 @@ export class NpcSystem {
     radius: number,
     blockers: AABB[],
     npcY = 0.18,
+    npcGrid?: SpatialGrid,
   ): { x: number; z: number } {
     const onIslandZone = startX > 135;
     const minX = onIslandZone ? 149 : -65;
@@ -980,10 +1057,23 @@ export class NpcSystem {
     const minZ = onIslandZone ? -83 : -65;
     const maxZ = onIslandZone ? 35 : 65;
 
-    // Resolve X axis first (only against obstacles taller than current floor + 0.35m!)
     let x = THREE.MathUtils.clamp(startX + dx, minX, maxX);
     let z = startZ;
-    for (const box of blockers) {
+
+    const candidates = npcGrid
+      ? npcGrid.queryBox(
+          Math.min(startX, x) - radius - 0.2,
+          Math.max(startX, x) + radius + 0.2,
+          Math.min(startZ, startZ + dz) - radius - 0.2,
+          Math.max(startZ, startZ + dz) + radius + 0.2,
+          blockers,
+          this.gridQueryScratch,
+        )
+      : blockers;
+
+    // Resolve X axis first (only against obstacles taller than current floor + 0.35m!)
+    for (let i = 0; i < candidates.length; i++) {
+      const box = candidates[i];
       if (box.maxY <= npcY + 0.35 || box.minY >= npcY + 1.8) continue;
       if (x + radius > box.minX && x - radius < box.maxX && z + radius > box.minZ && z - radius < box.maxZ) {
         if (dx > 0) x = box.minX - radius;
@@ -998,7 +1088,8 @@ export class NpcSystem {
 
     // Resolve Z axis second
     z = THREE.MathUtils.clamp(startZ + dz, minZ, maxZ);
-    for (const box of blockers) {
+    for (let i = 0; i < candidates.length; i++) {
+      const box = candidates[i];
       if (box.maxY <= npcY + 0.35 || box.minY >= npcY + 1.8) continue;
       if (x + radius > box.minX && x - radius < box.maxX && z + radius > box.minZ && z - radius < box.maxZ) {
         if (dz > 0) z = box.minZ - radius;

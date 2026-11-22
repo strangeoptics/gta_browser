@@ -34,7 +34,7 @@ import { handleInteractKeyF, handleSpecialActionKeyG, type InteractionContext } 
 import { ShopSystem } from './gameplay/ShopSystem';
 import { PayNSpray } from './gameplay/PayNSpray';
 import { Minimap } from './hud/Minimap';
-import { AudioEngine } from './audio/AudioEngine';
+import { AudioEngine, type AudioFrameState } from './audio/AudioEngine';
 import { GamepadInput } from './engine/GamepadInput';
 import { TouchControls } from './engine/TouchControls';
 import { HudController } from './ui/HudController';
@@ -1307,6 +1307,23 @@ const shootableHitboxes: THREE.Object3D[] = [];
 const interactMeshesScratch: THREE.Object3D[] = [];
 const yachtRadarState = { x: 0, z: 0, yaw: 0 };
 const playerCoverScratch = { inCover: true, peeking: false, normalX: 0, normalZ: 1 };
+const audioFrameScratch: AudioFrameState = {
+  dt: 0,
+  elapsed: 0,
+  isActive: false,
+  inVehicle: false,
+  speedKmh: 0,
+  drifting: false,
+  onFootSpeed: 0,
+  grounded: true,
+  wantedStars: 0,
+  playerX: 0,
+  clubProximity: 0,
+  rideAudioMode: 'motor',
+  emergencySirenActive: false,
+  iceCreamJingleActive: false,
+  sharkDanger: 0,
+};
 
 // Main Loop
 let lastTime = performance.now();
@@ -1842,31 +1859,33 @@ function animate(now: number): void {
     persistProgress();
   }
 
-  audio.update(
-    dt,
-    elapsed,
-    isPlaying,
-    inAnyCraft,
-    inBoat
-      ? boatHud.speedKmh
-      : inYacht
-        ? yachtHud.speedKmh
-        : inHeli
-          ? heliPlayerHud.speedKmh
-          : inGarageRide
-            ? garageRideHud.speedKmh
-            : driveHud.speedKmh,
-    driveHud.drifting,
-    playerSpeed,
-    inGarageRide ? garageRideHud.grounded : playerGrounded,
-    wanted.stars,
-    player.position.x,
-    Math.max(world.getClubProximity(player.position), rooftopParty.getMusicProximity(player.position)),
-    inGarageRide && garageRideHud.rideId ? garageRideHud.rideId : 'motor',
-    specialHud.kind === 'firefighter' || specialHud.kind === 'paramedic',
-    iceCreamJingleOn,
-    wildlifeHud.sharkDanger,
+  audioFrameScratch.dt = dt;
+  audioFrameScratch.elapsed = elapsed;
+  audioFrameScratch.isActive = isPlaying;
+  audioFrameScratch.inVehicle = inAnyCraft;
+  audioFrameScratch.speedKmh = inBoat
+    ? boatHud.speedKmh
+    : inYacht
+      ? yachtHud.speedKmh
+      : inHeli
+        ? heliPlayerHud.speedKmh
+        : inGarageRide
+          ? garageRideHud.speedKmh
+          : driveHud.speedKmh;
+  audioFrameScratch.drifting = driveHud.drifting;
+  audioFrameScratch.onFootSpeed = playerSpeed;
+  audioFrameScratch.grounded = inGarageRide ? garageRideHud.grounded : playerGrounded;
+  audioFrameScratch.wantedStars = wanted.stars;
+  audioFrameScratch.playerX = player.position.x;
+  audioFrameScratch.clubProximity = Math.max(
+    world.getClubProximity(player.position),
+    rooftopParty.getMusicProximity(player.position),
   );
+  audioFrameScratch.rideAudioMode = inGarageRide && garageRideHud.rideId ? garageRideHud.rideId : 'motor';
+  audioFrameScratch.emergencySirenActive = specialHud.kind === 'firefighter' || specialHud.kind === 'paramedic';
+  audioFrameScratch.iceCreamJingleActive = iceCreamJingleOn;
+  audioFrameScratch.sharkDanger = wildlifeHud.sharkDanger;
+  audio.update(audioFrameScratch);
 
   shootableHitboxes.length = 0;
   npcs.appendShootableHitboxes(shootableHitboxes);

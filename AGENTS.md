@@ -45,6 +45,7 @@ src/
 │   └── WildlifeSystem.ts    # Flamingos, dolphins, stalker reef sharks (Jaws alarm), pelicans, turtles, roosters, dive-bombing snack-stealing seagull & giant kickable beach ball
 ├── gameplay/
 │   ├── HeistSystem.ts       # 3-stage "Ocean Club Finale" story heist (+$3,500)
+│   ├── InteractionRouter.ts # Contextual [F] & [G] interaction dispatcher (garages, tuning, Lowrider arena, vaults, bars, special vehicles)
 │   ├── KittAiSystem.ts      # K.I.T.T. German sarcastic AI voice (Web Speech API) & HUD subtitles
 │   ├── LowriderBattleSystem.ts # Little Havana Plaza 16-beat Lowrider Hydraulics rhythm battle (+$1,200–$1,800)
 │   ├── ObjectiveSystem.ts   # 5 rotating mini-objectives (stash, race, bounty, dropoff, survive)
@@ -55,6 +56,10 @@ src/
 │   └── WantedSystem.ts      # 0–5 star heat & decay system
 ├── hud/
 │   └── Minimap.ts           # 30-Hz rotating circular 2D-canvas radar (all 4 expansion districts + $, P, C, ⌂, PD, IE, T, D, B, ⚓, L, M, ★, H)
+├── ui/
+│   ├── DomHelpers.ts        # Dirty-checked DOM write helpers & pooled Lowrider rhythm note DOM nodes
+│   ├── HudController.ts     # Owns live HUD DOM elements & per-frame status/objective/prompt updates
+│   └── ModalController.ts   # Owns AMMU-NEON Shop, Havana Pets, Dev Panel, Mission Phone & Pause Profile/Settings modals
 ├── player/
 │   ├── PlayerAvatar.ts      # 3rd-person 80s protagonist model with 5 outfits, held weapon, cover pose & swimming animations
 │   └── PlayerController.ts  # Pointer-Lock + drag/arrow FPS & 3rd-person camera (invertMouseY, GTA cover & peeking [Q/X], wall-clip raycast & swimming)

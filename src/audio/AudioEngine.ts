@@ -6,6 +6,24 @@
  * - Wet asphalt footsteps, damage thud, mission passed arpeggio & wasted sweep
  * - Toggleable low-volume coastal synthwave pulse ([M] key)
  */
+export interface AudioFrameState {
+  dt: number;
+  elapsed: number;
+  isActive: boolean;
+  inVehicle: boolean;
+  speedKmh: number;
+  drifting: boolean;
+  onFootSpeed: number;
+  grounded: boolean;
+  wantedStars: number;
+  playerX: number;
+  clubProximity: number;
+  rideAudioMode: 'motor' | 'skateboard' | 'roadbike';
+  emergencySirenActive: boolean;
+  iceCreamJingleActive: boolean;
+  sharkDanger: number;
+}
+
 export class AudioEngine {
   private ctx: AudioContext | null = null;
   private masterGain: GainNode | null = null;
@@ -352,6 +370,7 @@ export class AudioEngine {
       gain.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
       osc.connect(gain);
       gain.connect(this.masterGain!);
+      this.autoDisconnect(osc, gain);
       osc.start(t);
       osc.stop(t + 0.22);
     });
@@ -376,6 +395,7 @@ export class AudioEngine {
       osc.connect(filter);
       filter.connect(gain);
       gain.connect(this.masterGain);
+      this.autoDisconnect(osc, filter, gain);
       osc.start(t);
       osc.stop(t + 0.16);
     }
@@ -394,6 +414,7 @@ export class AudioEngine {
     mGain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
     meow.connect(mGain);
     mGain.connect(this.masterGain);
+    this.autoDisconnect(meow, mGain);
     meow.start(now);
     meow.stop(now + 0.32);
 
@@ -415,6 +436,8 @@ export class AudioEngine {
     purr.connect(lp);
     lp.connect(pGain);
     pGain.connect(this.masterGain);
+    this.autoDisconnect(purr, lp, pGain);
+    this.autoDisconnect(lfo, lfoGain);
     purr.start(now);
     lfo.start(now);
     purr.stop(now + 1.0);
@@ -441,6 +464,7 @@ export class AudioEngine {
       osc.connect(bp);
       bp.connect(gain);
       gain.connect(this.masterGain);
+      this.autoDisconnect(osc, bp, gain);
       osc.start(t);
       osc.stop(t + 0.15);
     }
@@ -460,6 +484,7 @@ export class AudioEngine {
     noise.connect(bp);
     bp.connect(nGain);
     nGain.connect(this.masterGain);
+    this.autoDisconnect(noise, bp, nGain);
     noise.start(now);
     noise.stop(now + 0.1);
 
@@ -476,6 +501,7 @@ export class AudioEngine {
     growl.connect(lp);
     lp.connect(gGain);
     gGain.connect(this.masterGain);
+    this.autoDisconnect(growl, lp, gGain);
     growl.start(now + 0.08);
     growl.stop(now + 0.6);
   }
@@ -501,6 +527,7 @@ export class AudioEngine {
       osc.connect(bp);
       bp.connect(gain);
       gain.connect(this.masterGain!);
+      this.autoDisconnect(osc, bp, gain);
       osc.start(t);
       osc.stop(t + 0.08);
     });
@@ -518,6 +545,7 @@ export class AudioEngine {
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
     osc.connect(gain);
     gain.connect(this.masterGain);
+    this.autoDisconnect(osc, gain);
     osc.start(now);
     osc.stop(now + 0.24);
   }
@@ -540,6 +568,7 @@ export class AudioEngine {
     noise.connect(filter);
     filter.connect(nGain);
     nGain.connect(this.masterGain);
+    this.autoDisconnect(noise, filter, nGain);
     noise.start(now);
     noise.stop(now + 0.38);
 
@@ -553,6 +582,7 @@ export class AudioEngine {
     oGain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
     osc.connect(oGain);
     oGain.connect(this.masterGain);
+    this.autoDisconnect(osc, oGain);
     osc.start(now);
     osc.stop(now + 0.3);
   }
@@ -573,6 +603,7 @@ export class AudioEngine {
     noise.connect(filter);
     filter.connect(gain);
     gain.connect(this.masterGain);
+    this.autoDisconnect(noise, filter, gain);
     noise.start(now);
     noise.stop(now + 1.48);
   }
@@ -592,6 +623,7 @@ export class AudioEngine {
     noise.connect(filter);
     filter.connect(gain);
     gain.connect(this.masterGain);
+    this.autoDisconnect(noise, filter, gain);
     noise.start(now);
     noise.stop(now + 0.38);
   }
@@ -614,6 +646,7 @@ export class AudioEngine {
     noise.connect(filter);
     filter.connect(gain);
     gain.connect(this.masterGain);
+    this.autoDisconnect(noise, filter, gain);
     noise.start(now);
     noise.stop(now + 0.2);
   }
@@ -635,6 +668,7 @@ export class AudioEngine {
     noise.connect(filter);
     filter.connect(nGain);
     nGain.connect(this.masterGain);
+    this.autoDisconnect(noise, filter, nGain);
     noise.start(now);
     noise.stop(now + 0.13);
 
@@ -646,6 +680,7 @@ export class AudioEngine {
     bGain.gain.exponentialRampToValueAtTime(0.001, now + 0.11);
     beep.connect(bGain);
     bGain.connect(this.masterGain);
+    this.autoDisconnect(beep, bGain);
     beep.start(now + 0.04);
     beep.stop(now + 0.12);
   }
@@ -667,6 +702,7 @@ export class AudioEngine {
       src.connect(filter);
       filter.connect(gain);
       gain.connect(this.masterGain!);
+      this.autoDisconnect(src, filter, gain);
       src.start(now + offset);
       src.stop(now + offset + 0.09);
     });
@@ -691,6 +727,7 @@ export class AudioEngine {
       osc.connect(filter);
       filter.connect(gain);
       gain.connect(this.masterGain!);
+      this.autoDisconnect(osc, filter, gain);
       osc.start(t);
       osc.stop(t + 0.3);
     });
@@ -710,6 +747,7 @@ export class AudioEngine {
       gain.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
       osc.connect(gain);
       gain.connect(this.masterGain!);
+      this.autoDisconnect(osc, gain);
       osc.start(t);
       osc.stop(t + 0.1);
     });
@@ -728,6 +766,7 @@ export class AudioEngine {
     oGain.gain.exponentialRampToValueAtTime(0.001, now + 0.085);
     osc.connect(oGain);
     oGain.connect(this.masterGain);
+    this.autoDisconnect(osc, oGain);
     osc.start(now);
     osc.stop(now + 0.09);
 
@@ -743,6 +782,7 @@ export class AudioEngine {
     src.connect(bp);
     bp.connect(nGain);
     nGain.connect(this.masterGain);
+    this.autoDisconnect(src, bp, nGain);
     src.start(now);
     src.stop(now + 0.07);
   }
@@ -761,6 +801,7 @@ export class AudioEngine {
       gain.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
       osc.connect(gain);
       gain.connect(this.masterGain);
+      this.autoDisconnect(osc, gain);
       osc.start(t);
       osc.stop(t + 0.085);
     }
@@ -784,6 +825,7 @@ export class AudioEngine {
         gain.gain.exponentialRampToValueAtTime(0.0008, t + 0.42);
         osc.connect(gain);
         gain.connect(this.masterGain);
+        this.autoDisconnect(osc, gain);
         osc.start(t);
         osc.stop(t + 0.44);
       }
@@ -1127,23 +1169,24 @@ export class AudioEngine {
     return this.radioBeatPulse;
   }
 
-  public update(
-    dt: number,
-    elapsed: number,
-    isActive: boolean,
-    inVehicle: boolean,
-    speedKmh: number,
-    drifting: boolean,
-    onFootSpeed: number,
-    grounded: boolean,
-    wantedStars: number,
-    playerX = 0,
-    clubProximity = 0,
-    rideAudioMode: 'motor' | 'skateboard' | 'roadbike' = 'motor',
-    emergencySirenActive = false,
-    iceCreamJingleActive = false,
-    sharkDanger = 0,
-  ): void {
+  public update(frame: AudioFrameState): void {
+    const {
+      dt,
+      elapsed,
+      isActive,
+      inVehicle,
+      speedKmh,
+      drifting,
+      onFootSpeed,
+      grounded,
+      wantedStars,
+      playerX,
+      clubProximity,
+      rideAudioMode,
+      emergencySirenActive,
+      iceCreamJingleActive,
+      sharkDanger,
+    } = frame;
     if (
       !this.ctx ||
       !this.engineOsc ||

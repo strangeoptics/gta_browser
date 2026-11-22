@@ -15,6 +15,7 @@ export interface SaveProgress {
   ownedPets?: string[];
   rooftopBarOwned?: boolean;
   completedMissionIds?: string[];
+  storyChapter?: number; // 0..5 (number of completed story chapters)
   starterBonusApplied?: boolean;
 }
 
@@ -38,6 +39,7 @@ export const DEFAULT_PROGRESS: SaveProgress = {
   ownedPets: [],
   rooftopBarOwned: false,
   completedMissionIds: [],
+  storyChapter: 0,
   starterBonusApplied: true,
 };
 
@@ -98,6 +100,8 @@ export function loadProgress(): SaveProgress {
       completedMissionIds: Array.isArray(parsed.completedMissionIds)
         ? parsed.completedMissionIds.filter((id): id is string => typeof id === 'string')
         : [],
+      storyChapter:
+        typeof parsed.storyChapter === 'number' ? Math.max(0, Math.min(5, Math.floor(parsed.storyChapter))) : 0,
       starterBonusApplied: true,
     };
   } catch {

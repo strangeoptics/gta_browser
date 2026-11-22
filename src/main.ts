@@ -23,6 +23,7 @@ import { SafehousePets, PET_CATALOG, type PetId, type PetInteractable } from './
 import { WildlifeSystem } from './entities/WildlifeSystem';
 import { WantedSystem } from './gameplay/WantedSystem';
 import { MISSION_CONTRACTS, ObjectiveSystem, type MissionDistrict } from './gameplay/ObjectiveSystem';
+import { STORY_CHAPTERS, StoryCampaign } from './gameplay/StoryCampaign';
 import { HeistSystem } from './gameplay/HeistSystem';
 import { VigilanteSystem } from './gameplay/VigilanteSystem';
 import { ShopSystem } from './gameplay/ShopSystem';
@@ -73,6 +74,9 @@ const objTitleEl = document.getElementById('obj-title') as HTMLDivElement;
 const objDescEl = document.getElementById('obj-desc') as HTMLDivElement;
 const objDistEl = document.getElementById('obj-dist') as HTMLSpanElement;
 const interactPromptEl = document.getElementById('interact-prompt') as HTMLDivElement;
+const storyDialogueBannerEl = document.getElementById('story-dialogue-banner') as HTMLDivElement;
+const storySpeakerEl = document.getElementById('story-speaker') as HTMLSpanElement;
+const storyLineEl = document.getElementById('story-line') as HTMLSpanElement;
 const vehiclePanelEl = document.getElementById('vehicle-panel') as HTMLDivElement;
 const vehicleNameEl = document.getElementById('vehicle-name') as HTMLDivElement;
 const vehicleSpeedEl = document.getElementById('vehicle-speed') as HTMLSpanElement;
@@ -187,6 +191,7 @@ const pets = new SafehousePets(scene);
 const wildlife = new WildlifeSystem(scene);
 const wanted = new WantedSystem();
 const objectives = new ObjectiveSystem(scene);
+const story = new StoryCampaign(scene);
 const heist = new HeistSystem(scene);
 const vigilante = new VigilanteSystem();
 const shop = new ShopSystem(scene);
@@ -244,7 +249,7 @@ let shopOpen = false;
 let petShopOpen = false;
 let devOpen = false;
 let phoneOpen = false;
-let phoneDistrictFilter: 'all' | MissionDistrict = 'all';
+let phoneDistrictFilter: 'story' | 'all' | MissionDistrict = 'story';
 let photoMode = false;
 let photoYaw = 0;
 let photoPitch = 0;
@@ -328,6 +333,7 @@ function eatLookedFood(): boolean {
 objectives.cash = savedProgress.cash;
 objectives.completedCount = savedProgress.completedMissions;
 objectives.setCompletedIds(savedProgress.completedMissionIds ?? []);
+story.setCompletedChapters(savedProgress.storyChapter ?? 0);
 playerAvatar.setOutfit(savedProgress.outfitIndex);
 pets.setOwnedPets((savedProgress.ownedPets ?? []) as PetId[]);
 world.setSafehouseRooftopBarOwned(Boolean(savedProgress.rooftopBarOwned));
@@ -347,6 +353,7 @@ function persistProgress(): void {
     ownedPets: pets.getOwnedPets(),
     rooftopBarOwned: world.isSafehouseRooftopBarOwned(),
     completedMissionIds: objectives.getCompletedIds(),
+    storyChapter: story.getCompletedChapters(),
     starterBonusApplied: true,
   });
   statCashEl.textContent = `$${objectives.cash.toLocaleString('en-US')}`;
@@ -401,6 +408,8 @@ resetSaveBtn.addEventListener('click', () => {
   pets.setOwnedPets([]);
   world.setSafehouseRooftopBarOwned(false);
   objectives.setCompletedIds([]);
+  story.setCompletedChapters(0);
+  story.cancelChapter();
   persistProgress();
 });
 
@@ -856,25 +865,112 @@ devCloseBtn.addEventListener('click', () => closeDevPanel());
 function renderPhoneMissions(): void {
   phoneCashEl.textContent = `$${objectives.cash.toLocaleString('en-US')}`;
   const doneCount = objectives.getCompletedIds().length;
-  phoneDoneEl.textContent = `${doneCount} / ${MISSION_CONTRACTS.length} ERLEDIGT`;
+  phoneDoneEl.textContent = `STORY ${story.getCompletedChapters()}/${STORY_CHAPTERS.length} · JOBS ${doneCount}/${MISSION_CONTRACTS.length}`;
 
   const active = objectives.current;
-  phoneActiveLabelEl.textContent = active ? `AKTIV: ${active.title}` : 'AKTIV: KEIN AUFTRAG';
-  phoneCancelBtn.disabled = !active;
+  const activeStoryIdx = story.getActiveChapterIndex();
+  if (activeStoryIdx >= 0) {
+    const ch = STORY_CHAPTERS[activeStoryIdx];
+    phoneActiveLabelEl.textContent = `AKTIV: ★ KAPITEL ${ch.number} · ${ch.title}`;
+    phoneCancelBtn.disabled = false;
+  } else {
+    phoneActiveLabelEl.textContent = active ? `AKTIV: ${active.title}` : 'AKTIV: KEIN AUFTRAG';
+    phoneCancelBtn.disabled = !active;
+  }
 
   phoneHeistBtn.disabled = heist.isActive();
   phoneHeistBtn.textContent = heist.isActive() ? 'LÄUFT…' : 'STARTEN [H]';
 
   phoneTabBtns.forEach((btn) => {
-    btn.classList.toggle('active', (btn.dataset.district ?? 'all') === phoneDistrictFilter);
+    btn.classList.toggle('active', (btn.dataset.district ?? 'story') === phoneDistrictFilter);
   });
+
+  phoneMissionListEl.innerHTML = '';
+
+  if (phoneDistrictFilter === 'story') {
+    const completedCh = story.getCompletedChapters();
+    const header = document.createElement('div');
+    header.className = 'story-progress-header';
+    header.innerHTML = `<span>★ OPERATION NEON DUSK</span><span>${completedCh} / ${STORY_CHAPTERS.length} KAPITEL</span>`;
+    phoneMissionListEl.appendChild(header);
+
+    for (const ch of STORY_CHAPTERS) {
+      const isActive = activeStoryIdx === ch.index;
+      const isDone = ch.index < completedCh;
+      const isUnlocked = story.canStartChapter(ch.index);
+
+      const card = document.createElement('div');
+      card.className = `mission-item${isActive ? ' is-active' : ''}${!isUnlocked ? ' story-locked' : ''}`;
+
+      const left = document.createElement('div');
+      const meta = document.createElement('div');
+      meta.className = 'mission-meta';
+
+      const chPill = document.createElement('span');
+      chPill.className = 'mission-pill east';
+      chPill.textContent = `KAPITEL ${ch.number}`;
+
+      const distPill = document.createElement('span');
+      distPill.className = 'mission-pill';
+      distPill.textContent = ch.districtLabel;
+      meta.append(chPill, distPill);
+
+      if (isDone) {
+        const doneBadge = document.createElement('span');
+        doneBadge.className = 'mission-done-badge';
+        doneBadge.textContent = '✓ ABGESCHLOSSEN';
+        meta.appendChild(doneBadge);
+      }
+
+      const nameEl = document.createElement('div');
+      nameEl.className = 'mission-name';
+      nameEl.textContent = ch.title;
+
+      const descEl = document.createElement('div');
+      descEl.className = 'mission-desc';
+      descEl.textContent = ch.summary;
+
+      left.append(meta, nameEl, descEl);
+
+      const right = document.createElement('div');
+      right.className = 'mission-right';
+
+      const rewEl = document.createElement('div');
+      rewEl.className = 'mission-reward';
+      rewEl.textContent = ch.finaleBonus && !isDone
+        ? `+$${(ch.reward + ch.finaleBonus).toLocaleString('en-US')}`
+        : `+$${ch.reward.toLocaleString('en-US')}`;
+
+      const acceptBtn = document.createElement('button');
+      acceptBtn.type = 'button';
+      acceptBtn.className = 'mission-accept-btn';
+      acceptBtn.textContent = isActive
+        ? 'AKTIV'
+        : !isUnlocked
+          ? '🔒 GESPERRT'
+          : isDone
+            ? 'WIEDERHOLEN'
+            : 'STARTEN';
+      acceptBtn.disabled = isActive || !isUnlocked;
+      acceptBtn.addEventListener('click', () => {
+        if (story.startChapter(ch.index, npcs, wanted)) {
+          audio.playCheckpoint();
+          closePhone();
+        }
+      });
+
+      right.append(rewEl, acceptBtn);
+      card.append(left, right);
+      phoneMissionListEl.appendChild(card);
+    }
+    return;
+  }
 
   const filtered =
     phoneDistrictFilter === 'all'
       ? MISSION_CONTRACTS
       : MISSION_CONTRACTS.filter((c) => c.district === phoneDistrictFilter);
 
-  phoneMissionListEl.innerHTML = '';
   for (const c of filtered) {
     const isActive = active?.id === c.id;
     const isDone = objectives.isContractCompleted(c.id);
@@ -957,15 +1053,20 @@ function closePhone(): void {
 
 phoneTabBtns.forEach((btn) => {
   btn.addEventListener('click', () => {
-    phoneDistrictFilter = (btn.dataset.district ?? 'all') as 'all' | MissionDistrict;
+    phoneDistrictFilter = (btn.dataset.district ?? 'story') as 'story' | 'all' | MissionDistrict;
     renderPhoneMissions();
   });
 });
 
 phoneCancelBtn.addEventListener('click', () => {
-  objectives.cancelActiveObjective();
+  if (story.isActive()) {
+    story.cancelChapter();
+    showQuickToast('STORY-KAPITEL ABGEBROCHEN · [J] FÜR NEUSTART');
+  } else {
+    objectives.cancelActiveObjective();
+    showQuickToast('AUFTRAG ABGEBROCHEN · [J] FÜR NEUE JOBS');
+  }
   renderPhoneMissions();
-  showQuickToast('AUFTRAG ABGEBROCHEN · [J] FÜR NEUE JOBS');
 });
 
 phoneHeistBtn.addEventListener('click', () => {
@@ -1708,6 +1809,7 @@ function animate(now: number): void {
       npcs.clearPolice();
       heli.clear();
       if (heist.isActive()) heist.failHeist();
+      if (story.isActive()) story.failChapter();
       if (isBustedState) {
         isBustedState = false;
         // Respawn inside Holding Cell 2 of Vice PD Precinct 06; cell gate slides open after 1.8s!
@@ -1951,6 +2053,27 @@ function animate(now: number): void {
   }
   heli.update(dt, elapsed, player.position, indoors ? 0 : wanted.stars);
   const heistHud = heist.update(elapsed, player.position, vehicles, boat, npcs, wanted);
+  const storyHud = story.update(dt, elapsed, player.position, inBoat || inYacht || inHeli, npcs, wanted);
+  if (storyHud.completedChapterReward > 0) {
+    objectives.cash += storyHud.completedChapterReward;
+    objectives.completedCount++;
+    lastCompletedCount = objectives.completedCount;
+    wanted.reset();
+    npcs.clearPolice();
+    heli.clear();
+    audio.playMissionPassed();
+    persistProgress();
+  }
+  if (storyHud.toastText) {
+    showQuickToast(storyHud.toastText);
+  }
+  if (storyHud.dialogueSpeaker && storyHud.dialogueText) {
+    setText(storySpeakerEl, storyHud.dialogueSpeaker);
+    setText(storyLineEl, storyHud.dialogueText);
+    storyDialogueBannerEl.classList.add('visible');
+  } else {
+    storyDialogueBannerEl.classList.remove('visible');
+  }
   const activePoliceCar = Boolean(vehicles.getActiveVehicle()?.isPolice);
   const vigilanteHud = vigilante.update(dt, player.position, activePoliceCar, npcs);
   if (vigilanteHud.rewardEarned > 0) {
@@ -2145,7 +2268,7 @@ function animate(now: number): void {
     objectives.current,
     elapsed,
     heli.active ? heli.position : null,
-    vigilanteHud.targetPos ?? heistHud.targetPos,
+    storyHud.targetPos ?? vigilanteHud.targetPos ?? heistHud.targetPos,
     maverick.position,
     garageRides.getParkedMarkers(),
     { x: superyacht.position.x, z: superyacht.position.z, yaw: superyacht.yaw },
@@ -2168,7 +2291,13 @@ function animate(now: number): void {
   starsEl.classList.toggle('active', wanted.stars > 0);
   setText(cashEl, `$${objHud.cash.toLocaleString('en-US')}`);
 
-  if (vigilanteHud.active) {
+  if (storyHud.active) {
+    setText(objTagEl, `★ STORY · KAP. ${storyHud.chapterNumber}/5`);
+    objTagEl.classList.add('heist');
+    setText(objTitleEl, storyHud.title);
+    setText(objDescEl, storyHud.description);
+    setText(objDistEl, `${storyHud.distanceM} m`);
+  } else if (vigilanteHud.active) {
     setText(objTagEl, '★ VIGILANTE');
     objTagEl.classList.add('heist');
     setText(objTitleEl, vigilanteHud.title);

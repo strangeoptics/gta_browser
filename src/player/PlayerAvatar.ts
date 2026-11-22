@@ -1,111 +1,210 @@
 import * as THREE from 'three';
-import { buildLowPolyCharacter } from '../entities/CharacterBuilder';
-import { getOutfitBackTexture, getOutfitTexture } from '../entities/CharacterTextures';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
 const PLAYER_OUTFITS = [
-  { name: 'MIAMI WHITE SUIT', primary: '#f2e8e1', accent: '#36f1e6', pants: '#272c42', variant: 2, role: 'civilian' as const },
-  { name: 'HAWAIIAN TOURIST', primary: '#ff7b7b', accent: '#36f1e6', pants: '#f0e2ce', variant: 1, role: 'civilian' as const },
-  { name: 'MIDNIGHT NEON', primary: '#1e172b', accent: '#ff4fa3', pants: '#171522', variant: 2, role: 'civilian' as const },
-  { name: 'VICE DETECTIVE', primary: '#9fe6d8', accent: '#ffd15c', pants: '#f4eee8', variant: 2, role: 'civilian' as const },
-  { name: 'VICE PD UNIFORM', primary: '#1e325c', accent: '#ffd15c', pants: '#141d33', variant: 0, role: 'police' as const },
+  { name: 'MIAMI WHITE SUIT', primary: '#f2e8e1', accent: '#36f1e6', pants: '#272c42', shoes: '#f5f2ee', variant: 2, role: 'civilian' as const },
+  { name: 'HAWAIIAN TOURIST', primary: '#ff7b7b', accent: '#36f1e6', pants: '#f0e2ce', shoes: '#ffffff', variant: 1, role: 'civilian' as const },
+  { name: 'MIDNIGHT NEON', primary: '#1e172b', accent: '#ff4fa3', pants: '#171522', shoes: '#ff4fa3', variant: 2, role: 'civilian' as const },
+  { name: 'VICE DETECTIVE', primary: '#9fe6d8', accent: '#ffd15c', pants: '#f4eee8', shoes: '#2c2520', variant: 2, role: 'civilian' as const },
+  { name: 'VICE PD UNIFORM', primary: '#1e325c', accent: '#ffd15c', pants: '#141d33', shoes: '#141418', variant: 0, role: 'police' as const },
 ];
 
+type AnimKey = 'idle' | 'walk' | 'run' | 'jump' | 'runJump' | 'slash';
+
 /**
- * Stylized low-poly 80s Miami protagonist avatar displayed when playing in 3rd-Person View on foot.
- * Supports live outfit switching at the Safehouse Wardrobe & 2-segment limb articulation!
+ * Stylized 3D Low-Poly protagonist avatar powered by the rigged Quaternius Man GLB
+ * (`public/models/player_man.glb`) with AnimationMixer crossfades, live Safehouse
+ * outfit recoloring, Safehouse mirror Layer-1 support, and hand-bone weapon attachments.
  */
 export class PlayerAvatar {
   public readonly group = new THREE.Group();
-  private readonly bodyRoot: THREE.Group;
-  private readonly torsoMat: THREE.MeshStandardMaterial;
-  private readonly torsoBackMat: THREE.MeshStandardMaterial;
-  private readonly sleeveMat: THREE.MeshStandardMaterial;
-  private readonly pantsMat: THREE.MeshStandardMaterial;
-  private readonly leftLegPivot: THREE.Group;
-  private readonly rightLegPivot: THREE.Group;
-  private readonly leftKneePivot: THREE.Group;
-  private readonly rightKneePivot: THREE.Group;
-  private readonly leftArmPivot: THREE.Group;
-  private readonly rightArmPivot: THREE.Group;
-  private readonly leftElbowPivot: THREE.Group;
-  private readonly rightElbowPivot: THREE.Group;
-  private readonly gunMesh: THREE.Mesh;
-  private readonly katanaMesh: THREE.Mesh;
+  private readonly bodyRoot = new THREE.Group();
+
+  private mixer: THREE.AnimationMixer | null = null;
+  private readonly actions = new Map<AnimKey, THREE.AnimationAction>();
+  private currentAnim: AnimKey | null = null;
+
+  private shirtMat: THREE.MeshStandardMaterial | null = null;
+  private pantsMat: THREE.MeshStandardMaterial | null = null;
+  private socksMat: THREE.MeshStandardMaterial | null = null;
+
+  private upperArmR: THREE.Object3D | null = null;
+  private lowerArmR: THREE.Object3D | null = null;
+  private gunMesh: THREE.Mesh | null = null;
+  private katanaMesh: THREE.Mesh | null = null;
 
   private outfitIndex = 0;
-  private walkPhase = 0;
+  private swimPhase = 0;
+  private mirrorOnlyMode = false;
+  private aimBlend = 0;
 
   constructor(scene: THREE.Scene) {
-    const def = PLAYER_OUTFITS[0];
-    const rig = buildLowPolyCharacter({
-      role: def.role,
-      bodyType: 'male',
-      skinColor: '#e2b192',
-      hairColor: '#2b1e1b',
-      primaryColor: def.primary,
-      accentColor: def.accent,
-      pantsColor: def.pants,
-      shoeColor: '#f7f4f0',
-      outfitVariant: def.variant,
-      hairStyle: 'pompadour',
-      wearsSunglasses: true,
-      hasMustache: false,
-      shortSleeves: false,
-    });
-
-    this.bodyRoot = rig.bodyRoot;
     this.group.add(this.bodyRoot);
-
-    this.torsoMat = rig.materials.torsoFront;
-    this.torsoBackMat = rig.materials.torsoBack;
-    this.sleeveMat = rig.materials.sleeve;
-    this.pantsMat = rig.materials.pants;
-    this.leftArmPivot = rig.leftArmPivot;
-    this.rightArmPivot = rig.rightArmPivot;
-    this.leftElbowPivot = rig.leftElbowPivot;
-    this.rightElbowPivot = rig.rightElbowPivot;
-    this.leftLegPivot = rig.leftLegPivot;
-    this.rightLegPivot = rig.rightLegPivot;
-    this.leftKneePivot = rig.leftKneePivot;
-    this.rightKneePivot = rig.rightKneePivot;
-
-    // Held firearm mesh attached to right hand anchor
-    this.gunMesh = new THREE.Mesh(
-      new THREE.BoxGeometry(0.06, 0.085, 0.34),
-      new THREE.MeshStandardMaterial({ color: '#2b2636', metalness: 0.8, roughness: 0.28, flatShading: true }),
-    );
-    this.gunMesh.position.set(0, -0.05, 0.14);
-    this.gunMesh.rotation.x = Math.PI / 2;
-    rig.rightHandAnchor.add(this.gunMesh);
-
-    // Held Neon Katana mesh attached to right hand anchor (shown for slot 0)
-    this.katanaMesh = new THREE.Mesh(
-      new THREE.BoxGeometry(0.025, 0.85, 0.05),
-      new THREE.MeshStandardMaterial({
-        color: '#e6ffff',
-        emissive: '#36f1e6',
-        emissiveIntensity: 2.2,
-      }),
-    );
-    this.katanaMesh.position.set(0, -0.06, 0.42);
-    this.katanaMesh.rotation.x = Math.PI / 2;
-    this.katanaMesh.visible = false;
-    rig.rightHandAnchor.add(this.katanaMesh);
-
     this.group.visible = false;
     scene.add(this.group);
+
+    this.loadModel();
+  }
+
+  private loadModel(): void {
+    const loader = new GLTFLoader();
+    loader.load(
+      './models/player_man.glb',
+      (gltf) => {
+        const model = gltf.scene;
+
+        // Normalize height to 1.82m and ground feet cleanly at y = 0
+        model.updateMatrixWorld(true);
+        const rawBox = new THREE.Box3().setFromObject(model);
+        const rawSize = new THREE.Vector3();
+        rawBox.getSize(rawSize);
+        const targetHeight = 1.82;
+        const uniformScale = rawSize.y > 0.01 ? targetHeight / rawSize.y : 0.376;
+        model.scale.setScalar(uniformScale);
+
+        model.updateMatrixWorld(true);
+        const scaledBox = new THREE.Box3().setFromObject(model);
+        model.position.y = -scaledBox.min.y;
+
+        // Configure shadows, frustum culling (important for SkinnedMesh + mirror) & collect named materials
+        model.traverse((obj) => {
+          if (obj instanceof THREE.Mesh) {
+            obj.castShadow = true;
+            obj.receiveShadow = true;
+            if (obj instanceof THREE.SkinnedMesh) {
+              obj.frustumCulled = false;
+            }
+            const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+            for (const mat of mats) {
+              if (!(mat instanceof THREE.MeshStandardMaterial)) continue;
+              mat.flatShading = true;
+              mat.roughness = Math.max(mat.roughness, 0.55);
+              mat.needsUpdate = true;
+              if (mat.name === 'Shirt') this.shirtMat = mat;
+              else if (mat.name === 'Pants') this.pantsMat = mat;
+              else if (mat.name === 'Socks') this.socksMat = mat;
+            }
+          }
+        });
+
+        this.bodyRoot.add(model);
+
+        // Locate key bones for weapon & 80s shades attachments
+        // Note: HumanArmature inside this GLB has scale 100, so bone-attached meshes use invScale
+        const boneWorldScale = 100 * uniformScale;
+        const invBoneScale = 1 / boneWorldScale;
+
+        this.upperArmR = model.getObjectByName('UpperArm.R') ?? null;
+        this.lowerArmR = model.getObjectByName('LowerArm.R') ?? null;
+
+        const rightHandBone =
+          model.getObjectByName('MiddleHand.R') ??
+          model.getObjectByName('Palm.R') ??
+          model.getObjectByName('LowerArm.R');
+
+        if (rightHandBone) {
+          const weaponAnchor = new THREE.Group();
+          weaponAnchor.scale.setScalar(invBoneScale);
+          weaponAnchor.position.set(0, 0.0012, 0);
+          rightHandBone.add(weaponAnchor);
+
+          // Held firearm
+          this.gunMesh = new THREE.Mesh(
+            new THREE.BoxGeometry(0.06, 0.085, 0.34),
+            new THREE.MeshStandardMaterial({ color: '#2b2636', metalness: 0.8, roughness: 0.28, flatShading: true }),
+          );
+          this.gunMesh.position.set(0, 0.04, 0.14);
+          weaponAnchor.add(this.gunMesh);
+
+          // Held Neon Katana (shown for weapon slot 0)
+          this.katanaMesh = new THREE.Mesh(
+            new THREE.BoxGeometry(0.025, 0.85, 0.05),
+            new THREE.MeshStandardMaterial({
+              color: '#e6ffff',
+              emissive: '#36f1e6',
+              emissiveIntensity: 2.2,
+            }),
+          );
+          this.katanaMesh.position.set(0, 0.42, 0.03);
+          this.katanaMesh.visible = false;
+          weaponAnchor.add(this.katanaMesh);
+        }
+
+        // Setup AnimationMixer & map built-in Quaternius clips
+        this.mixer = new THREE.AnimationMixer(model);
+        const clipLookup: Record<AnimKey, string> = {
+          idle: 'HumanArmature|Man_Idle',
+          walk: 'HumanArmature|Man_Walk',
+          run: 'HumanArmature|Man_Run',
+          jump: 'HumanArmature|Man_Jump',
+          runJump: 'HumanArmature|Man_RunningJump',
+          slash: 'HumanArmature|Man_SwordSlash',
+        };
+
+        for (const [key, clipName] of Object.entries(clipLookup) as [AnimKey, string][]) {
+          const clip = gltf.animations.find((c) => c.name === clipName);
+          if (!clip) continue;
+          const action = this.mixer.clipAction(clip);
+          if (key === 'jump' || key === 'runJump') {
+            action.setLoop(THREE.LoopOnce, 1);
+            action.clampWhenFinished = true;
+          }
+          this.actions.set(key, action);
+        }
+
+        // Start in Idle
+        this.playAnim('idle', 0);
+
+        // Apply currently selected Safehouse outfit & mirror layer state
+        this.applyOutfitColors();
+        this.applyLayerState();
+      },
+      undefined,
+      (err) => {
+        console.warn('[PlayerAvatar] Failed to load ./models/player_man.glb:', err);
+      },
+    );
+  }
+
+  private playAnim(key: AnimKey, fadeDuration = 0.16): void {
+    if (this.currentAnim === key) return;
+    const next = this.actions.get(key);
+    if (!next) return;
+
+    const prev = this.currentAnim ? this.actions.get(this.currentAnim) : undefined;
+    next.reset().setEffectiveWeight(1).play();
+    if (prev && fadeDuration > 0) {
+      prev.crossFadeTo(next, fadeDuration, false);
+    } else if (prev) {
+      prev.stop();
+    }
+    this.currentAnim = key;
+  }
+
+  private applyOutfitColors(): void {
+    const o = PLAYER_OUTFITS[this.outfitIndex];
+    if (this.shirtMat) {
+      this.shirtMat.color.set(o.primary);
+    }
+    if (this.pantsMat) {
+      this.pantsMat.color.set(o.pants);
+    }
+    if (this.socksMat) {
+      this.socksMat.color.set(o.shoes);
+    }
+  }
+
+  private applyLayerState(): void {
+    const targetLayer = this.mirrorOnlyMode ? 1 : 0;
+    this.group.traverse((obj) => {
+      obj.layers.set(targetLayer);
+    });
   }
 
   public setOutfit(index: number): string {
     this.outfitIndex = ((index % PLAYER_OUTFITS.length) + PLAYER_OUTFITS.length) % PLAYER_OUTFITS.length;
-    const o = PLAYER_OUTFITS[this.outfitIndex];
-    this.torsoMat.map = getOutfitTexture(o.role, o.primary, o.accent, o.variant);
-    this.torsoMat.needsUpdate = true;
-    this.torsoBackMat.map = getOutfitBackTexture(o.role, o.primary, o.accent, o.variant);
-    this.torsoBackMat.needsUpdate = true;
-    this.sleeveMat.color.set(o.primary);
-    this.pantsMat.color.set(o.pants);
-    return o.name;
+    this.applyOutfitColors();
+    return PLAYER_OUTFITS[this.outfitIndex].name;
   }
 
   public nextOutfit(): string {
@@ -133,8 +232,6 @@ export class PlayerAvatar {
     };
   }
 
-  private mirrorOnlyMode = false;
-
   public setVisible(visible: boolean): void {
     this.group.visible = visible;
   }
@@ -146,10 +243,7 @@ export class PlayerAvatar {
   public setMirrorOnlyMode(mirrorOnly: boolean): void {
     if (this.mirrorOnlyMode === mirrorOnly) return;
     this.mirrorOnlyMode = mirrorOnly;
-    const targetLayer = mirrorOnly ? 1 : 0;
-    this.group.traverse((obj) => {
-      obj.layers.set(targetLayer);
-    });
+    this.applyLayerState();
   }
 
   public update(
@@ -166,8 +260,10 @@ export class PlayerAvatar {
   ): void {
     if (!this.group.visible) return;
     const clampedDt = Math.min(dt, 0.05);
+    const blend = 1 - Math.exp(-10 * clampedDt);
 
     this.group.position.copy(position);
+
     // In cover (not peeking), press back flat against the cover wall (face along outward normal)!
     if (coverState?.inCover && !coverState.peeking) {
       const targetRot = Math.atan2(coverState.normalX, coverState.normalZ);
@@ -180,59 +276,30 @@ export class PlayerAvatar {
       this.group.rotation.y = yaw + Math.PI;
     }
 
-    this.gunMesh.visible = !isKatana && !swimming;
-    this.katanaMesh.visible = isKatana && !swimming;
+    if (this.gunMesh) this.gunMesh.visible = !isKatana && !swimming;
+    if (this.katanaMesh) this.katanaMesh.visible = isKatana && !swimming;
 
     // Crouch squash (upright while swimming)
-    const targetScaleY = crouching && !swimming ? 0.72 : 1.0;
+    const targetScaleY = crouching && !swimming ? 0.75 : 1.0;
     this.bodyRoot.scale.y += (targetScaleY - this.bodyRoot.scale.y) * (1 - Math.exp(-12 * clampedDt));
 
-    const blend = 1 - Math.exp(-10 * clampedDt);
     if (swimming) {
       const moving = speed > 0.55;
       const strokeRate = moving ? (speed > 5.2 ? 7.8 : 5.6) : 2.6;
-      this.walkPhase += clampedDt * strokeRate;
+      this.swimPhase += clampedDt * strokeRate;
 
-      // Smoothly pitch torso prone for freestyle crawl when moving, or upright treading water when idle
-      // With player floating at y = -1.48 (ocean surface at -0.20), these offsets keep head & shoulders right at the surface!
-      const targetPitch = moving ? 1.32 : 0.16;
-      const targetRoll = moving ? Math.sin(this.walkPhase) * 0.22 : 0;
-      const targetLiftY = (moving ? 0.94 : 0.04) + Math.sin(this.walkPhase * (moving ? 1.0 : 1.5)) * 0.055;
+      const targetPitch = moving ? 1.28 : 0.14;
+      const targetRoll = moving ? Math.sin(this.swimPhase) * 0.2 : 0;
+      const targetLiftY = (moving ? 0.94 : 0.04) + Math.sin(this.swimPhase * (moving ? 1.0 : 1.5)) * 0.055;
       this.bodyRoot.rotation.x += (targetPitch - this.bodyRoot.rotation.x) * blend;
       this.bodyRoot.rotation.z += (targetRoll - this.bodyRoot.rotation.z) * blend;
       this.bodyRoot.position.y += (targetLiftY - this.bodyRoot.position.y) * blend;
 
-      if (moving) {
-        // Freestyle crawl: alternating overhead arm strokes + fast flutter kick!
-        const leftStroke = -Math.PI * 0.5 - Math.cos(this.walkPhase) * 1.45;
-        const rightStroke = -Math.PI * 0.5 + Math.cos(this.walkPhase) * 1.45;
-        this.leftArmPivot.rotation.x += (leftStroke - this.leftArmPivot.rotation.x) * blend;
-        this.rightArmPivot.rotation.x += (rightStroke - this.rightArmPivot.rotation.x) * blend;
-        this.leftElbowPivot.rotation.x += (-0.38 - this.leftElbowPivot.rotation.x) * blend;
-        this.rightElbowPivot.rotation.x += (-0.38 - this.rightElbowPivot.rotation.x) * blend;
-        this.leftArmPivot.rotation.z += ((0.28 + Math.sin(this.walkPhase) * 0.22) - this.leftArmPivot.rotation.z) * blend;
-        this.rightArmPivot.rotation.z += ((-0.28 + Math.sin(this.walkPhase) * 0.22) - this.rightArmPivot.rotation.z) * blend;
-
-        const kick = Math.sin(this.walkPhase * 2.2) * 0.42;
-        this.leftLegPivot.rotation.x = kick;
-        this.rightLegPivot.rotation.x = -kick;
-        this.leftKneePivot.rotation.x = Math.max(0.08, kick * 0.65);
-        this.rightKneePivot.rotation.x = Math.max(0.08, -kick * 0.65);
-      } else {
-        // Treading water: gentle breaststroke arm sweeps & slow alternating leg kicks
-        const sweep = Math.sin(this.walkPhase);
-        this.leftArmPivot.rotation.x += ((-0.65 + sweep * 0.35) - this.leftArmPivot.rotation.x) * blend;
-        this.rightArmPivot.rotation.x += ((-0.65 + sweep * 0.35) - this.rightArmPivot.rotation.x) * blend;
-        this.leftElbowPivot.rotation.x += (-0.55 - this.leftElbowPivot.rotation.x) * blend;
-        this.rightElbowPivot.rotation.x += (-0.55 - this.rightElbowPivot.rotation.x) * blend;
-        this.leftArmPivot.rotation.z += ((0.45 + Math.cos(this.walkPhase) * 0.35) - this.leftArmPivot.rotation.z) * blend;
-        this.rightArmPivot.rotation.z += ((-0.45 - Math.cos(this.walkPhase) * 0.35) - this.rightArmPivot.rotation.z) * blend;
-
-        const tread = Math.sin(this.walkPhase * 1.5) * 0.34;
-        this.leftLegPivot.rotation.x = tread;
-        this.rightLegPivot.rotation.x = -tread;
-        this.leftKneePivot.rotation.x = Math.max(0.15, 0.32 - tread * 0.6);
-        this.rightKneePivot.rotation.x = Math.max(0.15, 0.32 + tread * 0.6);
+      this.playAnim(moving ? 'run' : 'idle', 0.2);
+      if (this.mixer) {
+        const active = this.currentAnim ? this.actions.get(this.currentAnim) : undefined;
+        if (active) active.setEffectiveTimeScale(moving ? 1.25 : 0.75);
+        this.mixer.update(clampedDt);
       }
       return;
     }
@@ -240,42 +307,37 @@ export class PlayerAvatar {
     // Smoothly reset swim posture back to standing
     this.bodyRoot.rotation.x += (0 - this.bodyRoot.rotation.x) * blend;
     this.bodyRoot.rotation.z += (0 - this.bodyRoot.rotation.z) * blend;
-    this.leftArmPivot.rotation.z += (0 - this.leftArmPivot.rotation.z) * blend;
-    this.rightArmPivot.rotation.z += (0 - this.rightArmPivot.rotation.z) * blend;
+    this.bodyRoot.position.y += (0 - this.bodyRoot.position.y) * blend;
 
-    if (grounded && speed > 0.5) {
-      this.walkPhase += clampedDt * speed * 2.1;
-      const isSprinting = speed > 7.5;
-      const swing = Math.sin(this.walkPhase) * (isSprinting ? 0.72 : 0.46);
-      this.leftLegPivot.rotation.x = swing;
-      this.rightLegPivot.rotation.x = -swing;
-      // Natural knee bend during leg swing (positive X bends shin backward)
-      this.leftKneePivot.rotation.x = Math.max(0, Math.sin(this.walkPhase + 0.85)) * (isSprinting ? 0.95 : 0.52);
-      this.rightKneePivot.rotation.x = Math.max(0, Math.sin(this.walkPhase + Math.PI + 0.85)) * (isSprinting ? 0.95 : 0.52);
-      this.bodyRoot.position.y = Math.abs(Math.sin(this.walkPhase)) * 0.045;
-
-      if (aiming && !isKatana) {
-        this.rightArmPivot.rotation.x += (-1.38 - this.rightArmPivot.rotation.x) * blend;
-        this.rightElbowPivot.rotation.x += (-0.18 - this.rightElbowPivot.rotation.x) * blend;
-        this.leftArmPivot.rotation.x += (-1.05 - this.leftArmPivot.rotation.x) * blend;
-        this.leftElbowPivot.rotation.x += (-0.42 - this.leftElbowPivot.rotation.x) * blend;
-      } else {
-        this.leftArmPivot.rotation.x += (-swing * 0.65 - this.leftArmPivot.rotation.x) * blend;
-        this.leftElbowPivot.rotation.x += ((-0.28 - Math.max(0, -swing) * 0.55) - this.leftElbowPivot.rotation.x) * blend;
-        this.rightArmPivot.rotation.x += ((isKatana ? -0.45 : -0.95) + swing * 0.22 - this.rightArmPivot.rotation.x) * blend;
-        this.rightElbowPivot.rotation.x += ((isKatana ? -0.35 : -0.32) - this.rightElbowPivot.rotation.x) * blend;
-      }
+    // Select skeletal animation clip based on movement state
+    if (!grounded) {
+      this.playAnim(speed > 3.0 ? 'runJump' : 'jump', 0.12);
+    } else if (speed > 6.2) {
+      this.playAnim('run', 0.15);
+      const runAct = this.actions.get('run');
+      if (runAct) runAct.setEffectiveTimeScale(THREE.MathUtils.clamp(speed / 7.2, 0.85, 1.5));
+    } else if (speed > 0.45) {
+      this.playAnim('walk', 0.16);
+      const walkAct = this.actions.get('walk');
+      if (walkAct) walkAct.setEffectiveTimeScale(THREE.MathUtils.clamp(speed / 4.2, 0.7, 1.45));
     } else {
-      this.leftLegPivot.rotation.x *= 0.82;
-      this.rightLegPivot.rotation.x *= 0.82;
-      this.leftKneePivot.rotation.x *= 0.82;
-      this.rightKneePivot.rotation.x *= 0.82;
-      this.bodyRoot.position.y *= 0.82;
-      const aimX = isKatana ? -0.35 : aiming ? -1.42 : -0.95;
-      this.rightArmPivot.rotation.x += (aimX - this.rightArmPivot.rotation.x) * blend;
-      this.rightElbowPivot.rotation.x += ((aiming && !isKatana ? -0.15 : -0.35) - this.rightElbowPivot.rotation.x) * blend;
-      this.leftArmPivot.rotation.x += ((aiming && !isKatana ? -1.1 : -0.05) - this.leftArmPivot.rotation.x) * blend;
-      this.leftElbowPivot.rotation.x += ((aiming && !isKatana ? -0.42 : -0.18) - this.leftElbowPivot.rotation.x) * blend;
+      this.playAnim('idle', 0.18);
+      const idleAct = this.actions.get('idle');
+      if (idleAct) idleAct.setEffectiveTimeScale(1.0);
+    }
+
+    if (this.mixer) {
+      this.mixer.update(clampedDt);
+    }
+
+    // Subtle procedural upper-arm raise while aiming a firearm (applied post-mixer)
+    const targetAim = aiming && !isKatana ? 1 : 0;
+    this.aimBlend += (targetAim - this.aimBlend) * blend;
+    if (this.aimBlend > 0.01 && this.upperArmR) {
+      this.upperArmR.rotation.x -= 0.85 * this.aimBlend;
+      if (this.lowerArmR) {
+        this.lowerArmR.rotation.x -= 0.25 * this.aimBlend;
+      }
     }
   }
 }

@@ -278,3 +278,241 @@ export function getOutfitBackTexture(
   textureCache.set(key, tex);
   return tex;
 }
+
+export type PlayerGlbOutfitStyle = 'white-suit' | 'hawaiian' | 'midnight-neon' | 'detective' | 'police';
+
+/**
+ * Generates a 256x256 multi-zone outfit texture atlas for the rigged Quaternius GLB protagonist:
+ *  - Top-Left  (x: 0..128,   y: 0..128)   -> Front torso (u: 0..0.5, v: 0.5..1.0)
+ *  - Top-Right (x: 128..256, y: 0..128)   -> Back torso  (u: 0.5..1.0, v: 0.5..1.0)
+ *  - Bottom    (x: 0..256,   y: 128..256) -> Sleeves     (u: 0..1.0, v: 0..0.5)
+ */
+export function getPlayerGlbOutfitTexture(
+  style: PlayerGlbOutfitStyle,
+  primaryColor: string,
+  accentColor: string,
+): THREE.CanvasTexture {
+  const key = `player-glb-outfit:${style}:${primaryColor}:${accentColor}`;
+  const cached = textureCache.get(key);
+  if (cached) return cached;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d')!;
+
+  // Base fill across all zones (front, back, sleeves)
+  ctx.fillStyle = primaryColor;
+  ctx.fillRect(0, 0, 256, 256);
+
+  const drawHawaiianPattern = (ox: number, oy: number, w: number, h: number) => {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(ox, oy, w, h);
+    ctx.clip();
+    for (let y = oy + 12; y < oy + h; y += 24) {
+      for (let x = ox + 12; x < ox + w; x += 26) {
+        const shift = (y - oy) % 48 === 12 ? 0 : 13;
+        const px = x + shift;
+        ctx.fillStyle = accentColor;
+        ctx.beginPath();
+        ctx.ellipse(px, y, 10, 4, 0.55, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(px, y, 10, 4, -0.55, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Warm 80s hibiscus dot
+        if ((x + y) % 3 === 0) {
+          ctx.fillStyle = '#ffe066';
+          ctx.beginPath();
+          ctx.arc(px + 6, y + 6, 3.2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+    ctx.restore();
+  };
+
+  if (style === 'hawaiian') {
+    // Tropical pattern on Front, Back & Sleeves!
+    drawHawaiianPattern(0, 0, 128, 128);
+    drawHawaiianPattern(128, 0, 128, 128);
+    drawHawaiianPattern(0, 128, 256, 128);
+
+    // Front open camp collar & wooden shirt buttons
+    ctx.fillStyle = '#e2b192';
+    ctx.beginPath();
+    ctx.moveTo(46, 0);
+    ctx.lineTo(64, 24);
+    ctx.lineTo(82, 0);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = 'rgba(0,0,0,0.16)';
+    ctx.fillRect(62, 22, 4, 106);
+    ctx.fillStyle = '#fff5e6';
+    for (let y = 30; y < 120; y += 20) {
+      ctx.beginPath();
+      ctx.arc(64, y, 2.6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else if (style === 'police') {
+    // FRONT: Vice PD uniform shirt, collar, tie, dual pockets & gold badge
+    ctx.fillStyle = '#e8edf5';
+    ctx.beginPath();
+    ctx.moveTo(42, 0);
+    ctx.lineTo(64, 24);
+    ctx.lineTo(86, 0);
+    ctx.closePath();
+    ctx.fill();
+
+    // Dark tie & button placket
+    ctx.fillStyle = '#111a30';
+    ctx.fillRect(58, 16, 12, 112);
+
+    // Dual chest pockets
+    ctx.fillStyle = '#263e70';
+    ctx.fillRect(14, 38, 34, 30);
+    ctx.fillRect(80, 38, 34, 30);
+    ctx.strokeStyle = '#0e1629';
+    ctx.lineWidth = 2.5;
+    ctx.strokeRect(14, 38, 34, 30);
+    ctx.strokeRect(80, 38, 34, 30);
+
+    // Gold Vice PD badge on left chest
+    ctx.fillStyle = '#ffd15c';
+    ctx.beginPath();
+    ctx.arc(97, 26, 9, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#b8860b';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Gold shoulder epaulettes
+    ctx.fillStyle = '#ffd15c';
+    ctx.fillRect(4, 3, 28, 6);
+    ctx.fillRect(96, 3, 28, 6);
+
+    // BACK: Shoulder yoke + bold gold "VICE PD"
+    ctx.fillStyle = 'rgba(0,0,0,0.22)';
+    ctx.fillRect(128, 20, 128, 3);
+    ctx.fillRect(190, 22, 4, 106);
+    ctx.fillStyle = '#ffd15c';
+    ctx.font = '900 22px "Segoe UI", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('VICE PD', 192, 54);
+
+    // SLEEVES: Subtle gold sleeve patch & dark cuff trim
+    ctx.fillStyle = '#ffd15c';
+    ctx.fillRect(112, 150, 32, 14);
+    ctx.fillStyle = '#10182b';
+    ctx.fillRect(0, 240, 256, 16);
+  } else if (style === 'midnight-neon') {
+    // FRONT: Midnight dark synthwave jacket over hot-pink V-shirt + neon piping
+    ctx.fillStyle = accentColor;
+    ctx.beginPath();
+    ctx.moveTo(38, 0);
+    ctx.lineTo(90, 0);
+    ctx.lineTo(78, 128);
+    ctx.lineTo(50, 128);
+    ctx.closePath();
+    ctx.fill();
+
+    // Subtle chest stripes on inner shirt
+    ctx.fillStyle = 'rgba(255,255,255,0.25)';
+    ctx.fillRect(46, 34, 36, 5);
+    ctx.fillRect(48, 46, 32, 4);
+
+    // Neon lapel edge trim
+    ctx.strokeStyle = '#36f1e6';
+    ctx.lineWidth = 3.5;
+    ctx.beginPath();
+    ctx.moveTo(37, 0);
+    ctx.lineTo(49, 128);
+    ctx.moveTo(91, 0);
+    ctx.lineTo(79, 128);
+    ctx.stroke();
+
+    // BACK: Tailored dark jacket with neon back-seam stripe
+    ctx.fillStyle = 'rgba(255,79,163,0.45)';
+    ctx.fillRect(128, 18, 128, 3);
+    ctx.fillStyle = 'rgba(54,241,230,0.4)';
+    ctx.fillRect(190, 20, 4, 108);
+
+    // SLEEVES: Neon accent cuff stripe
+    ctx.fillStyle = accentColor;
+    ctx.fillRect(0, 236, 256, 8);
+  } else {
+    // MIAMI WHITE SUIT or VICE DETECTIVE: Tailored 80s open pastel blazer over tee
+    const teeColor = style === 'white-suit' ? '#36f1e6' : '#fff8ee';
+    const stripeColor = style === 'white-suit' ? '#ffffff' : accentColor;
+
+    // Open blazer inner shirt
+    ctx.fillStyle = teeColor;
+    ctx.fillRect(40, 0, 48, 128);
+
+    // Subtle retro chest stripe
+    ctx.fillStyle = stripeColor;
+    ctx.fillRect(42, 34, 44, 9);
+    ctx.fillRect(42, 49, 44, 4);
+
+    // Blazer lapels & pocket square
+    ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(40, 0);
+    ctx.lineTo(40, 128);
+    ctx.moveTo(88, 0);
+    ctx.lineTo(88, 128);
+    ctx.stroke();
+
+    // Lapel notch shading
+    ctx.fillStyle = 'rgba(0,0,0,0.08)';
+    ctx.beginPath();
+    ctx.moveTo(40, 0);
+    ctx.lineTo(24, 34);
+    ctx.lineTo(40, 62);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(88, 0);
+    ctx.lineTo(104, 34);
+    ctx.lineTo(88, 62);
+    ctx.closePath();
+    ctx.fill();
+
+    // Pocket square on left chest
+    ctx.fillStyle = accentColor;
+    ctx.fillRect(96, 36, 18, 7);
+
+    // Jacket buttons
+    ctx.fillStyle = 'rgba(0,0,0,0.28)';
+    ctx.beginPath();
+    ctx.arc(32, 82, 3, 0, Math.PI * 2);
+    ctx.arc(32, 102, 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // BACK: Tailored blazer yoke, center seam & vent
+    ctx.fillStyle = 'rgba(0,0,0,0.08)';
+    ctx.fillRect(128, 0, 128, 16);
+    ctx.strokeStyle = 'rgba(0,0,0,0.16)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(192, 14);
+    ctx.lineTo(192, 128);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(0,0,0,0.22)';
+    ctx.fillRect(190, 100, 4, 28);
+
+    // SLEEVES: Subtle tailored cuff line
+    ctx.fillStyle = 'rgba(0,0,0,0.12)';
+    ctx.fillRect(0, 238, 256, 4);
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  textureCache.set(key, tex);
+  return tex;
+}

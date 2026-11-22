@@ -1,20 +1,175 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { getPlayerGlbOutfitTexture, type PlayerGlbOutfitStyle } from '../entities/CharacterTextures';
 
-const PLAYER_OUTFITS = [
-  { name: 'MIAMI WHITE SUIT', primary: '#f2e8e1', accent: '#36f1e6', pants: '#272c42', shoes: '#f5f2ee', variant: 2, role: 'civilian' as const },
-  { name: 'HAWAIIAN TOURIST', primary: '#ff7b7b', accent: '#36f1e6', pants: '#f0e2ce', shoes: '#ffffff', variant: 1, role: 'civilian' as const },
-  { name: 'MIDNIGHT NEON', primary: '#1e172b', accent: '#ff4fa3', pants: '#171522', shoes: '#ff4fa3', variant: 2, role: 'civilian' as const },
-  { name: 'VICE DETECTIVE', primary: '#9fe6d8', accent: '#ffd15c', pants: '#f4eee8', shoes: '#2c2520', variant: 2, role: 'civilian' as const },
-  { name: 'VICE PD UNIFORM', primary: '#1e325c', accent: '#ffd15c', pants: '#141d33', shoes: '#141418', variant: 0, role: 'police' as const },
+interface PlayerOutfitDef {
+  name: string;
+  style: PlayerGlbOutfitStyle;
+  primary: string;
+  accent: string;
+  pants: string;
+  shoes: string;
+  variant: number;
+  role: 'civilian' | 'police';
+  policeCap: boolean;
+  goldChain: boolean;
+}
+
+const PLAYER_OUTFITS: PlayerOutfitDef[] = [
+  {
+    name: 'MIAMI WHITE SUIT',
+    style: 'white-suit',
+    primary: '#f2e8e1',
+    accent: '#36f1e6',
+    pants: '#272c42',
+    shoes: '#f5f2ee',
+    variant: 2,
+    role: 'civilian',
+    policeCap: false,
+    goldChain: false,
+  },
+  {
+    name: 'HAWAIIAN TOURIST',
+    style: 'hawaiian',
+    primary: '#ff7b7b',
+    accent: '#36f1e6',
+    pants: '#f0e2ce',
+    shoes: '#ffffff',
+    variant: 1,
+    role: 'civilian',
+    policeCap: false,
+    goldChain: false,
+  },
+  {
+    name: 'MIDNIGHT NEON',
+    style: 'midnight-neon',
+    primary: '#1e172b',
+    accent: '#ff4fa3',
+    pants: '#171522',
+    shoes: '#ff4fa3',
+    variant: 2,
+    role: 'civilian',
+    policeCap: false,
+    goldChain: true,
+  },
+  {
+    name: 'VICE DETECTIVE',
+    style: 'detective',
+    primary: '#9fe6d8',
+    accent: '#ffd15c',
+    pants: '#f4eee8',
+    shoes: '#2c2520',
+    variant: 2,
+    role: 'civilian',
+    policeCap: false,
+    goldChain: true,
+  },
+  {
+    name: 'VICE PD UNIFORM',
+    style: 'police',
+    primary: '#1e325c',
+    accent: '#ffd15c',
+    pants: '#141d33',
+    shoes: '#141418',
+    variant: 0,
+    role: 'police',
+    policeCap: true,
+    goldChain: false,
+  },
 ];
 
 type AnimKey = 'idle' | 'walk' | 'run' | 'jump' | 'runJump' | 'slash';
 
 /**
+ * Generates seamless per-triangle UVs on the Quaternius Shirt SkinnedMesh so our
+ * 256x256 procedural 80s Miami outfit textures (front, back & sleeves) map crisply!
+ */
+function assignShirtOutfitUVs(mesh: THREE.Mesh): void {
+  const nonIndexed = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry;
+  const pos = nonIndexed.getAttribute('position');
+  if (!pos) return;
+
+  const uvs = new Float32Array(pos.count * 2);
+  // Raw Blender bind-pose bounds for Quaternius Shirt:
+  // X: -0.0086..0.0086 (torso core: -0.0041..+0.0041), Y: -0.0035 (front)..+0.0040 (back), Z: 0.0248..0.0405 (up)
+  const torsoHalfX = 0.0041;
+  const zMin = 0.0248;
+  const zSpan = 0.0405 - zMin;
+
+  for (let i = 0; i < pos.count; i += 3) {
+    const cx = (pos.getX(i) + pos.getX(i + 1) + pos.getX(i + 2)) / 3;
+    const cy = (pos.getY(i) + pos.getY(i + 1) + pos.getY(i + 2)) / 3;
+
+    const isSleeve = Math.abs(cx) > torsoHalfX;
+    const isFront = cy <= 0.0002;
+
+    for (let k = 0; k < 3; k++) {
+      const vi = i + k;
+      const x = pos.getX(vi);
+      const y = pos.getY(vi);
+      const z = pos.getZ(vi);
+      const vNorm = THREE.MathUtils.clamp((z - zMin) / zSpan, 0, 1);
+
+      let u: number;
+      let v: number;
+      if (isSleeve) {
+        // Bottom half of 256x256 atlas: sleeves (u: 0..1, v: 0..0.48)
+        const sleeveFrac = THREE.MathUtils.clamp((Math.abs(x) - torsoHalfX) / 0.0046, 0, 1);
+        u = THREE.MathUtils.clamp((y + 0.0035) / 0.0075, 0.02, 0.98);
+        v = 0.46 - sleeveFrac * 0.44;
+      } else if (isFront) {
+        // Top-Left quadrant: Front torso (u: 0.02..0.48, v: 0.52..0.98)
+        const xNorm = THREE.MathUtils.clamp((x + torsoHalfX) / (torsoHalfX * 2), 0, 1);
+        u = 0.02 + xNorm * 0.46;
+        v = 0.52 + vNorm * 0.46;
+      } else {
+        // Top-Right quadrant: Back torso (u: 0.52..0.98, v: 0.52..0.98)
+        const xNorm = THREE.MathUtils.clamp((torsoHalfX - x) / (torsoHalfX * 2), 0, 1);
+        u = 0.52 + xNorm * 0.46;
+        v = 0.52 + vNorm * 0.46;
+      }
+
+      uvs[vi * 2] = u;
+      uvs[vi * 2 + 1] = v;
+    }
+  }
+
+  nonIndexed.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+  mesh.geometry = nonIndexed;
+}
+
+/**
+ * Helper: attaches a world-scale accessory Group to a bone at an exact model-space position
+ * while preserving upright (+Y up, +Z forward) alignment regardless of Blender bone roll.
+ */
+function attachAccessoryToBone(
+  bone: THREE.Object3D,
+  modelRoot: THREE.Object3D,
+  worldPos: THREE.Vector3,
+  uniformScale: number,
+  accessory: THREE.Object3D,
+): void {
+  modelRoot.updateMatrixWorld(true);
+
+  const localPos = worldPos.clone();
+  bone.worldToLocal(localPos);
+
+  const boneWorldQuat = new THREE.Quaternion();
+  bone.getWorldQuaternion(boneWorldQuat);
+
+  const wrapper = new THREE.Group();
+  wrapper.position.copy(localPos);
+  wrapper.quaternion.copy(boneWorldQuat).invert();
+  wrapper.scale.setScalar(1 / (100 * uniformScale));
+  wrapper.add(accessory);
+  bone.add(wrapper);
+}
+
+/**
  * Stylized 3D Low-Poly protagonist avatar powered by the rigged Quaternius Man GLB
- * (`public/models/player_man.glb`) with AnimationMixer crossfades, live Safehouse
- * outfit recoloring, Safehouse mirror Layer-1 support, and hand-bone weapon attachments.
+ * (`public/models/player_man.glb`) with AnimationMixer crossfades, procedural UV-mapped
+ * 80s Miami outfits (suits, Hawaiian print, Midnight Neon, Vice PD uniform + cap),
+ * 3D 80s sunglasses, gold chain, Safehouse mirror Layer-1 support, and hand-bone weapons.
  */
 export class PlayerAvatar {
   public readonly group = new THREE.Group();
@@ -28,6 +183,8 @@ export class PlayerAvatar {
   private pantsMat: THREE.MeshStandardMaterial | null = null;
   private socksMat: THREE.MeshStandardMaterial | null = null;
 
+  private policeCapGroup: THREE.Group | null = null;
+  private goldChainGroup: THREE.Group | null = null;
   private upperArmR: THREE.Object3D | null = null;
   private lowerArmR: THREE.Object3D | null = null;
   private gunMesh: THREE.Mesh | null = null;
@@ -66,7 +223,7 @@ export class PlayerAvatar {
         const scaledBox = new THREE.Box3().setFromObject(model);
         model.position.y = -scaledBox.min.y;
 
-        // Configure shadows, frustum culling (important for SkinnedMesh + mirror) & collect named materials
+        // Configure shadows, frustum culling, procedural Shirt UVs & collect named materials
         model.traverse((obj) => {
           if (obj instanceof THREE.Mesh) {
             obj.castShadow = true;
@@ -78,22 +235,103 @@ export class PlayerAvatar {
             for (const mat of mats) {
               if (!(mat instanceof THREE.MeshStandardMaterial)) continue;
               mat.flatShading = true;
-              mat.roughness = Math.max(mat.roughness, 0.55);
+              mat.roughness = Math.max(mat.roughness, 0.58);
               mat.needsUpdate = true;
-              if (mat.name === 'Shirt') this.shirtMat = mat;
-              else if (mat.name === 'Pants') this.pantsMat = mat;
-              else if (mat.name === 'Socks') this.socksMat = mat;
+              if (mat.name === 'Shirt') {
+                this.shirtMat = mat;
+                assignShirtOutfitUVs(obj);
+              } else if (mat.name === 'Pants') {
+                this.pantsMat = mat;
+              } else if (mat.name === 'Socks') {
+                this.socksMat = mat;
+              }
             }
           }
         });
 
         this.bodyRoot.add(model);
 
-        // Locate key bones for weapon & 80s shades attachments
-        // Note: HumanArmature inside this GLB has scale 100, so bone-attached meshes use invScale
-        const boneWorldScale = 100 * uniformScale;
-        const invBoneScale = 1 / boneWorldScale;
+        // Attach bone-mounted 80s accessories (Sunglasses, Vice PD Cap, Gold Chain)
+        const headBone = model.getObjectByName('Head');
+        if (headBone) {
+          // 1. Iconic 80s Sunset Wayfarer Sunglasses
+          const shades = new THREE.Group();
+          const frameMat = new THREE.MeshStandardMaterial({ color: '#14101c', roughness: 0.3, flatShading: true });
+          const lensMat = new THREE.MeshStandardMaterial({
+            color: '#20183a',
+            emissive: '#2998b8',
+            emissiveIntensity: 0.34,
+            metalness: 0.85,
+            roughness: 0.12,
+            flatShading: true,
+          });
+          const bridge = new THREE.Mesh(new THREE.BoxGeometry(0.036, 0.014, 0.014), frameMat);
+          bridge.position.set(0, 0.005, 0.004);
+          shades.add(bridge);
+          for (const side of [-1, 1] as const) {
+            const frame = new THREE.Mesh(new THREE.BoxGeometry(0.072, 0.044, 0.016), frameMat);
+            frame.position.set(side * 0.048, 0, 0);
+            frame.rotation.y = side * -0.14;
+            shades.add(frame);
 
+            const lens = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.033, 0.018), lensMat);
+            lens.position.set(side * 0.048, 0, 0.002);
+            lens.rotation.y = side * -0.14;
+            shades.add(lens);
+
+            const temple = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.012, 0.12), frameMat);
+            temple.position.set(side * 0.092, 0.008, -0.06);
+            shades.add(temple);
+          }
+          attachAccessoryToBone(headBone, model, new THREE.Vector3(0, 1.655, 0.118), uniformScale, shades);
+
+          // 2. 3D Vice PD Peaked Officer Cap (shown when wearing VICE PD UNIFORM)
+          const cap = new THREE.Group();
+          const capDark = new THREE.MeshStandardMaterial({ color: '#142447', roughness: 0.55, flatShading: true });
+          const capBrim = new THREE.MeshStandardMaterial({ color: '#0d1018', roughness: 0.28, flatShading: true });
+          const goldMat = new THREE.MeshStandardMaterial({ color: '#ffd15c', metalness: 0.85, roughness: 0.22, flatShading: true });
+
+          const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.12, 0.09, 8), capDark);
+          crown.position.set(0, 0.045, 0);
+          cap.add(crown);
+
+          const band = new THREE.Mesh(new THREE.CylinderGeometry(0.123, 0.123, 0.026, 8), capBrim);
+          band.position.set(0, 0.01, 0);
+          cap.add(band);
+
+          const brim = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.118, 0.128, 0.016, 8, 1, false, -Math.PI * 0.35, Math.PI * 0.7),
+            capBrim,
+          );
+          brim.position.set(0, 0.003, 0.052);
+          brim.rotation.x = 0.16;
+          cap.add(brim);
+
+          const emblem = new THREE.Mesh(new THREE.OctahedronGeometry(0.024, 0), goldMat);
+          emblem.scale.set(1, 1.1, 0.4);
+          emblem.position.set(0, 0.042, 0.128);
+          cap.add(emblem);
+
+          cap.visible = false;
+          this.policeCapGroup = cap;
+          attachAccessoryToBone(headBone, model, new THREE.Vector3(0, 1.755, -0.008), uniformScale, cap);
+        }
+
+        // 3. 3D 80s Gold Chain on Torso (shown on Midnight Neon & Vice Detective)
+        const torsoBone = model.getObjectByName('Torso');
+        if (torsoBone) {
+          const chainGroup = new THREE.Group();
+          const goldMat = new THREE.MeshStandardMaterial({ color: '#ffd15c', metalness: 0.88, roughness: 0.2, flatShading: true });
+          const chain = new THREE.Mesh(new THREE.TorusGeometry(0.062, 0.01, 5, 12, Math.PI), goldMat);
+          chain.rotation.z = Math.PI;
+          chainGroup.add(chain);
+          chainGroup.visible = false;
+          this.goldChainGroup = chainGroup;
+          attachAccessoryToBone(torsoBone, model, new THREE.Vector3(0, 1.44, 0.125), uniformScale, chainGroup);
+        }
+
+        // Locate right arm & hand bones for weapon attachments
+        const invBoneScale = 1 / (100 * uniformScale);
         this.upperArmR = model.getObjectByName('UpperArm.R') ?? null;
         this.lowerArmR = model.getObjectByName('LowerArm.R') ?? null;
 
@@ -156,7 +394,7 @@ export class PlayerAvatar {
         this.playAnim('idle', 0);
 
         // Apply currently selected Safehouse outfit & mirror layer state
-        this.applyOutfitColors();
+        this.applyOutfitAppearance();
         this.applyLayerState();
       },
       undefined,
@@ -181,16 +419,24 @@ export class PlayerAvatar {
     this.currentAnim = key;
   }
 
-  private applyOutfitColors(): void {
+  private applyOutfitAppearance(): void {
     const o = PLAYER_OUTFITS[this.outfitIndex];
     if (this.shirtMat) {
-      this.shirtMat.color.set(o.primary);
+      this.shirtMat.color.set('#ffffff');
+      this.shirtMat.map = getPlayerGlbOutfitTexture(o.style, o.primary, o.accent);
+      this.shirtMat.needsUpdate = true;
     }
     if (this.pantsMat) {
       this.pantsMat.color.set(o.pants);
     }
     if (this.socksMat) {
       this.socksMat.color.set(o.shoes);
+    }
+    if (this.policeCapGroup) {
+      this.policeCapGroup.visible = o.policeCap;
+    }
+    if (this.goldChainGroup) {
+      this.goldChainGroup.visible = o.goldChain;
     }
   }
 
@@ -203,7 +449,7 @@ export class PlayerAvatar {
 
   public setOutfit(index: number): string {
     this.outfitIndex = ((index % PLAYER_OUTFITS.length) + PLAYER_OUTFITS.length) % PLAYER_OUTFITS.length;
-    this.applyOutfitColors();
+    this.applyOutfitAppearance();
     return PLAYER_OUTFITS[this.outfitIndex].name;
   }
 

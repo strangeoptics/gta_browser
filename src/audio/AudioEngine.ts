@@ -879,6 +879,25 @@ export class AudioEngine {
     src.stop(now + 0.06);
   }
 
+  public playWaterCannonPulse(): void {
+    if (!this.ctx || !this.masterGain || !this.noiseBuffer || this.muted) return;
+    const now = this.ctx.currentTime;
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.noiseBuffer;
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(1150 + Math.random() * 380, now);
+    filter.Q.value = 1.1;
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0.085, now);
+    gain.gain.exponentialRampToValueAtTime(0.002, now + 0.14);
+    src.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.masterGain);
+    src.start(now);
+    src.stop(now + 0.15);
+  }
+
   public update(
     dt: number,
     elapsed: number,
@@ -892,6 +911,7 @@ export class AudioEngine {
     playerX = 0,
     clubProximity = 0,
     rideAudioMode: 'motor' | 'skateboard' | 'roadbike' = 'motor',
+    emergencySirenActive = false,
   ): void {
     if (
       !this.ctx ||
@@ -944,9 +964,12 @@ export class AudioEngine {
     this.screechGain.gain.setTargetAtTime(targetScreech, now, 0.05);
     this.screechOsc.frequency.setTargetAtTime(860 + Math.sin(elapsed * 22) * 90, now, 0.03);
 
-    // 3) Subtle distant Vice PD siren when Wanted > 0
-    const targetSirenGain = isActive && wantedStars > 0 ? 0.035 + wantedStars * 0.008 : 0;
-    const wail = 560 + Math.sin(elapsed * 4.2) * 185;
+    // 3) Subtle Vice PD / Ambulance / Firetruck siren when Wanted > 0 or emergency mission active
+    const targetSirenGain =
+      isActive && (wantedStars > 0 || emergencySirenActive)
+        ? Math.max(wantedStars > 0 ? 0.035 + wantedStars * 0.008 : 0, emergencySirenActive ? 0.048 : 0)
+        : 0;
+    const wail = 560 + Math.sin(elapsed * (emergencySirenActive ? 5.2 : 4.2)) * 185;
     this.sirenGain.gain.setTargetAtTime(targetSirenGain, now, 0.12);
     this.sirenOsc.frequency.setTargetAtTime(wail, now, 0.04);
 

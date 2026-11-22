@@ -187,7 +187,17 @@ export class Minimap {
       if (v.destroyed) continue;
       const vx = (v.position.x - playerX) * scale;
       const vz = (v.position.z - playerZ) * scale;
-      ctx.fillStyle = v.isPolice ? (Math.sin(elapsed * 12) > 0 ? '#ff3355' : '#33aaff') : '#ff9f43';
+      if (v.isPolice) {
+        ctx.fillStyle = Math.sin(elapsed * 12) > 0 ? '#ff3355' : '#33aaff';
+      } else if (v.specialRole === 'taxi') {
+        ctx.fillStyle = '#ffd15c';
+      } else if (v.specialRole === 'ambulance') {
+        ctx.fillStyle = Math.sin(elapsed * 10) > 0 ? '#ffffff' : '#ff3355';
+      } else if (v.specialRole === 'firetruck') {
+        ctx.fillStyle = Math.sin(elapsed * 10) > 0 ? '#ff2a3c' : '#ffaa22';
+      } else {
+        ctx.fillStyle = '#ff9f43';
+      }
       ctx.fillRect(vx - 2.5, vz - 2.5, 5, 5);
     }
 

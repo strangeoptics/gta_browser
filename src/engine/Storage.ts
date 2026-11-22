@@ -16,6 +16,8 @@ export interface SaveProgress {
   rooftopBarOwned?: boolean;
   completedMissionIds?: string[];
   storyChapter?: number; // 0..5 (number of completed story chapters)
+  paramedicRescues?: number;
+  maxHpUnlocked?: boolean;
   starterBonusApplied?: boolean;
 }
 
@@ -40,6 +42,8 @@ export const DEFAULT_PROGRESS: SaveProgress = {
   rooftopBarOwned: false,
   completedMissionIds: [],
   storyChapter: 0,
+  paramedicRescues: 0,
+  maxHpUnlocked: false,
   starterBonusApplied: true,
 };
 
@@ -102,6 +106,9 @@ export function loadProgress(): SaveProgress {
         : [],
       storyChapter:
         typeof parsed.storyChapter === 'number' ? Math.max(0, Math.min(5, Math.floor(parsed.storyChapter))) : 0,
+      paramedicRescues:
+        typeof parsed.paramedicRescues === 'number' ? Math.max(0, Math.floor(parsed.paramedicRescues)) : 0,
+      maxHpUnlocked: Boolean(parsed.maxHpUnlocked),
       starterBonusApplied: true,
     };
   } catch {

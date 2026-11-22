@@ -26,6 +26,7 @@ import { MISSION_CONTRACTS, ObjectiveSystem, type MissionDistrict } from './game
 import { STORY_CHAPTERS, StoryCampaign } from './gameplay/StoryCampaign';
 import { HeistSystem } from './gameplay/HeistSystem';
 import { VigilanteSystem } from './gameplay/VigilanteSystem';
+import { SpecialVehicleMissionSystem, PARAMEDIC_MAX_HP_RESCUES_REQUIRED } from './gameplay/SpecialVehicleMissions';
 import { ShopSystem } from './gameplay/ShopSystem';
 import { PayNSpray } from './gameplay/PayNSpray';
 import { Minimap } from './hud/Minimap';
@@ -194,6 +195,7 @@ const objectives = new ObjectiveSystem(scene);
 const story = new StoryCampaign(scene);
 const heist = new HeistSystem(scene);
 const vigilante = new VigilanteSystem();
+const specialMissions = new SpecialVehicleMissionSystem(scene);
 const shop = new ShopSystem(scene);
 const payNSpray = new PayNSpray(scene);
 const minimap = new Minimap(minimapCanvas);
@@ -217,7 +219,8 @@ renderer.compile(scene, camera);
 // Player Health, Armor & Shop State (restored from localStorage)
 const savedProgress = loadProgress();
 let settings: GameSettings = loadSettings();
-let playerHp = 100;
+let playerMaxHp = savedProgress.maxHpUnlocked ? 150 : 100;
+let playerHp = playerMaxHp;
 let playerArmor = savedProgress.armor;
 let damageFlash = 0;
 let shakeTrauma = 0;
@@ -309,7 +312,7 @@ function eatLookedFood(): boolean {
   const item = lookedFood;
   world.consumeFood(item);
   const prevHp = playerHp;
-  playerHp = Math.min(100, playerHp + item.heal);
+  playerHp = Math.min(playerMaxHp, playerHp + item.heal);
   const gained = Math.round(playerHp - prevHp);
   audio.playEatCrunch();
   weapons.triggerEatAnimation();
@@ -334,6 +337,7 @@ objectives.cash = savedProgress.cash;
 objectives.completedCount = savedProgress.completedMissions;
 objectives.setCompletedIds(savedProgress.completedMissionIds ?? []);
 story.setCompletedChapters(savedProgress.storyChapter ?? 0);
+specialMissions.setParamedicProgress(savedProgress.paramedicRescues ?? 0, Boolean(savedProgress.maxHpUnlocked));
 playerAvatar.setOutfit(savedProgress.outfitIndex);
 pets.setOwnedPets((savedProgress.ownedPets ?? []) as PetId[]);
 world.setSafehouseRooftopBarOwned(Boolean(savedProgress.rooftopBarOwned));
@@ -344,6 +348,7 @@ if (savedProgress.launcherUnlocked) {
 }
 
 function persistProgress(): void {
+  const paramedic = specialMissions.getParamedicProgress();
   saveProgress({
     cash: objectives.cash,
     completedMissions: objectives.completedCount,
@@ -354,6 +359,8 @@ function persistProgress(): void {
     rooftopBarOwned: world.isSafehouseRooftopBarOwned(),
     completedMissionIds: objectives.getCompletedIds(),
     storyChapter: story.getCompletedChapters(),
+    paramedicRescues: paramedic.rescues,
+    maxHpUnlocked: paramedic.maxHpUnlocked,
     starterBonusApplied: true,
   });
   statCashEl.textContent = `$${objectives.cash.toLocaleString('en-US')}`;
@@ -410,6 +417,10 @@ resetSaveBtn.addEventListener('click', () => {
   objectives.setCompletedIds([]);
   story.setCompletedChapters(0);
   story.cancelChapter(npcs);
+  specialMissions.setParamedicProgress(0, false);
+  specialMissions.stop();
+  playerMaxHp = 100;
+  playerHp = 100;
   persistProgress();
 });
 
@@ -553,6 +564,7 @@ vehicles.onStuntLanded = (distM, reward) => {
   audio.playMissionPassed();
   addCameraShake(0.32);
   persistProgress();
+  specialMissions.notifyTaxiStuntJump(distM);
   showQuickToast(`INSANE STUNT BONUS · ${distM}m · +$${reward}`);
 };
 
@@ -670,7 +682,7 @@ objectives.onCheckpointReached = () => {
 // AMMU-NEON Shop UI Flow
 function refreshShopUi(): void {
   shopCashEl.textContent = `$${objectives.cash.toLocaleString('en-US')}`;
-  buyMedkitBtn.disabled = objectives.cash < 250 || playerHp >= 100;
+  buyMedkitBtn.disabled = objectives.cash < 250 || playerHp >= playerMaxHp;
   buyArmorBtn.disabled = objectives.cash < 400 || playerArmor >= 100;
   if (weapons.isLauncherUnlocked()) {
     buyLauncherBtn.textContent = 'FREIGESCHALTET [4] · MUNITION VOLL ($200)';
@@ -700,9 +712,9 @@ function closeShop(): void {
 }
 
 buyMedkitBtn.addEventListener('click', () => {
-  if (objectives.cash < 250 || playerHp >= 100) return;
+  if (objectives.cash < 250 || playerHp >= playerMaxHp) return;
   objectives.cash -= 250;
-  playerHp = Math.min(100, playerHp + 50);
+  playerHp = Math.min(playerMaxHp, playerHp + 50);
   audio.playPurchase();
   persistProgress();
   refreshShopUi();
@@ -1088,7 +1100,7 @@ function interactWithLookedPet(): boolean {
 
   if (p.id === 'cleo') {
     audio.playCatPurr();
-    playerHp = Math.min(100, playerHp + 15);
+    playerHp = Math.min(playerMaxHp, playerHp + 15);
     showQuickToast('KATZE „CLEO“ SCHNURRT ZUFRIEDEN · +15 HP');
   } else if (p.id === 'rico') {
     audio.playParrotSquawk();
@@ -1101,7 +1113,7 @@ function interactWithLookedPet(): boolean {
     showQuickToast('DOBERMANN „ZEUS“ FREUT SICH RIESIG! · +25% KEVLAR-MORAL');
   } else if (p.id === 'elvis') {
     audio.playGatorSnap();
-    playerHp = Math.min(100, playerHp + 25);
+    playerHp = Math.min(playerMaxHp, playerHp + 25);
     showQuickToast('ALLIGATOR „ELVIS“ VERSCHLINGT DAS STEAK! · +25 HP');
   }
   return true;
@@ -1379,13 +1391,42 @@ window.addEventListener('keydown', (e) => {
     if (vigilante.isActive()) {
       vigilante.stop(npcs);
       showQuickToast('VIGILANTE-MODUS BEENDET');
+    } else if (specialMissions.isActive()) {
+      const k = specialMissions.getActiveKind();
+      specialMissions.stop();
+      showQuickToast(
+        k === 'taxi'
+          ? 'TAXI-MODUS BEENDET'
+          : k === 'firefighter'
+            ? 'FEUERWEHR-EINSATZ BEENDET'
+            : 'RETTUNGSDIENST BEENDET',
+      );
     } else if (car && car.isPolice) {
       vigilante.start(player.position, npcs);
       audio.playCheckpoint();
       sendPoliceDispatch('Vigilante-Modus aktiv! Erster Verdächtiger auf dem Radar markiert.', true);
       showQuickToast('VIGILANTE · STUFE 1 GESTARTET');
+    } else if (car && car.specialRole === 'taxi') {
+      specialMissions.start('taxi', player.position);
+      audio.playCheckpoint();
+      showQuickToast('VICE CAB · TAXI-MODUS AKTIV · FAHRGAST AUF RADAR MARKIERT!');
+    } else if (car && car.specialRole === 'firetruck') {
+      specialMissions.start('firefighter', player.position);
+      audio.playCheckpoint();
+      sendPoliceDispatch('Feuerwehr-Zentrale: Brennendes Autowrack gemeldet — Wasserwerfer [LMB] bereit!', true);
+      showQuickToast('FEUERWEHR-EINSATZ · STUFE 1 · [LMB] WASSERWERFER!');
+    } else if (car && car.specialRole === 'ambulance') {
+      specialMissions.start('paramedic', player.position);
+      const prog = specialMissions.getParamedicProgress();
+      audio.playCheckpoint();
+      sendPoliceDispatch('Vice EMS Notruf: Verletzte Person auf dem Radar markiert!', true);
+      showQuickToast(
+        prog.maxHpUnlocked
+          ? 'RETTUNGSDIENST AKTIV · 150 MAX-HP BEREITS FREIGESCHALTET!'
+          : `RETTUNGSDIENST AKTIV · ${prog.rescues}/${PARAMEDIC_MAX_HP_RESCUES_REQUIRED} RETTUNGEN FÜR 150 MAX-HP!`,
+      );
     } else {
-      showQuickToast('VIGILANTE · NUR IN EINEM VICE-PD-STREIFENWAGEN [G]');
+      showQuickToast('EINSATZ [G] · NUR IN VICE PD, TAXI, AMBULANZ ODER FEUERWEHR');
     }
     return;
   }
@@ -1493,7 +1534,7 @@ window.addEventListener('keydown', (e) => {
         }
       } else {
         const prevHp = playerHp;
-        playerHp = Math.min(100, playerHp + 30);
+        playerHp = Math.min(playerMaxHp, playerHp + 30);
         const gained = Math.round(playerHp - prevHp);
         cocktailScore = Math.min(6.0, cocktailScore + 1.25);
         const rawLevel = THREE.MathUtils.clamp((cocktailScore - 1.0) / 3.8, 0, 1);
@@ -1505,12 +1546,12 @@ window.addEventListener('keydown', (e) => {
       }
     } else if (world.isNearSafehouseFridge(player.position)) {
       const prevHp = playerHp;
-      playerHp = Math.min(100, playerHp + 25);
+      playerHp = Math.min(playerMaxHp, playerHp + 25);
       const gained = Math.round(playerHp - prevHp);
       audio.playEatCrunch();
       showQuickToast(gained > 0 ? `KÜHLSCHRANK-SNACK · +${gained} HP` : 'KÜHLSCHRANK-SNACK · LECKER!');
     } else if (world.isNearSafehouseLounge(player.position)) {
-      playerHp = 100;
+      playerHp = playerMaxHp;
       weapons.refillAllAmmo();
       if (wanted.stars <= 2) {
         wanted.reset();
@@ -1518,7 +1559,7 @@ window.addEventListener('keydown', (e) => {
       }
       audio.playPurchase();
       persistProgress();
-      showQuickToast('SAFEHOUSE · 100% HP, MUNITION VOLL & GESPEICHERT');
+      showQuickToast(`SAFEHOUSE · ${playerMaxHp} HP, MUNITION VOLL & GESPEICHERT`);
     } else if (world.isNearPdDesk(player.position) && wanted.stars >= 1) {
       const bribeCost = wanted.stars * 200;
       if (objectives.cash >= bribeCost) {
@@ -1586,10 +1627,10 @@ window.addEventListener('keydown', (e) => {
       const mealCost = 40;
       if (objectives.cash >= mealCost) {
         objectives.cash -= mealCost;
-        playerHp = 100;
+        playerHp = playerMaxHp;
         audio.playEatCrunch();
         persistProgress();
-        showQuickToast('STARLIGHT DINER · CUBAN BURGER & SHAKE (100% HP · -$40)');
+        showQuickToast(`STARLIGHT DINER · CUBAN BURGER & SHAKE (${playerMaxHp} HP · -$40)`);
       } else {
         showQuickToast(`STARLIGHT DINER · ZU WENIG CASH (BENÖTIGT $${mealCost})`);
       }
@@ -1611,21 +1652,21 @@ window.addEventListener('keydown', (e) => {
       sendPoliceDispatch('Schmuggler-Alarm an der Vice Marina! Küstenwache & Streifen ausrücken!', true);
     } else if (world.isNearLighthouseSpot(player.position)) {
       const firstDiscovery = world.claimLighthouseBonus();
-      playerHp = 100;
+      playerHp = playerMaxHp;
       if (firstDiscovery) {
         objectives.cash += 1000;
         audio.playMissionPassed();
         persistProgress();
-        showQuickToast('CAPE VICE LEUCHTTURM ENTDECKT! · +$1.000 & 100% HP');
+        showQuickToast(`CAPE VICE LEUCHTTURM ENTDECKT! · +$1.000 & ${playerMaxHp} HP`);
       } else {
         audio.playPurchase();
-        showQuickToast('CAPE VICE AUSSICHT · FRISCHE MEERESLUFT (100% HP)');
+        showQuickToast(`CAPE VICE AUSSICHT · FRISCHE MEERESLUFT (${playerMaxHp} HP)`);
       }
     } else if (world.isNearClubBar(player.position)) {
       if (objectives.cash >= 50) {
         objectives.cash -= 50;
         const prevHp = playerHp;
-        playerHp = Math.min(100, playerHp + 30);
+        playerHp = Math.min(playerMaxHp, playerHp + 30);
         const gained = Math.round(playerHp - prevHp);
         cocktailScore = Math.min(6.0, cocktailScore + 1.0);
         const rawLevel = THREE.MathUtils.clamp((cocktailScore - 1.0) / 4.5, 0, 1);
@@ -1802,7 +1843,7 @@ function animate(now: number): void {
     wastedTimer -= dt;
     if (wastedTimer <= 0) {
       wastedOverlayEl.classList.remove('visible', 'busted');
-      playerHp = 100;
+      playerHp = playerMaxHp;
       cocktailScore = 0;
       canvas.style.filter = '';
       wanted.reset();
@@ -2089,6 +2130,45 @@ function animate(now: number): void {
   if (vigilanteHud.toastText) {
     showQuickToast(vigilanteHud.toastText);
   }
+
+  const specialHud = specialMissions.update(
+    dt,
+    elapsed,
+    isPlaying,
+    player.position,
+    vehicles.getActiveVehicle(),
+    driveHud.drifting,
+    vehicles.vehicles,
+    npcs,
+    world.solidNpcColliders,
+    pad,
+  );
+  if (specialHud.waterSplashEvent) {
+    audio.playWaterCannonPulse();
+  }
+  if (specialHud.sprayedPolice) {
+    wanted.addHeat(14 * dt);
+  }
+  if (specialHud.maxHpJustUnlocked) {
+    playerMaxHp = 150;
+    playerHp = 150;
+  }
+  if (specialHud.rewardEarned > 0) {
+    objectives.cash += specialHud.rewardEarned;
+    objectives.completedCount++;
+    lastCompletedCount = objectives.completedCount;
+    audio.playMissionPassed();
+    persistProgress();
+  } else if (specialHud.toastText && specialHud.active) {
+    audio.playCheckpoint();
+  }
+  if (specialHud.dispatchMsg) {
+    sendPoliceDispatch(specialHud.dispatchMsg, true);
+  }
+  if (specialHud.toastText) {
+    showQuickToast(specialHud.toastText);
+  }
+
   const objHud = objectives.update(dt, elapsed, player.position, vehicles, npcs, wanted, inGarageRide);
 
   if (heistHud.stageToast) {
@@ -2134,6 +2214,7 @@ function animate(now: number): void {
     player.position.x,
     world.getClubProximity(player.position),
     inGarageRide && garageRideHud.rideId ? garageRideHud.rideId : 'motor',
+    specialHud.kind === 'firefighter' || specialHud.kind === 'paramedic',
   );
 
   const shootables = [
@@ -2248,7 +2329,7 @@ function animate(now: number): void {
   );
   if (inVehicle) {
     const car = vehicles.getActiveVehicle();
-    if (car) {
+    if (car && car.specialRole !== 'firetruck') {
       weapons.updateDriveBy(dt, isPlaying, car.position, world.worldMeshes, shootables, pad);
     }
   } else if (inGarageRide) {
@@ -2268,7 +2349,7 @@ function animate(now: number): void {
     objectives.current,
     elapsed,
     heli.active ? heli.position : null,
-    storyHud.targetPos ?? vigilanteHud.targetPos ?? heistHud.targetPos,
+    storyHud.targetPos ?? vigilanteHud.targetPos ?? specialHud.targetPos ?? heistHud.targetPos,
     maverick.position,
     garageRides.getParkedMarkers(),
     { x: superyacht.position.x, z: superyacht.position.z, yaw: superyacht.yaw },
@@ -2277,9 +2358,9 @@ function animate(now: number): void {
   // --- HUD Updates (Dirty-checked DOM mutations) ---
   damageFlash = Math.max(0, damageFlash - dt * 2.2);
   damageVignetteEl.style.opacity = damageFlash > 0.004 ? damageFlash.toFixed(2) : '0';
-  const hpPct = Math.round(playerHp);
+  const hpPct = Math.min(100, Math.round((playerHp / playerMaxHp) * 100));
   setWidth(hpFillEl, `${hpPct}%`);
-  setText(hpTextEl, `${hpPct}`);
+  setText(hpTextEl, playerMaxHp > 100 ? `${Math.round(playerHp)}/${playerMaxHp}` : `${Math.round(playerHp)}`);
 
   const armorPct = Math.round(playerArmor);
   setWidth(armorFillEl, `${armorPct}%`);
@@ -2303,6 +2384,12 @@ function animate(now: number): void {
     setText(objTitleEl, vigilanteHud.title);
     setText(objDescEl, vigilanteHud.description);
     setText(objDistEl, `${vigilanteHud.timerText} · ${vigilanteHud.distanceM} m`);
+  } else if (specialHud.active) {
+    setText(objTagEl, specialHud.tag);
+    objTagEl.classList.add('heist');
+    setText(objTitleEl, specialHud.title);
+    setText(objDescEl, specialHud.description);
+    setText(objDistEl, `${specialHud.timerText} · ${specialHud.distanceM} m`);
   } else if (heistHud.active) {
     setText(objTagEl, '★ HEIST');
     objTagEl.classList.add('heist');
@@ -2378,8 +2465,28 @@ function animate(now: number): void {
     setWidth(vehicleHpFillEl, `${driveHud.hpPct}%`);
     vehicleHpFillEl.classList.toggle('low', driveHud.hpPct < 35);
     const car = vehicles.getActiveVehicle();
-    const vigHint = car?.isPolice ? ` · [G] ${vigilante.isActive() ? 'VIGILANTE AUS' : 'VIGILANTE'}` : '';
-    setText(vehicleCamHintEl, `[LMB] DRIVE-BY · [Q] ${audio.getRadioStation()}${vigHint} · [V] CAM · [E] AUS`);
+    if (car?.specialRole === 'firetruck') {
+      const fireToggle = specialMissions.getActiveKind() === 'firefighter' ? 'EINSATZ AUS' : 'FEUERWEHR';
+      setText(
+        vehicleCamHintEl,
+        `[LMB/C] WASSERWERFER · [MAUS/PFEILE] ZIELEN · [G] ${fireToggle} · [V] CAM · [E] AUS`,
+      );
+    } else if (car?.specialRole === 'taxi') {
+      const taxiToggle = specialMissions.getActiveKind() === 'taxi' ? 'TAXI AUS' : 'TAXI-MODUS';
+      setText(
+        vehicleCamHintEl,
+        `[LMB] DRIVE-BY · [G] ${taxiToggle} · [Q] ${audio.getRadioStation()} · [V] CAM · [E] AUS`,
+      );
+    } else if (car?.specialRole === 'ambulance') {
+      const emsToggle = specialMissions.getActiveKind() === 'paramedic' ? 'EMS AUS' : 'RETTUNGSDIENST';
+      setText(
+        vehicleCamHintEl,
+        `[LMB] DRIVE-BY · [G] ${emsToggle} · [Q] ${audio.getRadioStation()} · [V] CAM · [E] AUS`,
+      );
+    } else {
+      const vigHint = car?.isPolice ? ` · [G] ${vigilante.isActive() ? 'VIGILANTE AUS' : 'VIGILANTE'}` : '';
+      setText(vehicleCamHintEl, `[LMB] DRIVE-BY · [Q] ${audio.getRadioStation()}${vigHint} · [V] CAM · [E] AUS`);
+    }
     if (car && world.isInSafehouseGarage(car.position)) {
       nextPrompt = '[F] PRIVATE GARAGE · GRATIS REPARATUR (100%)';
     } else if (car && world.isCarInTuningBay(car.position)) {

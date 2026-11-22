@@ -7,11 +7,14 @@ import { ROAD_COORDS } from '../world/CityLayout';
 import { createCarModel, type CarModelType } from './CarBuilder';
 import { createMotorcycleMesh } from './MotorcycleBuilder';
 
+export type SpecialVehicleRole = 'taxi' | 'ambulance' | 'firetruck';
+
 export interface Vehicle {
   id: string;
   name: string;
   isPolice: boolean;
   isPursuitUnit: boolean;
+  specialRole?: SpecialVehicleRole;
   isBike: boolean;
   isRv: boolean;
   mesh: THREE.Group;
@@ -19,6 +22,7 @@ export interface Vehicle {
   bodyMat: THREE.MeshStandardMaterial;
   riderMesh?: THREE.Group;
   kickstand?: THREE.Object3D;
+  waterTurret?: THREE.Group;
   originalColor: string;
   position: THREE.Vector3;
   spawnX: number;
@@ -87,6 +91,7 @@ const CAR_SPECS: {
   police: boolean;
   pursuit: boolean;
   bike: boolean;
+  specialRole?: SpecialVehicleRole;
 }[] = [
   { name: 'DELOREAN DMC-12', model: 'delorean', color: '#c8d0d8', neon: '#36f1e6', x: 56.8, z: 16, yaw: Math.PI, ai: false, police: false, pursuit: false, bike: false },
   { name: 'PCJ-86 NEON BIKE', model: 'supercar', color: '#36f1e6', neon: '#ff4fa3', x: 63.2, z: 20, yaw: Math.PI, ai: false, police: false, pursuit: false, bike: true },
@@ -97,6 +102,11 @@ const CAR_SPECS: {
   { name: '1974 DODGE MONACO', model: 'monaco', color: '#14151c', neon: '#36f1e6', x: -16.8, z: 24, yaw: Math.PI, ai: false, police: false, pursuit: false, bike: false },
   { name: 'VICE PD CRUISER', model: 'police', color: '#1b1b26', neon: '#36f1e6', x: -26.8, z: 6.8, yaw: 0, ai: false, police: true, pursuit: true, bike: false },
   { name: 'VICE PD INTERCEPTOR', model: 'police', color: '#1b1b26', neon: '#ff3355', x: 20, z: 58, yaw: Math.PI, ai: true, police: true, pursuit: true, bike: false },
+  // Classic GTA Special Service Vehicles: Checker Taxi, Ambulance & Firetruck!
+  { name: 'VICE CAB · CHECKER TAXI', model: 'taxi', color: '#f2c22e', neon: '#ffd15c', x: 56.8, z: -2, yaw: 0, ai: false, police: false, pursuit: false, bike: false, specialRole: 'taxi' },
+  { name: 'VICE CAB · CHECKER TAXI', model: 'taxi', color: '#f2c22e', neon: '#ffd15c', x: -20, z: -40, yaw: 0, ai: true, police: false, pursuit: false, bike: false, specialRole: 'taxi' },
+  { name: 'VICE EMS AMBULANCE', model: 'ambulance', color: '#f2f5fa', neon: '#ff3355', x: -16.8, z: -26, yaw: Math.PI, ai: false, police: false, pursuit: false, bike: false, specialRole: 'ambulance' },
+  { name: 'VICE FIRE ENGINE 06', model: 'firetruck', color: '#d9232e', neon: '#ff9f43', x: 23.2, z: 42, yaw: -Math.PI / 2, ai: false, police: false, pursuit: false, bike: false, specialRole: 'firetruck' },
   // Cruising traffic cars on the road grid
   { name: 'CHEETAH GT', model: 'supercar', color: '#ff4fa3', neon: '#ff4fa3', x: 20, z: -48, yaw: 0, ai: true, police: false, pursuit: false, bike: false },
   { name: 'DODGE CHALLENGER RT', model: 'challenger', color: '#36c9c6', neon: '#36f1e6', x: -60, z: 20, yaw: Math.PI / 2, ai: true, police: false, pursuit: false, bike: false },
@@ -176,8 +186,19 @@ export class VehicleSystem {
       }
       scene.add(built.group);
 
-      const isRv = spec.model === 'bounder';
-      const maxHp = isRv ? 240 : spec.model === 'cybertruck' ? 210 : 140;
+      const isRv = spec.model === 'bounder' || spec.model === 'ambulance' || spec.model === 'firetruck';
+      const maxHp =
+        spec.model === 'firetruck'
+          ? 320
+          : spec.model === 'bounder'
+            ? 240
+            : spec.model === 'ambulance'
+              ? 220
+              : spec.model === 'cybertruck'
+                ? 210
+                : spec.model === 'taxi'
+                  ? 165
+                  : 140;
       const hbW = spec.bike ? 0.7 : isRv ? 2.3 : 2.1;
       const hbH = spec.bike ? 1.35 : isRv ? 2.7 : 1.45;
       const hbD = spec.bike ? 2.1 : isRv ? 6.1 : 4.6;
@@ -190,6 +211,7 @@ export class VehicleSystem {
         name: spec.name,
         isPolice: spec.police,
         isPursuitUnit: spec.pursuit,
+        specialRole: spec.specialRole,
         isBike: spec.bike,
         isRv,
         mesh: built.group,
@@ -197,6 +219,7 @@ export class VehicleSystem {
         bodyMat: built.bodyMat,
         riderMesh: built.riderMesh,
         kickstand: 'kickstand' in built ? built.kickstand : undefined,
+        waterTurret: 'waterTurret' in built ? built.waterTurret : undefined,
         originalColor: spec.color,
         position: new THREE.Vector3(spec.x, 0, spec.z),
         spawnX: spec.x,
@@ -677,9 +700,10 @@ export class VehicleSystem {
         this.emitDamageSmoke(v, clampedDt, v.hp < 32);
       }
 
-      // Police lightbar flash
-      if (v.isPolice && v.lightbarRed && v.lightbarBlue) {
-        const activeFlash = wantedStars > 0 || v === this.activeVehicle;
+      // Emergency lightbar flash (Police, Ambulance & Firetruck)
+      const isEmergencyLightbar = v.isPolice || v.specialRole === 'ambulance' || v.specialRole === 'firetruck';
+      if (isEmergencyLightbar && v.lightbarRed && v.lightbarBlue) {
+        const activeFlash = (v.isPolice && wantedStars > 0) || v === this.activeVehicle;
         const phase = Math.sin(elapsed * 15) > 0;
         (v.lightbarRed.material as THREE.MeshStandardMaterial).emissiveIntensity = activeFlash
           ? phase

@@ -199,6 +199,55 @@ export class NpcSystem {
     }
   }
 
+  /**
+   * Blasts nearby pedestrians & police officers backward with the firetruck's high-pressure water cannon!
+   * Returns counts of civilians and police pushed so callers can trigger SFX or mild Wanted heat.
+   */
+  public applyWaterCannonPush(
+    impactPos: THREE.Vector3,
+    pushDirX: number,
+    pushDirZ: number,
+    radius: number,
+    dt: number,
+    worldColliders: AABB[],
+  ): { civiliansHit: number; policeHit: number } {
+    const rSq = radius * radius;
+    const blockers: AABB[] = [SAFEHOUSE_NO_ENTRY, ...worldColliders];
+    let civiliansHit = 0;
+    let policeHit = 0;
+    const pushSpeed = 12.5;
+
+    for (const npc of this.npcs) {
+      if (!npc.alive) continue;
+      const dx = npc.position.x - impactPos.x;
+      const dz = npc.position.z - impactPos.z;
+      const dSq = dx * dx + dz * dz;
+      if (dSq > rSq) continue;
+
+      const resolved = this.moveWithWallSlide(
+        npc.position.x,
+        npc.position.z,
+        pushDirX * pushSpeed * dt,
+        pushDirZ * pushSpeed * dt,
+        NPC_RADIUS,
+        blockers,
+        npc.position.y,
+      );
+      npc.position.x = resolved.x;
+      npc.position.z = resolved.z;
+      npc.group.position.set(npc.position.x, npc.position.y, npc.position.z);
+      npc.flinchTimer = 0.34;
+      npc.fireCooldown = Math.max(npc.fireCooldown, 0.7);
+      if (npc.role === 'civilian') {
+        npc.state = 'flee';
+        civiliansHit++;
+      } else if (npc.role === 'police') {
+        policeHit++;
+      }
+    }
+    return { civiliansHit, policeHit };
+  }
+
   public getShootableTargets(): ShootableTarget[] {
     const out: ShootableTarget[] = [];
     for (const npc of this.npcs) {

@@ -8,6 +8,9 @@ export type CarModelType =
   | 'transam'
   | 'monaco'
   | 'police'
+  | 'taxi'
+  | 'ambulance'
+  | 'firetruck'
   | 'supercar';
 
 export interface BuiltCar {
@@ -19,7 +22,49 @@ export interface BuiltCar {
   lightbarRed?: THREE.Mesh;
   lightbarBlue?: THREE.Mesh;
   scannerLeds?: THREE.Mesh[];
+  waterTurret?: THREE.Group;
   riderMesh?: THREE.Group;
+}
+
+let cachedTaxiCheckerTex: THREE.CanvasTexture | null = null;
+function getTaxiCheckerTexture(): THREE.CanvasTexture {
+  if (cachedTaxiCheckerTex) return cachedTaxiCheckerTex;
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = 32;
+  const ctx = c.getContext('2d')!;
+  const cell = 16;
+  for (let y = 0; y < 2; y++) {
+    for (let x = 0; x < 16; x++) {
+      ctx.fillStyle = (x + y) % 2 === 0 ? '#111116' : '#f7f7f2';
+      ctx.fillRect(x * cell, y * cell, cell, cell);
+    }
+  }
+  cachedTaxiCheckerTex = new THREE.CanvasTexture(c);
+  cachedTaxiCheckerTex.colorSpace = THREE.SRGBColorSpace;
+  return cachedTaxiCheckerTex;
+}
+
+let cachedTaxiSignTex: THREE.CanvasTexture | null = null;
+function getTaxiSignTexture(): THREE.CanvasTexture {
+  if (cachedTaxiSignTex) return cachedTaxiSignTex;
+  const c = document.createElement('canvas');
+  c.width = 192;
+  c.height = 64;
+  const ctx = c.getContext('2d')!;
+  ctx.fillStyle = '#ffe052';
+  ctx.fillRect(0, 0, 192, 64);
+  ctx.strokeStyle = '#181410';
+  ctx.lineWidth = 6;
+  ctx.strokeRect(4, 4, 184, 56);
+  ctx.fillStyle = '#141114';
+  ctx.font = '900 38px "Segoe UI", Arial, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('VICE CAB', 96, 34);
+  cachedTaxiSignTex = new THREE.CanvasTexture(c);
+  cachedTaxiSignTex.colorSpace = THREE.SRGBColorSpace;
+  return cachedTaxiSignTex;
 }
 
 /**
@@ -176,6 +221,7 @@ export function createCarModel(
   let lightbarRed: THREE.Mesh | undefined;
   let lightbarBlue: THREE.Mesh | undefined;
   let scannerLeds: THREE.Mesh[] | undefined;
+  let waterTurret: THREE.Group | undefined;
 
   const addWheels = (
     coords: [number, number][],
@@ -1031,6 +1077,377 @@ export function createCarModel(
   }
 
   // ===========================================================================
+  // 8) 80s CHECKER TAXI („VICE CAB“) — Iconic Yellow Cab + Checker Stripe + Roof Sign
+  // ===========================================================================
+  else if (model === 'taxi') {
+    const hull = buildProfileExtrusion(
+      [
+        [-2.34, 0.3],
+        [2.32, 0.3],
+        [2.38, 0.8],
+        [0.88, 0.9],
+        [0.36, 1.44],
+        [-0.98, 1.44],
+        [-1.46, 0.92],
+        [-2.38, 0.84],
+      ],
+      2.02,
+      bodyMat,
+      0.025,
+    );
+    group.add(hull);
+
+    // Classic Black & White Checkered Taxi Side Stripes
+    const checkerMat = new THREE.MeshStandardMaterial({
+      map: getTaxiCheckerTexture(),
+      roughness: 0.35,
+      metalness: 0.15,
+    });
+    for (const sx of [-1.045, 1.045]) {
+      const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.16, 4.42), checkerMat);
+      stripe.position.set(sx, 0.64, -0.02);
+      group.add(stripe);
+      const win = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.38, 1.54), glassMat);
+      win.position.set(sx * 0.985, 1.19, -0.32);
+      group.add(win);
+    }
+
+    const windshield = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.05, 0.72), glassMat);
+    windshield.position.set(0, 1.18, 0.62);
+    windshield.rotation.x = 0.76;
+    group.add(windshield);
+    const rearWin = new THREE.Mesh(new THREE.BoxGeometry(1.78, 0.05, 0.68), glassMat);
+    rearWin.position.set(0, 1.18, -1.22);
+    rearWin.rotation.x = -0.76;
+    group.add(rearWin);
+
+    // Glowing Rooftop "VICE CAB" Taxi Light Sign
+    const taxiSignTex = getTaxiSignTexture();
+    const taxiSignMat = new THREE.MeshStandardMaterial({
+      map: taxiSignTex,
+      emissive: '#ffcf38',
+      emissiveMap: taxiSignTex,
+      emissiveIntensity: 1.9,
+      roughness: 0.25,
+    });
+    const signBase = new THREE.Mesh(new THREE.BoxGeometry(0.86, 0.06, 0.26), darkTrimMat);
+    signBase.position.set(0, 1.48, -0.22);
+    group.add(signBase);
+    const signBox = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.22, 0.22), taxiSignMat);
+    signBox.position.set(0, 1.61, -0.22);
+    group.add(signBox);
+
+    // Chrome Bumpers, Grille & Quad Round 80s Headlights
+    const fBump = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.18, 0.2), chromeMat);
+    fBump.position.set(0, 0.39, 2.42);
+    group.add(fBump);
+    const rBump = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.18, 0.2), chromeMat);
+    rBump.position.set(0, 0.39, -2.4);
+    group.add(rBump);
+    const grille = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.24, 0.08), chromeMat);
+    grille.position.set(0, 0.64, 2.38);
+    group.add(grille);
+
+    const hlGeo = new THREE.CylinderGeometry(0.095, 0.095, 0.06, 12);
+    hlGeo.rotateX(Math.PI / 2);
+    for (const hx of [-0.74, -0.48, 0.48, 0.74]) {
+      const hl = new THREE.Mesh(hlGeo, headMat);
+      hl.position.set(hx, 0.64, 2.42);
+      group.add(hl);
+    }
+
+    const tailBar = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.15, 0.06), tailMat);
+    tailBar.position.set(0, 0.68, -2.4);
+    group.add(tailBar);
+    for (const sx of [-0.52, 0.52]) {
+      const rev = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.1, 0.07), reverseMat);
+      rev.position.set(sx, 0.54, -2.4);
+      group.add(rev);
+    }
+
+    addWheels(
+      [
+        [-1.04, 1.44],
+        [1.04, 1.44],
+        [-1.04, -1.4],
+        [1.04, -1.4],
+      ],
+      0.35,
+      0.26,
+      'steel',
+    );
+  }
+
+  // ===========================================================================
+  // 9) VICE EMS AMBULANCE — Boxy 80s Rescue Van + Red Crosses + Flashing Lightbar
+  // ===========================================================================
+  else if (model === 'ambulance') {
+    const redStripeMat = new THREE.MeshStandardMaterial({ color: '#e62238', roughness: 0.28, metalness: 0.2 });
+
+    // Front cab + tall square rear medical box
+    const hull = buildProfileExtrusion(
+      [
+        [-2.75, 0.36],
+        [2.68, 0.36],
+        [2.72, 1.08], // blunt 80s van nose
+        [1.76, 1.18], // short hood
+        [1.26, 1.96], // upright van windshield
+        [0.52, 2.02], // cab roof
+        [0.44, 2.48], // tall raised medical box!
+        [-2.78, 2.48],
+        [-2.82, 0.44],
+      ],
+      2.18,
+      bodyMat,
+      0.025,
+    );
+    group.add(hull);
+
+    // Bold Red EMS Rescue Stripe wrapping sides & rear
+    for (const sx of [-1.12, 1.12]) {
+      const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.24, 5.2), redStripeMat);
+      stripe.position.set(sx, 1.05, -0.1);
+      group.add(stripe);
+
+      // Iconic Red Medical Cross (+) on both sides of the ambulance box
+      const crossV = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.72, 0.22), redStripeMat);
+      crossV.position.set(sx, 1.78, -1.15);
+      group.add(crossV);
+      const crossH = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.22, 0.72), redStripeMat);
+      crossH.position.set(sx, 1.78, -1.15);
+      group.add(crossH);
+
+      // Cab side window + mirror
+      const cabWin = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.56, 0.92), glassMat);
+      cabWin.position.set(sx * 0.99, 1.56, 1.08);
+      group.add(cabWin);
+      const mir = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.26, 0.08), chromeMat);
+      mir.position.set(sx * 1.12, 1.48, 1.54);
+      group.add(mir);
+    }
+
+    // Rear stripe + medical cross + twin rear ambulance windows
+    const rearStripe = new THREE.Mesh(new THREE.BoxGeometry(2.22, 0.24, 0.05), redStripeMat);
+    rearStripe.position.set(0, 1.05, -2.84);
+    group.add(rearStripe);
+    for (const rx of [-0.52, 0.52]) {
+      const rWin = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.52, 0.05), glassMat);
+      rWin.position.set(rx, 1.76, -2.84);
+      group.add(rWin);
+    }
+    const rCrossV = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.44, 0.05), redStripeMat);
+    rCrossV.position.set(0, 2.24, -2.84);
+    group.add(rCrossV);
+    const rCrossH = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.16, 0.05), redStripeMat);
+    rCrossH.position.set(0, 2.24, -2.84);
+    group.add(rCrossH);
+
+    // Front Windshield & Grille
+    const windshield = new THREE.Mesh(new THREE.BoxGeometry(1.94, 0.06, 0.88), glassMat);
+    windshield.position.set(0, 1.58, 1.54);
+    windshield.rotation.x = 0.98;
+    group.add(windshield);
+
+    const grille = new THREE.Mesh(new THREE.BoxGeometry(1.88, 0.36, 0.08), chromeMat);
+    grille.position.set(0, 0.78, 2.74);
+    group.add(grille);
+
+    const fBump = new THREE.Mesh(new THREE.BoxGeometry(2.26, 0.22, 0.24), chromeMat);
+    fBump.position.set(0, 0.44, 2.78);
+    group.add(fBump);
+    const rBump = new THREE.Mesh(new THREE.BoxGeometry(2.28, 0.2, 0.3), chromeMat);
+    rBump.position.set(0, 0.44, -2.92);
+    group.add(rBump);
+
+    // Flashing Rooftop Emergency Lightbar (Red / White-Cyan)
+    const barBase = new THREE.Mesh(new THREE.BoxGeometry(1.78, 0.08, 0.3), darkTrimMat);
+    barBase.position.set(0, 2.54, 0.22);
+    group.add(barBase);
+    lightbarRed = new THREE.Mesh(
+      new THREE.BoxGeometry(0.68, 0.2, 0.26),
+      new THREE.MeshStandardMaterial({ color: '#ff2244', emissive: '#ff2244', emissiveIntensity: 3.2 }),
+    );
+    lightbarRed.position.set(-0.5, 2.66, 0.22);
+    group.add(lightbarRed);
+    lightbarBlue = new THREE.Mesh(
+      new THREE.BoxGeometry(0.68, 0.2, 0.26),
+      new THREE.MeshStandardMaterial({ color: '#ffffff', emissive: '#e6f6ff', emissiveIntensity: 3.0 }),
+    );
+    lightbarBlue.position.set(0.5, 2.66, 0.22);
+    group.add(lightbarBlue);
+
+    for (const hx of [-0.82, 0.82]) {
+      const hl = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.2, 0.06), headMat);
+      hl.position.set(hx, 0.82, 2.76);
+      group.add(hl);
+      const tl = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.42, 0.06), tailMat);
+      tl.position.set(hx * 1.12, 0.82, -2.84);
+      group.add(tl);
+    }
+    for (const sx of [-0.52, 0.52]) {
+      const rev = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.12, 0.07), reverseMat);
+      rev.position.set(sx, 0.64, -2.84);
+      group.add(rev);
+    }
+
+    addWheels(
+      [
+        [-1.12, 1.72],
+        [1.12, 1.72],
+        [-1.12, -1.62],
+        [1.12, -1.62],
+      ],
+      0.42,
+      0.32,
+      'steel',
+    );
+  }
+
+  // ===========================================================================
+  // 10) VICE FIRE ENGINE 06 — Heavy 80s Firetruck + Ladder + Swiveling Water Cannon!
+  // ===========================================================================
+  else if (model === 'firetruck') {
+    const whiteMat = new THREE.MeshStandardMaterial({ color: '#f2f4f8', roughness: 0.25, metalness: 0.25 });
+    const brassMat = new THREE.MeshStandardMaterial({ color: '#e6b84c', roughness: 0.22, metalness: 0.88 });
+
+    // Massive 6.2m flat-nose American Fire Engine silhouette
+    const hull = buildProfileExtrusion(
+      [
+        [-3.05, 0.44],
+        [3.02, 0.44],
+        [3.08, 2.28], // classic flat-nose fire cab
+        [1.18, 2.38], // cab roof
+        [1.08, 2.22], // hose bed step
+        [-3.08, 2.22],
+        [-3.12, 0.52],
+      ],
+      2.32,
+      bodyMat,
+      0.025,
+    );
+    group.add(hull);
+
+    // Classic White Cab Roof & Gold/White Side Stripe
+    const cabRoof = new THREE.Mesh(new THREE.BoxGeometry(2.34, 0.18, 1.94), whiteMat);
+    cabRoof.position.set(0, 2.36, 2.12);
+    group.add(cabRoof);
+
+    for (const sx of [-1.19, 1.19]) {
+      const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.18, 5.95), whiteMat);
+      stripe.position.set(sx, 1.12, -0.02);
+      group.add(stripe);
+
+      // Chrome Equipment Locker Roll-Up Doors along the body
+      for (const lz of [-0.1, -1.25, -2.35]) {
+        const locker = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.92, 0.88), chromeMat);
+        locker.position.set(sx, 1.24, lz);
+        group.add(locker);
+      }
+
+      // Cab side window
+      const cabWin = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.64, 1.15), glassMat);
+      cabWin.position.set(sx * 0.99, 1.76, 2.22);
+      group.add(cabWin);
+    }
+
+    // Extendable Aluminum Fire Ladder mounted on right-top deck
+    for (const lx of [0.64, 1.02]) {
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.14, 4.3), chromeMat);
+      rail.position.set(lx, 2.36, -0.92);
+      group.add(rail);
+    }
+    for (let r = 0; r < 11; r++) {
+      const rung = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.05, 0.06), chromeMat);
+      rung.position.set(0.83, 2.36, 0.96 - r * 0.38);
+      group.add(rung);
+    }
+
+    // Flat Panoramic Front Windshield & Massive Chrome Grille
+    const windshield = new THREE.Mesh(new THREE.BoxGeometry(2.08, 0.72, 0.06), glassMat);
+    windshield.position.set(0, 1.78, 3.09);
+    group.add(windshield);
+
+    const grille = new THREE.Mesh(new THREE.BoxGeometry(1.45, 0.68, 0.1), chromeMat);
+    grille.position.set(0, 0.96, 3.11);
+    group.add(grille);
+
+    // Heavy Chrome Front & Rear Step Bumpers
+    const fBump = new THREE.Mesh(new THREE.BoxGeometry(2.44, 0.28, 0.32), chromeMat);
+    fBump.position.set(0, 0.48, 3.22);
+    group.add(fBump);
+    const rBump = new THREE.Mesh(new THREE.BoxGeometry(2.42, 0.24, 0.38), chromeMat);
+    rBump.position.set(0, 0.48, -3.26);
+    group.add(rBump);
+
+    // Flashing Red & White Rooftop Fire Lightbar
+    const barMount = new THREE.Mesh(new THREE.BoxGeometry(1.96, 0.08, 0.3), darkTrimMat);
+    barMount.position.set(0, 2.48, 2.68);
+    group.add(barMount);
+    lightbarRed = new THREE.Mesh(
+      new THREE.BoxGeometry(0.76, 0.2, 0.26),
+      new THREE.MeshStandardMaterial({ color: '#ff2244', emissive: '#ff2244', emissiveIntensity: 3.4 }),
+    );
+    lightbarRed.position.set(-0.54, 2.6, 2.68);
+    group.add(lightbarRed);
+    lightbarBlue = new THREE.Mesh(
+      new THREE.BoxGeometry(0.76, 0.2, 0.26),
+      new THREE.MeshStandardMaterial({ color: '#ffbb33', emissive: '#ffaa22', emissiveIntensity: 3.2 }),
+    );
+    lightbarBlue.position.set(0.54, 2.6, 2.68);
+    group.add(lightbarBlue);
+
+    // SWIVELING HIGH-PRESSURE WATER CANNON TURRET (rotates yaw & pitches!)
+    const turretPedestal = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.3, 0.34, 12), chromeMat);
+    turretPedestal.position.set(-0.22, 2.52, 1.38);
+    group.add(turretPedestal);
+
+    waterTurret = new THREE.Group();
+    waterTurret.position.set(-0.22, 2.74, 1.38);
+    const turretYoke = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.26, 0.32), bodyMat);
+    waterTurret.add(turretYoke);
+
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.115, 1.05, 12), chromeMat);
+    barrel.rotation.x = Math.PI / 2;
+    barrel.position.set(0, 0.06, 0.46);
+    waterTurret.add(barrel);
+
+    const nozzleTip = new THREE.Mesh(new THREE.CylinderGeometry(0.068, 0.095, 0.24, 12), brassMat);
+    nozzleTip.rotation.x = Math.PI / 2;
+    nozzleTip.position.set(0, 0.06, 1.05);
+    waterTurret.add(nozzleTip);
+    group.add(waterTurret);
+
+    // Quad Headlights & Taillights
+    for (const hx of [-0.94, -0.78, 0.78, 0.94]) {
+      const hl = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.14, 0.06), headMat);
+      hl.position.set(hx, 0.92, 3.12);
+      group.add(hl);
+    }
+    for (const tx of [-0.92, 0.92]) {
+      const tl = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.44, 0.06), tailMat);
+      tl.position.set(tx, 0.92, -3.14);
+      group.add(tl);
+    }
+    for (const sx of [-0.48, 0.48]) {
+      const rev = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.14, 0.07), reverseMat);
+      rev.position.set(sx, 0.72, -3.14);
+      group.add(rev);
+    }
+
+    addWheels(
+      [
+        [-1.18, 2.04],
+        [1.18, 2.04],
+        [-1.18, -1.78],
+        [1.18, -1.78],
+      ],
+      0.48,
+      0.38,
+      'steel',
+    );
+  }
+
+  // ===========================================================================
   // 6) 80s MIAMI WEDGE SUPERCAR (Testarossa / Cheetah GT Style)
   // ===========================================================================
   else {
@@ -1110,5 +1527,5 @@ export function createCarModel(
     );
   }
 
-  return { group, bodyMat, wheels, tailMat, reverseMat, lightbarRed, lightbarBlue, scannerLeds };
+  return { group, bodyMat, wheels, tailMat, reverseMat, lightbarRed, lightbarBlue, scannerLeds, waterTurret };
 }

@@ -6,6 +6,17 @@ export interface GameSettings {
   performanceMode: boolean;
 }
 
+export interface SavedGarageVehicle {
+  id: string;
+  x: number;
+  y: number;
+  z: number;
+  yaw: number;
+  color: string;
+  tuned?: boolean;
+  hydraulics?: boolean;
+}
+
 export interface SaveProgress {
   cash: number;
   completedMissions: number;
@@ -19,6 +30,7 @@ export interface SaveProgress {
   paramedicRescues?: number;
   maxHpUnlocked?: boolean;
   starterBonusApplied?: boolean;
+  savedGarageVehicles?: SavedGarageVehicle[];
 }
 
 export interface PlayerProfile {

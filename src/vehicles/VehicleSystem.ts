@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { AABB } from '../types';
 import type { ShootableTarget } from '../combat/WeaponSystem';
 import type { GamepadSnapshot } from '../engine/GamepadInput';
+import type { SavedGarageVehicle } from '../engine/Storage';
 import type { SpatialGrid } from '../engine/SpatialGrid';
 import type { StuntRamp } from '../world/StuntRamps';
 import { DEFAULT_PLAYABLE_BOUNDS, ROAD_COORDS } from '../world/CityLayout';
@@ -71,6 +72,7 @@ export interface Vehicle {
   underglowColorIdx?: number;
   // AI traffic state
   isAiControlled: boolean;
+  isParkedInSafehouse?: boolean;
   aiSpeed: number;
   aiTargetX: number;
   aiTargetZ: number;
@@ -700,10 +702,73 @@ export class VehicleSystem {
     if (v.destroyed) return;
     this.activeVehicle = v;
     v.isAiControlled = false;
+    v.isParkedInSafehouse = false;
     if (v.riderMesh) v.riderMesh.visible = true;
     if (v.kickstand) v.kickstand.visible = false;
     if (v.isBike) v.mesh.rotation.z = 0;
     this.camInitialized = false;
+  }
+
+  public markParkedInSafehouse(v: Vehicle, parked: boolean): void {
+    v.isParkedInSafehouse = parked;
+    if (parked) {
+      v.isAiControlled = false;
+      v.speed = 0;
+    }
+  }
+
+  public exportSafehouseVehicles(isInGarage: (pos: THREE.Vector3) => boolean): SavedGarageVehicle[] {
+    const saved: SavedGarageVehicle[] = [];
+    for (const v of this.vehicles) {
+      if (v.destroyed) continue;
+      if (isInGarage(v.position)) {
+        v.isParkedInSafehouse = true;
+        v.isAiControlled = false;
+        saved.push({
+          id: v.id,
+          x: Number(v.position.x.toFixed(2)),
+          y: Number(v.position.y.toFixed(2)),
+          z: Number(v.position.z.toFixed(2)),
+          yaw: Number(v.yaw.toFixed(3)),
+          color: `#${v.bodyMat.color.getHexString()}`,
+          tuned: Boolean(v.tuned),
+          hydraulics: Boolean(v.hydraulics),
+        });
+      }
+    }
+    return saved;
+  }
+
+  public restoreSafehouseVehicles(saved: SavedGarageVehicle[] | undefined): void {
+    for (const v of this.vehicles) {
+      v.isParkedInSafehouse = false;
+    }
+    if (!saved || saved.length === 0) return;
+    for (const entry of saved) {
+      const v = this.vehicles.find((car) => car.id === entry.id);
+      if (!v) continue;
+      v.destroyed = false;
+      v.respawnTimer = 0;
+      v.hp = v.maxHp;
+      v.speed = 0;
+      v.vy = 0;
+      v.airborne = false;
+      v.isAiControlled = false;
+      v.isParkedInSafehouse = true;
+      v.position.set(entry.x, entry.y, entry.z);
+      v.yaw = entry.yaw;
+      v.mesh.position.set(entry.x, entry.y, entry.z);
+      v.mesh.rotation.set(0, entry.yaw, v.isBike ? 0.09 : 0);
+      if (entry.color) {
+        v.bodyMat.color.set(entry.color);
+      }
+      if (entry.tuned && !v.tuned) {
+        this.tuneVehicle(v);
+      }
+      if (entry.hydraulics && !v.hydraulics && !v.isBike) {
+        this.installHydraulics(v);
+      }
+    }
   }
 
   public exitVehicle(
@@ -1149,8 +1214,8 @@ export class VehicleSystem {
           radioBeatPulse,
           lockDriving,
         );
-      } else if (v.isPursuitUnit && wantedStars >= 2) {
-        // Active Vice PD Cruiser chase!
+      } else if (v.isPursuitUnit && !v.isParkedInSafehouse && wantedStars >= 2) {
+        // Active Vice PD Cruiser chase (skips police cars parked in the player's Safehouse Garage!)
         this.updatePolicePursuitCar(v, clampedDt, playerPos, solidColliders, bounds, vehicleGrid);
       } else if (v.isAiControlled) {
         this.updateAiCar(v, clampedDt, playerPos, solidColliders, bounds, shouldTrafficStop, vehicleGrid);

@@ -295,6 +295,7 @@ function applyActiveProfileToWorld(respawnPlayer: boolean): void {
   playerAvatar.setOutfit(prog.outfitIndex);
   pets.setOwnedPets((prog.ownedPets ?? []) as PetId[]);
   world.setSafehouseRooftopBarOwned(Boolean(prog.rooftopBarOwned));
+  vehicles.restoreSafehouseVehicles(prog.savedGarageVehicles);
 
   weapons.setLauncherUnlocked(Boolean(prog.launcherUnlocked));
   weapons.refillAllAmmo();
@@ -323,6 +324,7 @@ function persistProgress(): void {
     paramedicRescues: paramedic.rescues,
     maxHpUnlocked: paramedic.maxHpUnlocked,
     starterBonusApplied: true,
+    savedGarageVehicles: vehicles.exportSafehouseVehicles((p) => world.isInSafehouseGarage(p)),
   });
   modals.updateStats(objectives.cash, objectives.completedCount);
 }
@@ -840,6 +842,13 @@ function tryToggleVehicleOrBoat(): void {
       camera.fov = 75;
       camera.updateProjectionMatrix();
       weapons.setEnabled(true);
+      if (prevCar && world.isInSafehouseGarage(prevCar.position)) {
+        vehicles.markParkedInSafehouse(prevCar, true);
+        persistProgress();
+        showQuickToast(`SAFEHOUSE-GARAGE · ${prevCar.name} DAUERHAFT GEPARKT & GESPEICHERT`);
+      } else if (prevCar) {
+        persistProgress();
+      }
     }
   } else if (lookedWallRide && lookedWallRide.action === 'detach') {
     interactWithLookedWallRide();
